@@ -40,17 +40,61 @@ func ParseCustomCostTotalRequest(qp mapper.PrimitiveMap) (*CostTotalRequest, err
 		}
 	}
 
+	costTypeStr := qp.Get("costType", string(CostTypeBlended))
+	parsedCostType, err := ParseCostType(costTypeStr)
+	if err != nil {
+		return nil, fmt.Errorf("parsing 'costType' parameter: %s", err)
+	}
+
+	sortByStr := qp.Get("sortBy", string(SortPropertyCost))
+	parsedSortBy, err := ParseSortBy(sortByStr)
+	if err != nil {
+		return nil, fmt.Errorf("parsing 'sortBy' parameter: %s", err)
+	}
+
+	sortDirStr := qp.Get("sortDirection", string(SortDirectionDesc))
+	parsedSortDir, err := ParseSortDirection(sortDirStr)
+	if err != nil {
+		return nil, fmt.Errorf("parsing 'sortDirection' parameter: %s", err)
+	}
+
 	opts := &CostTotalRequest{
-		Start:       *window.Start(),
-		End:         *window.End(),
-		AggregateBy: aggregateBy,
-		Accumulate:  accumulate,
-		Filter:      filter,
+		Start:         *window.Start(),
+		End:           *window.End(),
+		AggregateBy:   aggregateBy,
+		Accumulate:    accumulate,
+		Filter:        filter,
+		CostType:      parsedCostType,
+		SortBy:        parsedSortBy,
+		SortDirection: parsedSortDir,
 	}
 
 	return opts, nil
 }
 
+func ParseSortDirection(sortDirStr string) (SortDirection, error) {
+	switch sortDirStr {
+	case string(SortDirectionAsc):
+		return SortDirectionAsc, nil
+	case string(SortDirectionDesc):
+		return SortDirectionDesc, nil
+	default:
+		return "", fmt.Errorf("unrecognized sortDirection field: %s", sortDirStr)
+	}
+}
+
+func ParseSortBy(sortByStr string) (SortProperty, error) {
+	switch sortByStr {
+	case string(SortPropertyCost):
+		return SortPropertyCost, nil
+	case string(SortPropertyAggregate):
+		return SortPropertyAggregate, nil
+	case string(SortPropertyCostType):
+		return SortPropertyCostType, nil
+	default:
+		return "", fmt.Errorf("unrecognized sortBy field: %s", sortByStr)
+	}
+}
 func ParseCustomCostTimeseriesRequest(qp mapper.PrimitiveMap) (*CostTimeseriesRequest, error) {
 	windowStr := qp.Get("window", "")
 	if windowStr == "" {
@@ -82,13 +126,33 @@ func ParseCustomCostTimeseriesRequest(qp mapper.PrimitiveMap) (*CostTimeseriesRe
 			return nil, fmt.Errorf("parsing 'filter' parameter: %s", err)
 		}
 	}
+	costTypeStr := qp.Get("costType", string(CostTypeBlended))
+	parsedCostType, err := ParseCostType(costTypeStr)
+	if err != nil {
+		return nil, fmt.Errorf("parsing 'costType' parameter: %s", err)
+	}
+
+	sortByStr := qp.Get("sortBy", string(SortPropertyCost))
+	parsedSortBy, err := ParseSortBy(sortByStr)
+	if err != nil {
+		return nil, fmt.Errorf("parsing 'sortBy' parameter: %s", err)
+	}
+
+	sortDirStr := qp.Get("sortDirection", string(SortDirectionDesc))
+	parsedSortDir, err := ParseSortDirection(sortDirStr)
+	if err != nil {
+		return nil, fmt.Errorf("parsing 'sortDirection' parameter: %s", err)
+	}
 
 	opts := &CostTimeseriesRequest{
-		Start:       *window.Start(),
-		End:         *window.End(),
-		AggregateBy: aggregateBy,
-		Accumulate:  accumulate,
-		Filter:      filter,
+		Start:         *window.Start(),
+		End:           *window.End(),
+		AggregateBy:   aggregateBy,
+		Accumulate:    accumulate,
+		Filter:        filter,
+		CostType:      parsedCostType,
+		SortBy:        parsedSortBy,
+		SortDirection: parsedSortDir,
 	}
 
 	return opts, nil

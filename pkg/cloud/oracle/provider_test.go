@@ -73,6 +73,11 @@ func TestGetPVKey(t *testing.T) {
 	assert.Equal(t, providerID, pvkey.ID())
 }
 
+func TestRegions(t *testing.T) {
+	regions := (&Oracle{}).Regions()
+	assert.Len(t, regions, 39)
+}
+
 func testNode(gpus int) *v1.Node {
 	capacity := map[v1.ResourceName]resource.Quantity{}
 	if gpus > 0 {
