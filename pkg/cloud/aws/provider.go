@@ -156,6 +156,7 @@ var awsRegions = []string{
 	"af-south-1",
 	"us-gov-east-1",
 	"us-gov-west-1",
+	"me-central-1",
 }
 
 // AWS represents an Amazon Provider

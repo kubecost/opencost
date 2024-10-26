@@ -1192,3 +1192,118 @@ func TestBoundaryErrorIs(t *testing.T) {
 		t.Errorf("Multi wrap failure: %s != %s", baseError, multiWrapError)
 	}
 }
+func TestWindowGetWeeklyWindows(t *testing.T) {
+	testCases := []struct {
+		name     string
+		start    time.Time
+		end      time.Time
+		expected []Window
+	}{
+		{
+			name:  "Single week",
+			start: time.Date(2024, 9, 1, 0, 0, 0, 0, time.UTC),
+			end:   time.Date(2024, 9, 8, 0, 0, 0, 0, time.UTC),
+			expected: []Window{
+				NewClosedWindow(
+					time.Date(2024, 9, 1, 0, 0, 0, 0, time.UTC),
+					time.Date(2024, 9, 8, 0, 0, 0, 0, time.UTC),
+				),
+			},
+		},
+		{
+			name:  "Multiple weeks",
+			start: time.Date(2024, 10, 6, 0, 0, 0, 0, time.UTC),
+			end:   time.Date(2024, 10, 20, 0, 0, 0, 0, time.UTC),
+			expected: []Window{
+				NewClosedWindow(
+					time.Date(2024, 10, 6, 0, 0, 0, 0, time.UTC),
+					time.Date(2024, 10, 13, 0, 0, 0, 0, time.UTC),
+				),
+				NewClosedWindow(
+					time.Date(2024, 10, 13, 0, 0, 0, 0, time.UTC),
+					time.Date(2024, 10, 20, 0, 0, 0, 0, time.UTC),
+				),
+			},
+		},
+		{
+			name:  "Partial starting week",
+			start: time.Date(2024, 10, 1, 0, 0, 0, 0, time.UTC),
+			end:   time.Date(2024, 10, 13, 0, 0, 0, 0, time.UTC),
+			expected: []Window{
+				NewClosedWindow(
+					time.Date(2024, 9, 29, 0, 0, 0, 0, time.UTC),
+					time.Date(2024, 10, 6, 0, 0, 0, 0, time.UTC),
+				),
+				NewClosedWindow(
+					time.Date(2024, 10, 6, 0, 0, 0, 0, time.UTC),
+					time.Date(2024, 10, 13, 0, 0, 0, 0, time.UTC),
+				),
+			},
+		},
+		{
+			name:  "Partial ending week",
+			start: time.Date(2024, 10, 6, 0, 0, 0, 0, time.UTC),
+			end:   time.Date(2024, 10, 7, 0, 0, 0, 0, time.UTC),
+			expected: []Window{
+				NewClosedWindow(
+					time.Date(2024, 10, 6, 0, 0, 0, 0, time.UTC),
+					time.Date(2024, 10, 13, 0, 0, 0, 0, time.UTC),
+				),
+			},
+		},
+		{
+			name:  "multiple weeks, partial start and end",
+			start: time.Date(2024, 10, 1, 0, 0, 0, 0, time.UTC),
+			end:   time.Date(2024, 11, 21, 0, 0, 0, 0, time.UTC),
+			expected: []Window{
+				NewClosedWindow(
+					time.Date(2024, 9, 29, 0, 0, 0, 0, time.UTC),
+					time.Date(2024, 10, 6, 0, 0, 0, 0, time.UTC),
+				),
+				NewClosedWindow(
+					time.Date(2024, 10, 6, 0, 0, 0, 0, time.UTC),
+					time.Date(2024, 10, 13, 0, 0, 0, 0, time.UTC),
+				),
+				NewClosedWindow(
+					time.Date(2024, 10, 13, 0, 0, 0, 0, time.UTC),
+					time.Date(2024, 10, 20, 0, 0, 0, 0, time.UTC),
+				),
+				NewClosedWindow(
+					time.Date(2024, 10, 20, 0, 0, 0, 0, time.UTC),
+					time.Date(2024, 10, 27, 0, 0, 0, 0, time.UTC),
+				),
+				NewClosedWindow(
+					time.Date(2024, 10, 27, 0, 0, 0, 0, time.UTC),
+					time.Date(2024, 11, 3, 0, 0, 0, 0, time.UTC),
+				),
+				NewClosedWindow(
+					time.Date(2024, 11, 3, 0, 0, 0, 0, time.UTC),
+					time.Date(2024, 11, 10, 0, 0, 0, 0, time.UTC),
+				),
+				NewClosedWindow(
+					time.Date(2024, 11, 10, 0, 0, 0, 0, time.UTC),
+					time.Date(2024, 11, 17, 0, 0, 0, 0, time.UTC),
+				),
+				NewClosedWindow(
+					time.Date(2024, 11, 17, 0, 0, 0, 0, time.UTC),
+					time.Date(2024, 11, 24, 0, 0, 0, 0, time.UTC),
+				),
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := NewClosedWindow(tc.start, tc.end)
+			actual := w.getWeeklyWindows()
+			if len(actual) != len(tc.expected) {
+				t.Fatalf("expected %d windows, got %d", len(tc.expected), len(actual))
+			}
+			for i, expectedWindow := range tc.expected {
+				if !actual[i].Equal(expectedWindow) {
+					t.Errorf("expected window %s, got %s", expectedWindow, actual[i])
+				}
+			}
+		})
+	}
+}
