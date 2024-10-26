@@ -9,7 +9,6 @@ import (
 	"github.com/opencost/opencost/core/pkg/opencost"
 	"github.com/opencost/opencost/pkg/cloud"
 	"github.com/oracle/oci-go-sdk/v65/common"
-	"github.com/oracle/oci-go-sdk/v65/example/helpers"
 	"github.com/oracle/oci-go-sdk/v65/usageapi"
 )
 
@@ -21,6 +20,7 @@ type UsageApiIntegration struct {
 func (uai *UsageApiIntegration) GetCloudCost(start time.Time, end time.Time) (*opencost.CloudCostSetRange, error) {
 	client, err := uai.GetUsageApiClient()
 	if err != nil {
+		uai.ConnectionStatus = cloud.FailedConnection
 		return nil, fmt.Errorf("getting oracle usage api client: %s", err.Error())
 	}
 
@@ -38,11 +38,20 @@ func (uai *UsageApiIntegration) GetCloudCost(start time.Time, end time.Time) (*o
 	}
 
 	resp, err := client.RequestSummarizedUsages(context.Background(), req)
-	helpers.FatalIfError(err)
+	if err != nil {
+		uai.ConnectionStatus = cloud.FailedConnection
+		return nil, fmt.Errorf("failed to query usage: %w", err)
+	}
 
 	ccsr, err := opencost.NewCloudCostSetRange(start, end, opencost.AccumulateOptionDay, uai.Key())
 	if err != nil {
 		return nil, err
+	}
+
+	// Set status to missing data if query comes back empty and the status isn't already successful
+	if len(resp.Items) == 0 && uai.ConnectionStatus != cloud.SuccessfulConnection {
+		uai.ConnectionStatus = cloud.MissingData
+		return ccsr, nil
 	}
 
 	for _, item := range resp.Items {
@@ -137,6 +146,7 @@ func (uai *UsageApiIntegration) GetCloudCost(start time.Time, end time.Time) (*o
 		ccsr.LoadCloudCost(cc)
 	}
 
+	uai.ConnectionStatus = cloud.SuccessfulConnection
 	return ccsr, nil
 }
 
