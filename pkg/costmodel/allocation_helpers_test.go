@@ -142,6 +142,57 @@ var podMap1 = map[podKey]*pod{
 	},
 }
 
+var podMap2 = map[podKey]*pod{
+	podKey1: {
+		Window:      window.Clone(),
+		Start:       windowStart,
+		End:         windowEnd,
+		Key:         podKey1,
+		Allocations: nil,
+	},
+}
+
+var podMap3 = map[podKey]*pod{
+	podKey1: {
+		Window:      window.Clone(),
+		Start:       windowStart,
+		End:         windowEnd,
+		Key:         podKey1,
+		Allocations: nil,
+	},
+	podKey2: {
+		Window:      window.Clone(),
+		Start:       windowStart,
+		End:         windowEnd,
+		Key:         podKey2,
+		Allocations: nil,
+	},
+}
+
+var podMap4 = map[podKey]*pod{
+	podKey1: {
+		Window: window.Clone(),
+		Start:  windowStart,
+		End:    windowEnd,
+		Key:    podKey1,
+		Allocations: map[string]*opencost.Allocation{
+			opencost.UnmountedSuffix: {
+				Name: fmt.Sprintf("%s/%s/%s/%s", "cluster1", opencost.UnmountedSuffix, opencost.UnmountedSuffix, opencost.UnmountedSuffix),
+				Properties: &opencost.AllocationProperties{
+					Cluster:   "cluster1",
+					Node:      "node1",
+					Container: opencost.UnmountedSuffix,
+					Namespace: opencost.UnmountedSuffix,
+					Pod:       opencost.UnmountedSuffix,
+				},
+				Window: window,
+				Start:  *window.Start(),
+				End:    *window.End(),
+			},
+		},
+	},
+}
+
 var pvKey1 = pvKey{
 	Cluster:          "cluster1",
 	PersistentVolume: "pv1",
@@ -577,6 +628,1021 @@ func TestCalculateStartAndEnd(t *testing.T) {
 			}
 			if !end.Equal(testCase.expectedEnd) {
 				t.Errorf("end does not match: expected %v; got %v", testCase.expectedEnd, end)
+			}
+		})
+	}
+}
+
+func TestApplyPodResults(t *testing.T) {
+	testCases := map[string]struct {
+		resolution   time.Duration
+		podMap       map[podKey]*pod
+		clusterStart map[string]time.Time
+		clusterEnd   map[string]time.Time
+		resPods      []*prom.QueryResult
+		ingestPodUID bool
+		podUIDKeyMap map[podKey][]podKey
+		expected     map[podKey]*pod
+	}{
+		"success": {
+			resolution: time.Hour,
+			podMap:     podMap2,
+			clusterStart: map[string]time.Time{
+				"cluster1": windowStart,
+			},
+			clusterEnd: map[string]time.Time{
+				"cluster1": windowEnd,
+			},
+			resPods: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod2",
+						"container":  "container2",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			ingestPodUID: false,
+			podUIDKeyMap: nil,
+			expected:     podMap3,
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			applyPodResults(window, testCase.resolution, testCase.podMap, testCase.clusterStart, testCase.clusterEnd, testCase.resPods, testCase.ingestPodUID, testCase.podUIDKeyMap)
+			if len(testCase.podMap) != len(testCase.expected) {
+				t.Errorf("pod map does not have the expected length %d : %d", len(testCase.podMap), len(testCase.expected))
+			}
+
+			for expectedPodKey, expectedPod := range testCase.expected {
+				actualPod, ok := testCase.podMap[expectedPodKey]
+				if !ok {
+					t.Errorf("pod map is missing key %s", expectedPodKey)
+				}
+				if !actualPod.equal(expectedPod) {
+					t.Errorf("pod does not match with key %s: %s != %s", expectedPodKey, opencost.NewClosedWindow(actualPod.Start, actualPod.End), opencost.NewClosedWindow(expectedPod.Start, expectedPod.End))
+				}
+			}
+		})
+	}
+}
+
+func TestApplyCPUCoresAllocated(t *testing.T) {
+	testCases := map[string]struct {
+		podMap               map[podKey]*pod
+		resCPUCoresAllocated []*prom.QueryResult
+		podUIDKeyMap         map[podKey][]podKey
+		expected             map[podKey]*pod
+	}{
+		"success": {
+			podMap: podMap4,
+			resCPUCoresAllocated: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			podUIDKeyMap: nil,
+			expected:     podMap4,
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			applyCPUCoresAllocated(testCase.podMap, testCase.resCPUCoresAllocated, testCase.podUIDKeyMap)
+			if len(testCase.podMap) != len(testCase.expected) {
+				t.Errorf("pod map does not have the expected length %d : %d", len(testCase.podMap), len(testCase.expected))
+			}
+
+			for expectedPodKey, expectedPod := range testCase.expected {
+				actualPod, ok := testCase.podMap[expectedPodKey]
+				if !ok {
+					t.Errorf("pod map is missing key %s", expectedPodKey)
+				}
+				if !actualPod.equal(expectedPod) {
+					t.Errorf("pod does not match with key %s: %s != %s", expectedPodKey, opencost.NewClosedWindow(actualPod.Start, actualPod.End), opencost.NewClosedWindow(expectedPod.Start, expectedPod.End))
+				}
+			}
+		})
+	}
+}
+
+func TestApplyCPUCoresRequested(t *testing.T) {
+	testCases := map[string]struct {
+		podMap               map[podKey]*pod
+		resCPUCoresRequested []*prom.QueryResult
+		podUIDKeyMap         map[podKey][]podKey
+		expected             map[podKey]*pod
+	}{
+		"success": {
+			podMap: podMap4,
+			resCPUCoresRequested: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			podUIDKeyMap: nil,
+			expected:     podMap4,
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			applyCPUCoresRequested(testCase.podMap, testCase.resCPUCoresRequested, testCase.podUIDKeyMap)
+			if len(testCase.podMap) != len(testCase.expected) {
+				t.Errorf("pod map does not have the expected length %d : %d", len(testCase.podMap), len(testCase.expected))
+			}
+
+			for expectedPodKey, expectedPod := range testCase.expected {
+				actualPod, ok := testCase.podMap[expectedPodKey]
+				if !ok {
+					t.Errorf("pod map is missing key %s", expectedPodKey)
+				}
+				if !actualPod.equal(expectedPod) {
+					t.Errorf("pod does not match with key %s: %s != %s", expectedPodKey, opencost.NewClosedWindow(actualPod.Start, actualPod.End), opencost.NewClosedWindow(expectedPod.Start, expectedPod.End))
+				}
+			}
+		})
+	}
+}
+
+func TestApplyCPUCoresUsedAvg(t *testing.T) {
+	testCases := map[string]struct {
+		podMap             map[podKey]*pod
+		resCPUCoresUsedAvg []*prom.QueryResult
+		podUIDKeyMap       map[podKey][]podKey
+		expected           map[podKey]*pod
+	}{
+		"success": {
+			podMap: podMap4,
+			resCPUCoresUsedAvg: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			podUIDKeyMap: nil,
+			expected:     podMap4,
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			applyCPUCoresUsedAvg(testCase.podMap, testCase.resCPUCoresUsedAvg, testCase.podUIDKeyMap)
+			if len(testCase.podMap) != len(testCase.expected) {
+				t.Errorf("pod map does not have the expected length %d : %d", len(testCase.podMap), len(testCase.expected))
+			}
+
+			for expectedPodKey, expectedPod := range testCase.expected {
+				actualPod, ok := testCase.podMap[expectedPodKey]
+				if !ok {
+					t.Errorf("pod map is missing key %s", expectedPodKey)
+				}
+				if !actualPod.equal(expectedPod) {
+					t.Errorf("pod does not match with key %s: %s != %s", expectedPodKey, opencost.NewClosedWindow(actualPod.Start, actualPod.End), opencost.NewClosedWindow(expectedPod.Start, expectedPod.End))
+				}
+			}
+		})
+	}
+}
+
+func TestApplyCPUCoresUsedMax(t *testing.T) {
+	testCases := map[string]struct {
+		podMap             map[podKey]*pod
+		resCPUCoresUsedMax []*prom.QueryResult
+		podUIDKeyMap       map[podKey][]podKey
+		expected           map[podKey]*pod
+	}{
+		"success": {
+			podMap: podMap4,
+			resCPUCoresUsedMax: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			podUIDKeyMap: nil,
+			expected:     podMap4,
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			applyCPUCoresUsedMax(testCase.podMap, testCase.resCPUCoresUsedMax, testCase.podUIDKeyMap)
+			if len(testCase.podMap) != len(testCase.expected) {
+				t.Errorf("pod map does not have the expected length %d : %d", len(testCase.podMap), len(testCase.expected))
+			}
+
+			for expectedPodKey, expectedPod := range testCase.expected {
+				actualPod, ok := testCase.podMap[expectedPodKey]
+				if !ok {
+					t.Errorf("pod map is missing key %s", expectedPodKey)
+				}
+				if !actualPod.equal(expectedPod) {
+					t.Errorf("pod does not match with key %s: %s != %s", expectedPodKey, opencost.NewClosedWindow(actualPod.Start, actualPod.End), opencost.NewClosedWindow(expectedPod.Start, expectedPod.End))
+				}
+			}
+		})
+	}
+}
+
+func TestApplyRAMBytesAllocated(t *testing.T) {
+	testCases := map[string]struct {
+		podMap               map[podKey]*pod
+		resRAMBytesAllocated []*prom.QueryResult
+		podUIDKeyMap         map[podKey][]podKey
+		expected             map[podKey]*pod
+	}{
+		"success": {
+			podMap: podMap4,
+			resRAMBytesAllocated: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			podUIDKeyMap: nil,
+			expected:     podMap4,
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			applyRAMBytesAllocated(testCase.podMap, testCase.resRAMBytesAllocated, testCase.podUIDKeyMap)
+			if len(testCase.podMap) != len(testCase.expected) {
+				t.Errorf("pod map does not have the expected length %d : %d", len(testCase.podMap), len(testCase.expected))
+			}
+
+			for expectedPodKey, expectedPod := range testCase.expected {
+				actualPod, ok := testCase.podMap[expectedPodKey]
+				if !ok {
+					t.Errorf("pod map is missing key %s", expectedPodKey)
+				}
+				if !actualPod.equal(expectedPod) {
+					t.Errorf("pod does not match with key %s: %s != %s", expectedPodKey, opencost.NewClosedWindow(actualPod.Start, actualPod.End), opencost.NewClosedWindow(expectedPod.Start, expectedPod.End))
+				}
+			}
+		})
+	}
+}
+
+func TestApplyRAMBytesRequested(t *testing.T) {
+	testCases := map[string]struct {
+		podMap               map[podKey]*pod
+		resRAMBytesRequested []*prom.QueryResult
+		podUIDKeyMap         map[podKey][]podKey
+		expected             map[podKey]*pod
+	}{
+		"success": {
+			podMap: podMap4,
+			resRAMBytesRequested: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			podUIDKeyMap: nil,
+			expected:     podMap4,
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			applyRAMBytesRequested(testCase.podMap, testCase.resRAMBytesRequested, testCase.podUIDKeyMap)
+			if len(testCase.podMap) != len(testCase.expected) {
+				t.Errorf("pod map does not have the expected length %d : %d", len(testCase.podMap), len(testCase.expected))
+			}
+
+			for expectedPodKey, expectedPod := range testCase.expected {
+				actualPod, ok := testCase.podMap[expectedPodKey]
+				if !ok {
+					t.Errorf("pod map is missing key %s", expectedPodKey)
+				}
+				if !actualPod.equal(expectedPod) {
+					t.Errorf("pod does not match with key %s: %s != %s", expectedPodKey, opencost.NewClosedWindow(actualPod.Start, actualPod.End), opencost.NewClosedWindow(expectedPod.Start, expectedPod.End))
+				}
+			}
+		})
+	}
+}
+
+func TestApplyRAMBytesUsedAvg(t *testing.T) {
+	testCases := map[string]struct {
+		podMap             map[podKey]*pod
+		resRAMBytesUsedAvg []*prom.QueryResult
+		podUIDKeyMap       map[podKey][]podKey
+		expected           map[podKey]*pod
+	}{
+		"success": {
+			podMap: podMap4,
+			resRAMBytesUsedAvg: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			podUIDKeyMap: nil,
+			expected:     podMap4,
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			applyRAMBytesUsedAvg(testCase.podMap, testCase.resRAMBytesUsedAvg, testCase.podUIDKeyMap)
+			if len(testCase.podMap) != len(testCase.expected) {
+				t.Errorf("pod map does not have the expected length %d : %d", len(testCase.podMap), len(testCase.expected))
+			}
+
+			for expectedPodKey, expectedPod := range testCase.expected {
+				actualPod, ok := testCase.podMap[expectedPodKey]
+				if !ok {
+					t.Errorf("pod map is missing key %s", expectedPodKey)
+				}
+				if !actualPod.equal(expectedPod) {
+					t.Errorf("pod does not match with key %s: %s != %s", expectedPodKey, opencost.NewClosedWindow(actualPod.Start, actualPod.End), opencost.NewClosedWindow(expectedPod.Start, expectedPod.End))
+				}
+			}
+		})
+	}
+}
+
+func TestApplyRAMBytesUsedMax(t *testing.T) {
+	testCases := map[string]struct {
+		podMap             map[podKey]*pod
+		resRAMBytesUsedMax []*prom.QueryResult
+		podUIDKeyMap       map[podKey][]podKey
+		expected           map[podKey]*pod
+	}{
+		"success": {
+			podMap: podMap4,
+			resRAMBytesUsedMax: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			podUIDKeyMap: nil,
+			expected:     podMap4,
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			applyRAMBytesUsedMax(testCase.podMap, testCase.resRAMBytesUsedMax, testCase.podUIDKeyMap)
+			if len(testCase.podMap) != len(testCase.expected) {
+				t.Errorf("pod map does not have the expected length %d : %d", len(testCase.podMap), len(testCase.expected))
+			}
+
+			for expectedPodKey, expectedPod := range testCase.expected {
+				actualPod, ok := testCase.podMap[expectedPodKey]
+				if !ok {
+					t.Errorf("pod map is missing key %s", expectedPodKey)
+				}
+				if !actualPod.equal(expectedPod) {
+					t.Errorf("pod does not match with key %s: %s != %s", expectedPodKey, opencost.NewClosedWindow(actualPod.Start, actualPod.End), opencost.NewClosedWindow(expectedPod.Start, expectedPod.End))
+				}
+			}
+		})
+	}
+}
+
+func TestApplyGPUUsageAvg(t *testing.T) {
+	testCases := map[string]struct {
+		podMap         map[podKey]*pod
+		resGPUUsageAvg []*prom.QueryResult
+		podUIDKeyMap   map[podKey][]podKey
+		expected       map[podKey]*pod
+	}{
+		"success": {
+			podMap: podMap4,
+			resGPUUsageAvg: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			podUIDKeyMap: nil,
+			expected:     podMap4,
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			applyGPUUsageAvg(testCase.podMap, testCase.resGPUUsageAvg, testCase.podUIDKeyMap)
+			if len(testCase.podMap) != len(testCase.expected) {
+				t.Errorf("pod map does not have the expected length %d : %d", len(testCase.podMap), len(testCase.expected))
+			}
+
+			for expectedPodKey, expectedPod := range testCase.expected {
+				actualPod, ok := testCase.podMap[expectedPodKey]
+				if !ok {
+					t.Errorf("pod map is missing key %s", expectedPodKey)
+				}
+				if !actualPod.equal(expectedPod) {
+					t.Errorf("pod does not match with key %s: %s != %s", expectedPodKey, opencost.NewClosedWindow(actualPod.Start, actualPod.End), opencost.NewClosedWindow(expectedPod.Start, expectedPod.End))
+				}
+			}
+		})
+	}
+}
+
+func TestApplyGPUsAllocated(t *testing.T) {
+	testCases := map[string]struct {
+		podMap           map[podKey]*pod
+		resGPUsRequested []*prom.QueryResult
+		resGPUsAllocated []*prom.QueryResult
+		podUIDKeyMap     map[podKey][]podKey
+		expected         map[podKey]*pod
+	}{
+		"success": {
+			podMap: podMap4,
+			resGPUsRequested: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			resGPUsAllocated: nil,
+			podUIDKeyMap:     nil,
+			expected:         podMap4,
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			applyGPUsAllocated(testCase.podMap, testCase.resGPUsRequested, testCase.resGPUsAllocated, testCase.podUIDKeyMap)
+			if len(testCase.podMap) != len(testCase.expected) {
+				t.Errorf("pod map does not have the expected length %d : %d", len(testCase.podMap), len(testCase.expected))
+			}
+
+			for expectedPodKey, expectedPod := range testCase.expected {
+				actualPod, ok := testCase.podMap[expectedPodKey]
+				if !ok {
+					t.Errorf("pod map is missing key %s", expectedPodKey)
+				}
+				if !actualPod.equal(expectedPod) {
+					t.Errorf("pod does not match with key %s: %s != %s", expectedPodKey, opencost.NewClosedWindow(actualPod.Start, actualPod.End), opencost.NewClosedWindow(expectedPod.Start, expectedPod.End))
+				}
+			}
+		})
+	}
+}
+
+func TestApplyNetworkTotals(t *testing.T) {
+	testCases := map[string]struct {
+		podMap                  map[podKey]*pod
+		resNetworkTransferBytes []*prom.QueryResult
+		resNetworkReceiveBytes  []*prom.QueryResult
+		podUIDKeyMap            map[podKey][]podKey
+		expected                map[podKey]*pod
+	}{
+		"success": {
+			podMap: podMap4,
+			resNetworkTransferBytes: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			resNetworkReceiveBytes: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			podUIDKeyMap: nil,
+			expected:     podMap4,
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			applyNetworkTotals(testCase.podMap, testCase.resNetworkTransferBytes, testCase.resNetworkReceiveBytes, testCase.podUIDKeyMap)
+			if len(testCase.podMap) != len(testCase.expected) {
+				t.Errorf("pod map does not have the expected length %d : %d", len(testCase.podMap), len(testCase.expected))
+			}
+
+			for expectedPodKey, expectedPod := range testCase.expected {
+				actualPod, ok := testCase.podMap[expectedPodKey]
+				if !ok {
+					t.Errorf("pod map is missing key %s", expectedPodKey)
+				}
+				if !actualPod.equal(expectedPod) {
+					t.Errorf("pod does not match with key %s: %s != %s", expectedPodKey, opencost.NewClosedWindow(actualPod.Start, actualPod.End), opencost.NewClosedWindow(expectedPod.Start, expectedPod.End))
+				}
+			}
+		})
+	}
+}
+
+func TestApplyNetworkAllocation(t *testing.T) {
+	testCases := map[string]struct {
+		podMap               map[podKey]*pod
+		resNetworkGiB        []*prom.QueryResult
+		resNetworkCostPerGiB []*prom.QueryResult
+		podUIDKeyMap         map[podKey][]podKey
+		networkCostSubType   string
+		expected             map[podKey]*pod
+	}{
+		"success": {
+			podMap: podMap4,
+			resNetworkGiB: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			resNetworkCostPerGiB: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			podUIDKeyMap:       nil,
+			networkCostSubType: networkInternetCost,
+			expected:           podMap4,
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			applyNetworkAllocation(testCase.podMap, testCase.resNetworkGiB, testCase.resNetworkCostPerGiB, testCase.podUIDKeyMap, testCase.networkCostSubType)
+			if len(testCase.podMap) != len(testCase.expected) {
+				t.Errorf("pod map does not have the expected length %d : %d", len(testCase.podMap), len(testCase.expected))
+			}
+
+			for expectedPodKey, expectedPod := range testCase.expected {
+				actualPod, ok := testCase.podMap[expectedPodKey]
+				if !ok {
+					t.Errorf("pod map is missing key %s", expectedPodKey)
+				}
+				if !actualPod.equal(expectedPod) {
+					t.Errorf("pod does not match with key %s: %s != %s", expectedPodKey, opencost.NewClosedWindow(actualPod.Start, actualPod.End), opencost.NewClosedWindow(expectedPod.Start, expectedPod.End))
+				}
+			}
+		})
+	}
+}
+
+func TestResToNamespaceLabels(t *testing.T) {
+	testCases := map[string]struct {
+		resNamespaceLabels []*prom.QueryResult
+		expected           map[namespaceKey]map[string]string
+	}{
+		"success": {
+			resNamespaceLabels: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+						"label_test": "test",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			expected: map[namespaceKey]map[string]string{
+				{
+					Cluster:   "cluster1",
+					Namespace: "namespace1",
+				}: {
+					"test": "test",
+				},
+			},
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			labels := resToNamespaceLabels(testCase.resNamespaceLabels)
+			if len(labels) != len(testCase.expected) {
+				t.Errorf("label map does not have the expected length %d : %d", len(labels), len(testCase.expected))
+			}
+
+			for expectedLabelsKey, expectedLabels := range testCase.expected {
+				actualLabels, ok := labels[expectedLabelsKey]
+				if !ok {
+					t.Errorf("label map is missing key %s", expectedLabelsKey)
+				}
+
+				for expectedLabelKey, expectedLabel := range expectedLabels {
+					actualLabel, ok := actualLabels[expectedLabelKey]
+					if !ok {
+						t.Errorf("label map is missing key %s", expectedLabelKey)
+					}
+
+					if actualLabel != expectedLabel {
+						t.Errorf("label does not match with key  %s: %s != %s", expectedLabelKey, actualLabel, expectedLabel)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestResToPodLabels(t *testing.T) {
+	testCases := map[string]struct {
+		resPodLabels []*prom.QueryResult
+		podUIDKeyMap map[podKey][]podKey
+		ingestPodUID bool
+		expected     map[podKey]map[string]string
+	}{
+		"success": {
+			resPodLabels: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+						"label_test": "test",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			podUIDKeyMap: nil,
+			ingestPodUID: false,
+			expected: map[podKey]map[string]string{
+				{
+					namespaceKey: namespaceKey{
+						Cluster:   "cluster1",
+						Namespace: "namespace1",
+					},
+					Pod: "pod1",
+				}: {
+					"test": "test",
+				},
+			},
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			labels := resToPodLabels(testCase.resPodLabels, testCase.podUIDKeyMap, testCase.ingestPodUID)
+			if len(labels) != len(testCase.expected) {
+				t.Errorf("label map does not have the expected length %d : %d", len(labels), len(testCase.expected))
+			}
+
+			for expectedLabelsKey, expectedLabels := range testCase.expected {
+				actualLabels, ok := labels[expectedLabelsKey]
+				if !ok {
+					t.Errorf("label map is missing key %s", expectedLabelsKey)
+				}
+
+				for expectedLabelKey, expectedLabel := range expectedLabels {
+					actualLabel, ok := actualLabels[expectedLabelKey]
+					if !ok {
+						t.Errorf("label map is missing key %s", expectedLabelKey)
+					}
+
+					if actualLabel != expectedLabel {
+						t.Errorf("label does not match with key  %s: %s != %s", expectedLabelKey, actualLabel, expectedLabel)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestResToNamespaceAnnotations(t *testing.T) {
+	testCases := map[string]struct {
+		resNamespaceAnnotations []*prom.QueryResult
+		expected                map[string]map[string]string
+	}{
+		"success": {
+			resNamespaceAnnotations: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id":      "cluster1",
+						"namespace":       "namespace1",
+						"pod":             "pod1",
+						"container":       "container1",
+						"node":            "node1",
+						"annotation_test": "test",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			expected: map[string]map[string]string{
+				"namespace1": {
+					"test": "test",
+				},
+			},
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			labels := resToNamespaceAnnotations(testCase.resNamespaceAnnotations)
+			if len(labels) != len(testCase.expected) {
+				t.Errorf("label map does not have the expected length %d : %d", len(labels), len(testCase.expected))
+			}
+
+			for expectedLabelsKey, expectedLabels := range testCase.expected {
+				actualLabels, ok := labels[expectedLabelsKey]
+				if !ok {
+					t.Errorf("label map is missing key %s", expectedLabelsKey)
+				}
+
+				for expectedLabelKey, expectedLabel := range expectedLabels {
+					actualLabel, ok := actualLabels[expectedLabelKey]
+					if !ok {
+						t.Errorf("label map is missing key %s", expectedLabelKey)
+					}
+
+					if actualLabel != expectedLabel {
+						t.Errorf("label does not match with key  %s: %s != %s", expectedLabelKey, actualLabel, expectedLabel)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestResToPodAnnotations(t *testing.T) {
+	testCases := map[string]struct {
+		resPodAnnotations []*prom.QueryResult
+		podUIDKeyMap      map[podKey][]podKey
+		ingestPodUID      bool
+		expected          map[podKey]map[string]string
+	}{
+		"success": {
+			resPodAnnotations: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id":      "cluster1",
+						"namespace":       "namespace1",
+						"pod":             "pod1",
+						"container":       "container1",
+						"node":            "node1",
+						"annotation_test": "test",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			podUIDKeyMap: nil,
+			ingestPodUID: false,
+			expected: map[podKey]map[string]string{
+				{
+					namespaceKey: namespaceKey{
+						Cluster:   "cluster1",
+						Namespace: "namespace1",
+					},
+					Pod: "pod1",
+				}: {
+					"test": "test",
+				},
+			},
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			labels := resToPodAnnotations(testCase.resPodAnnotations, testCase.podUIDKeyMap, testCase.ingestPodUID)
+			if len(labels) != len(testCase.expected) {
+				t.Errorf("label map does not have the expected length %d : %d", len(labels), len(testCase.expected))
+			}
+
+			for expectedLabelsKey, expectedLabels := range testCase.expected {
+				actualLabels, ok := labels[expectedLabelsKey]
+				if !ok {
+					t.Errorf("label map is missing key %s", expectedLabelsKey)
+				}
+
+				for expectedLabelKey, expectedLabel := range expectedLabels {
+					actualLabel, ok := actualLabels[expectedLabelKey]
+					if !ok {
+						t.Errorf("label map is missing key %s", expectedLabelKey)
+					}
+
+					if actualLabel != expectedLabel {
+						t.Errorf("label does not match with key  %s: %s != %s", expectedLabelKey, actualLabel, expectedLabel)
+					}
+				}
 			}
 		})
 	}
