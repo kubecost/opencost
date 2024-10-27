@@ -935,7 +935,7 @@ func (a *Allocation) CPUEfficiency() float64 {
 		return a.CPUCoreUsageAverage / a.CPUCoreRequestAverage
 	}
 
-	if a.CPUCoreUsageAverage == 0.0 || a.CPUCost == 0.0 {
+	if a.CPUCoreUsageAverage == 0.0 || a.CPUTotalCost() == 0.0 {
 		return 0.0
 	}
 
@@ -954,7 +954,7 @@ func (a *Allocation) RAMEfficiency() float64 {
 		return a.RAMBytesUsageAverage / a.RAMBytesRequestAverage
 	}
 
-	if a.RAMBytesUsageAverage == 0.0 || a.RAMCost == 0.0 {
+	if a.RAMBytesUsageAverage == 0.0 || a.RAMTotalCost() == 0.0 {
 		return 0.0
 	}
 
@@ -973,7 +973,7 @@ func (a *Allocation) GPUEfficiency() float64 {
 		return a.GPUUsageAverage / a.GPURequestAverage
 	}
 
-	if a.GPUUsageAverage == 0.0 || a.GPUCost == 0.0 {
+	if a.GPUUsageAverage == 0.0 || a.GPUTotalCost() == 0.0 {
 		return 0.0
 	}
 
