@@ -85,8 +85,6 @@ func (aj *AllocationJSON) BuildFromAllocation(a *Allocation) {
 	aj.CPUCostIdle = formatFloat64ForResponse(a.CPUCostIdle)
 	aj.CPUEfficiency = formatFloat64ForResponse(a.CPUEfficiency())
 	aj.GPUCount = formatFloat64ForResponse(a.GPUs())
-	aj.GPURequestAverage = formatFloat64ForResponse(a.deprecatedGPURequestAverage)
-	aj.GPUUsageAverage = formatFloat64ForResponse(a.deprecatedGPUUsageAverage)
 	aj.GPUHours = formatFloat64ForResponse(a.GPUHours)
 	aj.GPUCost = formatFloat64ForResponse(a.GPUCost)
 	aj.GPUCostAdjustment = formatFloat64ForResponse(a.GPUCostAdjustment)
