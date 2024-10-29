@@ -57,6 +57,12 @@ func NewSummaryAllocation(alloc *Allocation, reconcile, reconcileNetwork bool) *
 		return nil
 	}
 
+	var gpuRequestAvg, gpuUsageAvg *float64
+	if alloc.GPUAllocation != nil {
+		gpuRequestAvg = alloc.GPUAllocation.GPURequestAverage
+		gpuUsageAvg = alloc.GPUAllocation.GPUUsageAverage
+	}
+
 	sa := &SummaryAllocation{
 		Name:                   alloc.Name,
 		Properties:             alloc.Properties,
@@ -65,8 +71,8 @@ func NewSummaryAllocation(alloc *Allocation, reconcile, reconcileNetwork bool) *
 		CPUCoreRequestAverage:  alloc.CPUCoreRequestAverage,
 		CPUCoreUsageAverage:    alloc.CPUCoreUsageAverage,
 		CPUCost:                alloc.CPUCost + alloc.CPUCostAdjustment,
-		GPURequestAverage:      alloc.GPUAllocation.GPURequestAverage,
-		GPUUsageAverage:        alloc.GPUAllocation.GPUUsageAverage,
+		GPURequestAverage:      gpuRequestAvg,
+		GPUUsageAverage:        gpuUsageAvg,
 		GPUCost:                alloc.GPUCost + alloc.GPUCostAdjustment,
 		NetworkCost:            alloc.NetworkCost + alloc.NetworkCostAdjustment,
 		LoadBalancerCost:       alloc.LoadBalancerCost + alloc.LoadBalancerCostAdjustment,
@@ -174,10 +180,20 @@ func (sa *SummaryAllocation) Add(that *SummaryAllocation) error {
 		sa.CPUCoreUsageAverage = cpuUseCoreMins / sa.Minutes()
 		sa.RAMBytesRequestAverage = ramReqByteMins / sa.Minutes()
 		sa.RAMBytesUsageAverage = ramUseByteMins / sa.Minutes()
-		gpuReqAvgRes := *gpuReqMins / sa.Minutes()
-		sa.GPURequestAverage = &gpuReqAvgRes
-		gpuUsageAvgRes := *gpuUseMins / sa.Minutes()
-		sa.GPUUsageAverage = &gpuUsageAvgRes
+
+		var gpuReqAvgVal, gpuUsageAvgVal *float64
+		if gpuReqMins != nil {
+			result := *gpuReqMins / sa.Minutes()
+			gpuReqAvgVal = &result
+		}
+
+		if gpuUseMins != nil {
+			result := *gpuUseMins / sa.Minutes()
+			gpuUsageAvgVal = &result
+		}
+
+		sa.GPURequestAverage = gpuReqAvgVal
+		sa.GPUUsageAverage = gpuUsageAvgVal
 	} else {
 		sa.CPUCoreRequestAverage = 0.0
 		sa.CPUCoreUsageAverage = 0.0
