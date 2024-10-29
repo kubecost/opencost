@@ -1,0 +1,10 @@
+{
+    "provider": "OTC",
+    "description": "Default prices used to compute allocation between RAM and CPU. OTC pricing API data still used for total node cost.",
+    "CPU": "0.031611",
+    "RAM": "0.004237",
+    "storage": "0.0",
+    "zoneNetworkEgress": "0.0",
+    "regionNetworkEgress": "0.0",
+    "internetNetworkEgress": "0.0"
+}

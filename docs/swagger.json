@@ -16,7 +16,7 @@
   }
   ],
   "paths": {
-    "/allocation/compute": {
+    "/allocation": {
       "get": {
         "summary": "query for costs and resources allocated to Kubernetes workloads",
         "description": "The standard OpenCost API query for costs and resources allocated to Kubernetes workloads. You may specify the `window` date range, the Kubernetes primitive to `aggregate` on, the `step` for the duration of returned sets, and the `resolution` for the duration to use for Prometheus queries.",
