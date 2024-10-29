@@ -3710,6 +3710,7 @@ func migrateAllocation(as *Allocation, fromVersion uint8, toVersion uint8) {
 	}
 
 	if fromVersion == 22 && toVersion >= 23 {
+		as.GPUAllocation = &GPUAllocation{}
 		as.GPUAllocation.GPUUsageAverage = &as.deprecatedGPUUsageAverage
 		as.GPUAllocation.GPURequestAverage = &as.deprecatedGPURequestAverage
 	}
