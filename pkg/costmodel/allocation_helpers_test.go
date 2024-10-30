@@ -1550,25 +1550,25 @@ func TestResToNamespaceAnnotations(t *testing.T) {
 
 	for name, testCase := range testCases {
 		t.Run(name, func(t *testing.T) {
-			labels := resToNamespaceAnnotations(testCase.resNamespaceAnnotations)
-			if len(labels) != len(testCase.expected) {
-				t.Errorf("label map does not have the expected length %d : %d", len(labels), len(testCase.expected))
+			annotations := resToNamespaceAnnotations(testCase.resNamespaceAnnotations)
+			if len(annotations) != len(testCase.expected) {
+				t.Errorf("annotation map does not have the expected length %d : %d", len(annotations), len(testCase.expected))
 			}
 
-			for expectedLabelsKey, expectedLabels := range testCase.expected {
-				actualLabels, ok := labels[expectedLabelsKey]
+			for expectedAnnotationsKey, expectedAnnotations := range testCase.expected {
+				actualAnnotations, ok := annotations[expectedAnnotationsKey]
 				if !ok {
-					t.Errorf("label map is missing key %s", expectedLabelsKey)
+					t.Errorf("annotation map is missing key %s", expectedAnnotationsKey)
 				}
 
-				for expectedLabelKey, expectedLabel := range expectedLabels {
-					actualLabel, ok := actualLabels[expectedLabelKey]
+				for expectedAnnotationKey, expectedAnnotation := range expectedAnnotations {
+					actualAnnotation, ok := actualAnnotations[expectedAnnotationKey]
 					if !ok {
-						t.Errorf("label map is missing key %s", expectedLabelKey)
+						t.Errorf("annotation map is missing key %s", expectedAnnotationKey)
 					}
 
-					if actualLabel != expectedLabel {
-						t.Errorf("label does not match with key  %s: %s != %s", expectedLabelKey, actualLabel, expectedLabel)
+					if actualAnnotation != expectedAnnotation {
+						t.Errorf("annotation does not match with key  %s: %s != %s", expectedAnnotationKey, actualAnnotation, expectedAnnotation)
 					}
 				}
 			}
@@ -1622,7 +1622,75 @@ func TestResToPodAnnotations(t *testing.T) {
 
 	for name, testCase := range testCases {
 		t.Run(name, func(t *testing.T) {
-			labels := resToPodAnnotations(testCase.resPodAnnotations, testCase.podUIDKeyMap, testCase.ingestPodUID)
+			annotations := resToPodAnnotations(testCase.resPodAnnotations, testCase.podUIDKeyMap, testCase.ingestPodUID)
+			if len(annotations) != len(testCase.expected) {
+				t.Errorf("annotation map does not have the expected length %d : %d", len(annotations), len(testCase.expected))
+			}
+
+			for expectedAnnotationsKey, expectedAnnotations := range testCase.expected {
+				actualAnnotations, ok := annotations[expectedAnnotationsKey]
+				if !ok {
+					t.Errorf("annotation map is missing key %s", expectedAnnotationsKey)
+				}
+
+				for expectedAnnotationKey, expectedAnnotation := range expectedAnnotations {
+					actualAnnotation, ok := actualAnnotations[expectedAnnotationKey]
+					if !ok {
+						t.Errorf("annotation map is missing key %s", expectedAnnotationKey)
+					}
+
+					if actualAnnotation != expectedAnnotation {
+						t.Errorf("annotation does not match with key  %s: %s != %s", expectedAnnotationKey, actualAnnotation, expectedAnnotation)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestResToDeploymentLabels(t *testing.T) {
+	testCases := map[string]struct {
+		resDeploymentLabels []*prom.QueryResult
+		expected            map[controllerKey]map[string]string
+	}{
+		"success": {
+			resDeploymentLabels: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+						"deployment": "deployment1",
+						"label_test": "test",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			expected: map[controllerKey]map[string]string{
+				{
+					Cluster:        "cluster1",
+					Namespace:      "namespace1",
+					ControllerKind: "deployment",
+					Controller:     "deployment1",
+				}: {
+					"test": "test",
+				},
+			},
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			labels := resToDeploymentLabels(testCase.resDeploymentLabels)
 			if len(labels) != len(testCase.expected) {
 				t.Errorf("label map does not have the expected length %d : %d", len(labels), len(testCase.expected))
 			}
@@ -1641,6 +1709,664 @@ func TestResToPodAnnotations(t *testing.T) {
 
 					if actualLabel != expectedLabel {
 						t.Errorf("label does not match with key  %s: %s != %s", expectedLabelKey, actualLabel, expectedLabel)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestResToStatefulSetLabels(t *testing.T) {
+	testCases := map[string]struct {
+		resStatefulSetLabels []*prom.QueryResult
+		expected             map[controllerKey]map[string]string
+	}{
+		"success": {
+			resStatefulSetLabels: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id":  "cluster1",
+						"namespace":   "namespace1",
+						"pod":         "pod1",
+						"container":   "container1",
+						"node":        "node1",
+						"statefulSet": "statefulset1",
+						"label_test":  "test",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			expected: map[controllerKey]map[string]string{
+				{
+					Cluster:        "cluster1",
+					Namespace:      "namespace1",
+					ControllerKind: "statefulset",
+					Controller:     "statefulset1",
+				}: {
+					"test": "test",
+				},
+			},
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			labels := resToStatefulSetLabels(testCase.resStatefulSetLabels)
+			if len(labels) != len(testCase.expected) {
+				t.Errorf("label map does not have the expected length %d : %d", len(labels), len(testCase.expected))
+			}
+
+			for expectedLabelsKey, expectedLabels := range testCase.expected {
+				actualLabels, ok := labels[expectedLabelsKey]
+				if !ok {
+					t.Errorf("label map is missing key %s", expectedLabelsKey)
+				}
+
+				for expectedLabelKey, expectedLabel := range expectedLabels {
+					actualLabel, ok := actualLabels[expectedLabelKey]
+					if !ok {
+						t.Errorf("label map is missing key %s", expectedLabelKey)
+					}
+
+					if actualLabel != expectedLabel {
+						t.Errorf("label does not match with key  %s: %s != %s", expectedLabelKey, actualLabel, expectedLabel)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestResToPodDaemonSetMap(t *testing.T) {
+	testCases := map[string]struct {
+		resDaemonSetLabels []*prom.QueryResult
+		podUIDKeyMap       map[podKey][]podKey
+		ingestPodUID       bool
+		expected           map[podKey]controllerKey
+	}{
+		"success": {
+			resDaemonSetLabels: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+						"owner_name": "daemonset1",
+						"label_test": "test",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			podUIDKeyMap: nil,
+			ingestPodUID: false,
+			expected: map[podKey]controllerKey{
+				{
+					namespaceKey: namespaceKey{
+						Cluster:   "cluster1",
+						Namespace: "namespace1",
+					},
+					Pod: "pod1",
+				}: {
+					Cluster:        "cluster1",
+					Namespace:      "namespace1",
+					ControllerKind: "daemonset",
+					Controller:     "daemonset1",
+				},
+			},
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			controllerMap := resToPodDaemonSetMap(testCase.resDaemonSetLabels, testCase.podUIDKeyMap, testCase.ingestPodUID)
+			if len(controllerMap) != len(testCase.expected) {
+				t.Errorf("controller map does not have the expected length %d : %d", len(controllerMap), len(testCase.expected))
+			}
+
+			for expectedPodKey, expectedControllerKey := range testCase.expected {
+				actualControllerKey, ok := controllerMap[expectedPodKey]
+				if !ok {
+					t.Errorf("controller map is missing key %s", expectedPodKey)
+				}
+
+				if actualControllerKey != expectedControllerKey {
+					t.Errorf("controller does not match with key  %s: %s != %s", expectedPodKey, actualControllerKey, expectedControllerKey)
+				}
+			}
+		})
+	}
+}
+
+func TestResToPodJobMap(t *testing.T) {
+	testCases := map[string]struct {
+		resJobLabels []*prom.QueryResult
+		podUIDKeyMap map[podKey][]podKey
+		ingestPodUID bool
+		expected     map[podKey]controllerKey
+	}{
+		"success": {
+			resJobLabels: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+						"owner_name": "job1",
+						"label_test": "test",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			podUIDKeyMap: nil,
+			ingestPodUID: false,
+			expected: map[podKey]controllerKey{
+				{
+					namespaceKey: namespaceKey{
+						Cluster:   "cluster1",
+						Namespace: "namespace1",
+					},
+					Pod: "pod1",
+				}: {
+					Cluster:        "cluster1",
+					Namespace:      "namespace1",
+					ControllerKind: "job",
+					Controller:     "job1",
+				},
+			},
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			controllerMap := resToPodJobMap(testCase.resJobLabels, testCase.podUIDKeyMap, testCase.ingestPodUID)
+			if len(controllerMap) != len(testCase.expected) {
+				t.Errorf("controller map does not have the expected length %d : %d", len(controllerMap), len(testCase.expected))
+			}
+
+			for expectedPodKey, expectedControllerKey := range testCase.expected {
+				actualControllerKey, ok := controllerMap[expectedPodKey]
+				if !ok {
+					t.Errorf("controller map is missing key %s", expectedPodKey)
+				}
+
+				if actualControllerKey != expectedControllerKey {
+					t.Errorf("controller does not match with key  %s: %s != %s", expectedPodKey, actualControllerKey, expectedControllerKey)
+				}
+			}
+		})
+	}
+}
+
+func TestResToPodReplicaSetMap(t *testing.T) {
+	testCases := map[string]struct {
+		resPodsWithReplicaSetOwner     []*prom.QueryResult
+		resReplicaSetsWithoutOwners    []*prom.QueryResult
+		resReplicaSetsWithRolloutOwner []*prom.QueryResult
+		podUIDKeyMap                   map[podKey][]podKey
+		ingestPodUID                   bool
+		expected                       map[podKey]controllerKey
+	}{
+		"success": {
+			resPodsWithReplicaSetOwner: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+						"owner_name": "replicaset1",
+						"label_test": "test",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			resReplicaSetsWithoutOwners: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+						"replicaset": "replicaset1",
+						"label_test": "test",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			resReplicaSetsWithRolloutOwner: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod2",
+						"container":  "container2",
+						"node":       "node1",
+						"replicaset": "replicaset2",
+						"label_test": "test",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			podUIDKeyMap: nil,
+			ingestPodUID: false,
+			expected: map[podKey]controllerKey{
+				{
+					namespaceKey: namespaceKey{
+						Cluster:   "cluster1",
+						Namespace: "namespace1",
+					},
+					Pod: "pod1",
+				}: {
+					Cluster:        "cluster1",
+					Namespace:      "namespace1",
+					ControllerKind: "replicaset",
+					Controller:     "replicaset1",
+				},
+			},
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			controllerMap := resToPodReplicaSetMap(testCase.resPodsWithReplicaSetOwner, testCase.resReplicaSetsWithoutOwners, testCase.resReplicaSetsWithRolloutOwner, testCase.podUIDKeyMap, testCase.ingestPodUID)
+			if len(controllerMap) != len(testCase.expected) {
+				t.Errorf("controller map does not have the expected length %d : %d", len(controllerMap), len(testCase.expected))
+			}
+
+			for expectedPodKey, expectedControllerKey := range testCase.expected {
+				actualControllerKey, ok := controllerMap[expectedPodKey]
+				if !ok {
+					t.Errorf("controller map is missing key %s", expectedPodKey)
+				}
+
+				if actualControllerKey != expectedControllerKey {
+					t.Errorf("controller does not match with key  %s: %s != %s", expectedPodKey, actualControllerKey, expectedControllerKey)
+				}
+			}
+		})
+	}
+}
+
+func TestGetServiceLabels(t *testing.T) {
+	testCases := map[string]struct {
+		resServiceLabels []*prom.QueryResult
+		expected         map[serviceKey]map[string]string
+	}{
+		"success": {
+			resServiceLabels: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+						"service":    "service1",
+						"label_test": "test",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			expected: map[serviceKey]map[string]string{
+				{
+					Cluster:   "cluster1",
+					Namespace: "namespace1",
+					Service:   "service1",
+				}: {
+					"test": "test",
+				},
+			},
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			labels := getServiceLabels(testCase.resServiceLabels)
+			if len(labels) != len(testCase.expected) {
+				t.Errorf("label map does not have the expected length %d : %d", len(labels), len(testCase.expected))
+			}
+
+			for expectedLabelsKey, expectedLabels := range testCase.expected {
+				actualLabels, ok := labels[expectedLabelsKey]
+				if !ok {
+					t.Errorf("label map is missing key %s", expectedLabelsKey)
+				}
+
+				for expectedLabelKey, expectedLabel := range expectedLabels {
+					actualLabel, ok := actualLabels[expectedLabelKey]
+					if !ok {
+						t.Errorf("label map is missing key %s", expectedLabelKey)
+					}
+
+					if actualLabel != expectedLabel {
+						t.Errorf("label does not match with key  %s: %s != %s", expectedLabelKey, actualLabel, expectedLabel)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestGetLoadBalancerCosts(t *testing.T) {
+	testCases := map[string]struct {
+		resolution      time.Duration
+		lbMap           map[serviceKey]*lbCost
+		resLBCost       []*prom.QueryResult
+		resLBActiveMins []*prom.QueryResult
+		expected        map[serviceKey]*lbCost
+	}{
+		"success": {
+			resolution: time.Hour,
+			lbMap:      make(map[serviceKey]*lbCost),
+			resLBCost: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id":   "cluster1",
+						"namespace":    "namespace1",
+						"service_name": "service1",
+						"ingress_ip":   "ip",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			resLBActiveMins: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id":   "cluster1",
+						"namespace":    "namespace1",
+						"service_name": "service1",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			expected: map[serviceKey]*lbCost{
+				{
+					Cluster:   "cluster1",
+					Namespace: "namespace1",
+					Service:   "service1",
+				}: {
+					TotalCost: 0,
+					Start:     windowStart,
+					End:       windowEnd,
+					Private:   false,
+					Ip:        "ip",
+				},
+			},
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			getLoadBalancerCosts(testCase.lbMap, testCase.resLBCost, testCase.resLBActiveMins, testCase.resolution, window)
+			if len(testCase.lbMap) != len(testCase.expected) {
+				t.Errorf("load balancer cost map does not have the expected length %d : %d", len(testCase.lbMap), len(testCase.expected))
+			}
+
+			for expectedServiceKey, expectedCost := range testCase.expected {
+				actualCost, ok := testCase.lbMap[expectedServiceKey]
+				if !ok {
+					t.Errorf("load balancer cost map is missing key %s", expectedServiceKey)
+				}
+
+				if actualCost.TotalCost != expectedCost.TotalCost {
+					t.Errorf("load balancer cost does not match with key  %s: %v != %v", expectedServiceKey, actualCost.TotalCost, expectedCost.TotalCost)
+				}
+			}
+		})
+	}
+}
+
+func TestBuildPVCMap(t *testing.T) {
+	testCases := map[string]struct {
+		resolution time.Duration
+		pvcMap     map[pvcKey]*pvc
+		pvMap      map[pvKey]*pv
+		resPVCInfo []*prom.QueryResult
+		expected   map[pvcKey]*pvc
+	}{
+		"success": {
+			resolution: time.Hour,
+			pvcMap:     make(map[pvcKey]*pvc),
+			pvMap:      pvMap1,
+			resPVCInfo: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id":            "cluster1",
+						"namespace":             "namespace1",
+						"persistentvolumeclaim": "pv1",
+						"volumename":            "pv1",
+						"storageclass":          "class1",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			expected: map[pvcKey]*pvc{
+				{
+					Cluster:               "cluster1",
+					Namespace:             "namespace1",
+					PersistentVolumeClaim: "pv1",
+				}: {
+					Bytes:     0,
+					Name:      "pv1",
+					Cluster:   "cluster1",
+					Namespace: "namespace1",
+					Volume: &pv{
+						Start:          windowStart,
+						End:            windowEnd.Add(time.Hour * -6),
+						Bytes:          21474836480,
+						CostPerGiBHour: 0.05,
+						Cluster:        "cluster1",
+						Name:           "pv1",
+						StorageClass:   "class1",
+						ProviderID:     "",
+					},
+					Mounted: false,
+					Start:   windowStart,
+					End:     windowEnd,
+				},
+			},
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			buildPVCMap(testCase.resolution, testCase.pvcMap, testCase.pvMap, testCase.resPVCInfo, window)
+			if len(testCase.pvcMap) != len(testCase.expected) {
+				t.Errorf("pvc map does not have the expected length %d : %d", len(testCase.pvcMap), len(testCase.expected))
+			}
+
+			for expectedPVCKey, expectedPVC := range testCase.expected {
+				actualPVC, ok := testCase.pvcMap[expectedPVCKey]
+				if !ok {
+					t.Errorf("pvc map is missing key %s", expectedPVCKey)
+				}
+
+				if actualPVC.Name != expectedPVC.Name {
+					t.Errorf("pvc does not match with key  %s: %s != %s", expectedPVCKey, actualPVC.Name, expectedPVC.Name)
+				}
+
+				if actualPVC.Cluster != expectedPVC.Cluster {
+					t.Errorf("pvc cluster does not match: %s != %s", actualPVC.Cluster, expectedPVC.Cluster)
+				}
+
+				if actualPVC.Namespace != expectedPVC.Namespace {
+					t.Errorf("pvc namespace does not match: %s != %s", actualPVC.Namespace, expectedPVC.Namespace)
+				}
+
+				if actualPVC.Mounted != expectedPVC.Mounted {
+					t.Errorf("pvc mounted does not match: %v != %v", actualPVC.Mounted, expectedPVC.Mounted)
+				}
+			}
+		})
+	}
+}
+
+func TestBuildPodPVCMap(t *testing.T) {
+	testCases := map[string]struct {
+		podPVCMap           map[podKey][]*pvc
+		pvMap               map[pvKey]*pv
+		pvcMap              map[pvcKey]*pvc
+		podMap              map[podKey]*pod
+		resPodPVCAllocation []*prom.QueryResult
+		podUIDKeyMap        map[podKey][]podKey
+		ingestPodUID        bool
+		expected            map[podKey][]*pvc
+	}{
+		"success": {
+			podPVCMap: map[podKey][]*pvc{},
+			pvMap:     pvMap1,
+			pvcMap: map[pvcKey]*pvc{
+				newPVCKey("cluster1", "namespace1", "pv1"): {
+					Name:      "pvc1",
+					Namespace: "namespace1",
+					Cluster:   "cluster1",
+				},
+			},
+			podMap: podMap4,
+			resPodPVCAllocation: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id":            "cluster1",
+						"namespace":             "namespace1",
+						"pod":                   "pod1",
+						"persistentvolume":      "pv1",
+						"persistentvolumeclaim": "pv1",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			podUIDKeyMap: nil,
+			ingestPodUID: false,
+			expected: map[podKey][]*pvc{
+				podKey1: {
+					{
+						Name:      "pvc1",
+						Namespace: "namespace1",
+						Cluster:   "cluster1",
+						Mounted:   true,
+					},
+				},
+			},
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			buildPodPVCMap(testCase.podPVCMap, testCase.pvMap, testCase.pvcMap, testCase.podMap, testCase.resPodPVCAllocation, testCase.podUIDKeyMap, testCase.ingestPodUID)
+			if len(testCase.podPVCMap) != len(testCase.expected) {
+				t.Errorf("pvc array map does not have the expected length %d : %d", len(testCase.podPVCMap), len(testCase.expected))
+			}
+
+			for expectedPodKey, expectedPVCArray := range testCase.expected {
+				actualPVCArray, ok := testCase.podPVCMap[expectedPodKey]
+				if !ok {
+					t.Errorf("pvc array map is missing key %s", expectedPodKey)
+				}
+
+				if len(actualPVCArray) != len(expectedPVCArray) {
+					t.Errorf("pvc array does not have the expected length %d : %d", len(actualPVCArray), len(expectedPVCArray))
+				}
+
+				for expectedPVCIndex, expectedPVC := range expectedPVCArray {
+					actualPVC := actualPVCArray[expectedPVCIndex]
+
+					if actualPVC.Name != expectedPVC.Name {
+						t.Errorf("pvc does not match: %s != %s", actualPVC.Name, expectedPVC.Name)
+					}
+
+					if actualPVC.Cluster != expectedPVC.Cluster {
+						t.Errorf("pvc cluster does not match: %s != %s", actualPVC.Cluster, expectedPVC.Cluster)
+					}
+
+					if actualPVC.Namespace != expectedPVC.Namespace {
+						t.Errorf("pvc namespace does not match: %s != %s", actualPVC.Namespace, expectedPVC.Namespace)
+					}
+
+					if actualPVC.Mounted != expectedPVC.Mounted {
+						t.Errorf("pvc mounted does not match: %v != %v", actualPVC.Mounted, expectedPVC.Mounted)
 					}
 				}
 			}
