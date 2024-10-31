@@ -250,6 +250,7 @@ type AWSProduct struct {
 type AWSProductAttributes struct {
 	Location        string `json:"location"`
 	RegionCode      string `json:"regionCode"`
+	Operation       string `json:"operation"`
 	InstanceType    string `json:"instanceType"`
 	Memory          string `json:"memory"`
 	Storage         string `json:"storage"`
@@ -302,14 +303,15 @@ type AWSCurrencyCode struct {
 
 // AWSProductTerms represents the full terms of the product
 type AWSProductTerms struct {
-	Sku      string        `json:"sku"`
-	OnDemand *AWSOfferTerm `json:"OnDemand"`
-	Reserved *AWSOfferTerm `json:"Reserved"`
-	Memory   string        `json:"memory"`
-	Storage  string        `json:"storage"`
-	VCpu     string        `json:"vcpu"`
-	GPU      string        `json:"gpu"` // GPU represents the number of GPU on the instance
-	PV       *models.PV    `json:"pv"`
+	Sku          string               `json:"sku"`
+	OnDemand     *AWSOfferTerm        `json:"OnDemand"`
+	Reserved     *AWSOfferTerm        `json:"Reserved"`
+	Memory       string               `json:"memory"`
+	Storage      string               `json:"storage"`
+	VCpu         string               `json:"vcpu"`
+	GPU          string               `json:"gpu"` // GPU represents the number of GPU on the instance
+	PV           *models.PV           `json:"pv"`
+	LoadBalancer *models.LoadBalancer `json:"load_balancer"`
 }
 
 // ClusterIdEnvVar is the environment variable in which one can manually set the ClusterId
@@ -1039,6 +1041,19 @@ func (aws *AWS) populatePricing(resp *http.Response, inputkeys map[string]bool) 
 					skusToKeys[product.Sku] = key
 					aws.ValidPricingKeys[key] = true
 					aws.ValidPricingKeys[spotKey] = true
+				} else if strings.Contains(product.Attributes.UsageType, "LoadBalancerUsage") && product.Attributes.Operation == "LoadBalancing:Network" {
+					// since the costmodel is only using services of type LoadBalancer
+					// (and not ingresses controlled by AWS load balancer controller)
+					// we can safely filter for Network load balancers only
+					productTerms := &AWSProductTerms{
+						Sku:          product.Sku,
+						LoadBalancer: &models.LoadBalancer{},
+					}
+					// there is no spot pricing for load balancers
+					key := product.Attributes.RegionCode + ",LoadBalancerUsage"
+					aws.Pricing[key] = productTerms
+					skusToKeys[product.Sku] = key
+					aws.ValidPricingKeys[key] = true
 				}
 			}
 		}
@@ -1080,7 +1095,9 @@ func (aws *AWS) populatePricing(resp *http.Response, inputkeys map[string]bool) 
 					spotKey := key + ",preemptible"
 					if ok {
 						aws.Pricing[key].OnDemand = offerTerm
-						aws.Pricing[spotKey].OnDemand = offerTerm
+						if _, ok := aws.Pricing[spotKey]; ok {
+							aws.Pricing[spotKey].OnDemand = offerTerm
+						}
 						var cost string
 						if _, isMatch := OnDemandRateCodes[offerTerm.OfferTermCode]; isMatch {
 							priceDimensionKey := strings.Join([]string{sku.(string), offerTerm.OfferTermCode, HourlyRateCode}, ".")
@@ -1135,6 +1152,13 @@ func (aws *AWS) populatePricing(resp *http.Response, inputkeys map[string]bool) 
 							hourlyPrice := costFloat / 730
 
 							aws.Pricing[key].PV.Cost = strconv.FormatFloat(hourlyPrice, 'f', -1, 64)
+						} else if strings.Contains(key, "LoadBalancerUsage") {
+							costFloat, err := strconv.ParseFloat(cost, 64)
+							if err != nil {
+								return err
+							}
+
+							aws.Pricing[key].LoadBalancer.Cost = costFloat
 						}
 					}
 
@@ -1205,21 +1229,20 @@ func (aws *AWS) NetworkPricing() (*models.Network, error) {
 }
 
 func (aws *AWS) LoadBalancerPricing() (*models.LoadBalancer, error) {
-	fffrc := 0.025
-	afrc := 0.010
-	lbidc := 0.008
+	// TODO: determine key based on function arguments
+	// this is something that should be changed in the Provider interface
 
-	numForwardingRules := 1.0
-	dataIngressGB := 0.0
+	key := aws.ClusterRegion + ",LoadBalancerUsage"
 
-	var totalCost float64
-	if numForwardingRules < 5 {
-		totalCost = fffrc*numForwardingRules + lbidc*dataIngressGB
-	} else {
-		totalCost = fffrc*5 + afrc*(numForwardingRules-5) + lbidc*dataIngressGB
+	// set default price
+	hourlyCost := 0.025
+	// use price index when available
+	if terms, ok := aws.Pricing[key]; ok {
+		hourlyCost = terms.LoadBalancer.Cost
 	}
+
 	return &models.LoadBalancer{
-		Cost: totalCost,
+		Cost: hourlyCost,
 	}, nil
 }
 
