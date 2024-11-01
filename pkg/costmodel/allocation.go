@@ -29,7 +29,7 @@ const (
 	queryFmtCPUUsageAvg                 = `avg(rate(container_cpu_usage_seconds_total{container!="", container_name!="POD", container!="POD", %s}[%s])) by (container_name, container, %s, pod_name, pod, %s, namespace, %s, instance, %s)`
 	queryFmtGPUsRequested               = `avg(avg_over_time(kube_pod_container_resource_requests{resource="nvidia_com_gpu", container!="",container!="POD", node!="", %s}[%s])) by (container, %s, pod, %s, namespace, %s, node, %s)`
 	queryFmtGPUsUsageAvg                = `avg(avg_over_time(DCGM_FI_PROF_GR_ENGINE_ACTIVE{container!=""}[%s])) by (container, %s, pod, %s, namespace, %s, %s)`
-  queryFmtGPUsUsageMax                = `max(max_over_time(DCGM_FI_PROF_GR_ENGINE_ACTIVE{container!=""}[%s])) by (container, pod, namespace, %s)`
+	queryFmtGPUsUsageMax                = `max(max_over_time(DCGM_FI_PROF_GR_ENGINE_ACTIVE{container!=""}[%s])) by (container, %s, pod, %s, namespace, %s, %s)`
 	queryFmtGPUsAllocated               = `avg(avg_over_time(container_gpu_allocation{container!="", container!="POD", node!="", %s}[%s])) by (container, %s, pod, %s, namespace, %s, node, %s)`
 	queryFmtNodeCostPerCPUHr            = `avg(avg_over_time(node_cpu_hourly_cost{%s}[%s])) by (node, %s, instance_type, provider_id)`
 	queryFmtNodeCostPerRAMGiBHr         = `avg(avg_over_time(node_ram_hourly_cost{%s}[%s])) by (node, %s, instance_type, provider_id)`
@@ -433,7 +433,7 @@ func (cm *CostModel) computeAllocation(start, end time.Time, resolution time.Dur
 		}
 	}
 
-  // GPU Queries
+	// GPU Queries
 	//queryIsGpuShared := fmt.Sprintf(queryFmtIsGPuShared, durStr)
 	queryGPUsRequested := fmt.Sprintf(queryFmtGPUsRequested, env.GetPromClusterFilter(), durStr, env.GetPromContainerLabel(), env.GetPromPodLabel(), env.GetPromNamespaceLabel(), env.GetPromClusterLabel())
 	resChGPUsRequested := ctx.QueryAtTime(queryGPUsRequested, end)
@@ -441,7 +441,7 @@ func (cm *CostModel) computeAllocation(start, end time.Time, resolution time.Dur
 	queryGPUsUsageAvg := fmt.Sprintf(queryFmtGPUsUsageAvg, durStr, env.GetPromContainerLabel(), env.GetPromPodLabel(), env.GetPromNamespaceLabel(), env.GetPromClusterLabel())
 	resChGPUsUsageAvg := ctx.Query(queryGPUsUsageAvg)
 
-	queryGPUsUsageMax := fmt.Sprintf(queryFmtGPUsUsageMax, durStr, env.GetPromClusterLabel())
+	queryGPUsUsageMax := fmt.Sprintf(queryFmtGPUsUsageMax, durStr, env.GetPromContainerLabel(), env.GetPromPodLabel(), env.GetPromNamespaceLabel(), env.GetPromClusterLabel())
 	resChGPUsUsageMax := ctx.Query(queryGPUsUsageMax)
 
 	queryGPUsAllocated := fmt.Sprintf(queryFmtGPUsAllocated, env.GetPromClusterFilter(), durStr, env.GetPromContainerLabel(), env.GetPromPodLabel(), env.GetPromNamespaceLabel(), env.GetPromClusterLabel())

@@ -1156,7 +1156,60 @@ func TestApplyGPUUsageAvg(t *testing.T) {
 
 	for name, testCase := range testCases {
 		t.Run(name, func(t *testing.T) {
-			applyGPUUsageAvg(testCase.podMap, testCase.resGPUUsageAvg, testCase.podUIDKeyMap)
+			applyGPUUsage(testCase.podMap, testCase.resGPUUsageAvg, testCase.podUIDKeyMap, GpuUsageAverageMode)
+			if len(testCase.podMap) != len(testCase.expected) {
+				t.Errorf("pod map does not have the expected length %d : %d", len(testCase.podMap), len(testCase.expected))
+			}
+
+			for expectedPodKey, expectedPod := range testCase.expected {
+				actualPod, ok := testCase.podMap[expectedPodKey]
+				if !ok {
+					t.Errorf("pod map is missing key %s", expectedPodKey)
+				}
+				if !actualPod.equal(expectedPod) {
+					t.Errorf("pod does not match with key %s: %s != %s", expectedPodKey, opencost.NewClosedWindow(actualPod.Start, actualPod.End), opencost.NewClosedWindow(expectedPod.Start, expectedPod.End))
+				}
+			}
+		})
+	}
+}
+
+func TestApplyGPUUsageMax(t *testing.T) {
+	testCases := map[string]struct {
+		podMap         map[podKey]*pod
+		resGPUUsageMax []*prom.QueryResult
+		podUIDKeyMap   map[podKey][]podKey
+		expected       map[podKey]*pod
+	}{
+		"success": {
+			podMap: podMap4,
+			resGPUUsageMax: []*prom.QueryResult{
+				{
+					Metric: map[string]interface{}{
+						"cluster_id": "cluster1",
+						"namespace":  "namespace1",
+						"pod":        "pod1",
+						"container":  "container1",
+						"node":       "node1",
+					},
+					Values: []*util.Vector{
+						{
+							Timestamp: startFloat,
+						},
+						{
+							Timestamp: startFloat + (hour * 24),
+						},
+					},
+				},
+			},
+			podUIDKeyMap: nil,
+			expected:     podMap4,
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			applyGPUUsage(testCase.podMap, testCase.resGPUUsageMax, testCase.podUIDKeyMap, GpuUsageMaxMode)
 			if len(testCase.podMap) != len(testCase.expected) {
 				t.Errorf("pod map does not have the expected length %d : %d", len(testCase.podMap), len(testCase.expected))
 			}
