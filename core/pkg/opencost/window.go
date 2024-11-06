@@ -956,7 +956,7 @@ func (w Window) getWeeklyWindow() Window {
 // getWeeklyWindows breaks up a window into weeks, with weeks starting on Sunday
 func (w Window) getWeeklyWindows() []Window {
 	wins := []Window{}
-	roundedWindow := w.getDailyWindow()
+	roundedWindow := w.getWeeklyWindow()
 
 	roundedStart := *roundedWindow.Start()
 	roundedEnd := *roundedWindow.End()

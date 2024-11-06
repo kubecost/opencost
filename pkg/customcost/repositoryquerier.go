@@ -63,7 +63,7 @@ func (rq *RepositoryQuerier) QueryTotal(ctx context.Context, request CostTotalRe
 				continue
 			}
 
-			customCosts := ParseCustomCostResponse(ccResponse)
+			customCosts := ParseCustomCostResponse(ccResponse, request.CostType)
 			for _, customCost := range customCosts {
 				if matcher.Matches(customCost) {
 					ccs.Add(customCost)
@@ -79,7 +79,8 @@ func (rq *RepositoryQuerier) QueryTotal(ctx context.Context, request CostTotalRe
 		return nil, err
 	}
 
-	return NewCostResponse(ccs), nil
+	ccs.Sort(request.SortBy, request.SortDirection)
+	return NewCostResponse(ccs, request.CostType), nil
 }
 
 func (rq *RepositoryQuerier) QueryTimeseries(ctx context.Context, request CostTimeseriesRequest) (*CostTimeseriesResponse, error) {
@@ -105,11 +106,14 @@ func (rq *RepositoryQuerier) QueryTimeseries(ctx context.Context, request CostTi
 		go func(i int, window opencost.Window, res []*CostResponse) {
 			defer wg.Done()
 			totals[i], errors[i] = rq.QueryTotal(ctx, CostTotalRequest{
-				Start:       *window.Start(),
-				End:         *window.End(),
-				AggregateBy: request.AggregateBy,
-				Filter:      request.Filter,
-				Accumulate:  accumulate,
+				Start:         *window.Start(),
+				End:           *window.End(),
+				AggregateBy:   request.AggregateBy,
+				Filter:        request.Filter,
+				Accumulate:    accumulate,
+				CostType:      request.CostType,
+				SortBy:        request.SortBy,
+				SortDirection: request.SortDirection,
 			})
 		}(i, w, totals)
 	}

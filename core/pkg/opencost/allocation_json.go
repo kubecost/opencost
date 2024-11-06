@@ -26,8 +26,8 @@ type AllocationJSON struct {
 	CPUCostIdle                    *float64                        `json:"cpuCostIdle"`
 	CPUEfficiency                  *float64                        `json:"cpuEfficiency"`
 	GPUCount                       *float64                        `json:"gpuCount"`
-	GPURequestAverage              *float64                        `json:"gpuRequestAverage"`
-	GPUUsageAverage                *float64                        `json:"gpuUsageAverage"`
+	GPURequestAverage              *float64                        `json:"-"`
+	GPUUsageAverage                *float64                        `json:"-"`
 	GPUHours                       *float64                        `json:"gpuHours"`
 	GPUCost                        *float64                        `json:"gpuCost"`
 	GPUCostAdjustment              *float64                        `json:"gpuCostAdjustment"`
@@ -63,6 +63,7 @@ type AllocationJSON struct {
 	ProportionalAssetResourceCosts *ProportionalAssetResourceCosts `json:"proportionalAssetResourceCosts,omitempty"`
 	LoadBalancers                  LbAllocations                   `json:"lbAllocations"`
 	SharedCostBreakdown            *SharedCostBreakdowns           `json:"sharedCostBreakdown,omitempty"`
+	GPUAllocation                  *GPUAllocation                  `json:"gpuAllocation"`
 }
 
 func (aj *AllocationJSON) BuildFromAllocation(a *Allocation) {
@@ -84,8 +85,6 @@ func (aj *AllocationJSON) BuildFromAllocation(a *Allocation) {
 	aj.CPUCostIdle = formatFloat64ForResponse(a.CPUCostIdle)
 	aj.CPUEfficiency = formatFloat64ForResponse(a.CPUEfficiency())
 	aj.GPUCount = formatFloat64ForResponse(a.GPUs())
-	aj.GPURequestAverage = formatFloat64ForResponse(a.GPURequestAverage)
-	aj.GPUUsageAverage = formatFloat64ForResponse(a.GPUUsageAverage)
 	aj.GPUHours = formatFloat64ForResponse(a.GPUHours)
 	aj.GPUCost = formatFloat64ForResponse(a.GPUCost)
 	aj.GPUCostAdjustment = formatFloat64ForResponse(a.GPUCostAdjustment)
@@ -121,6 +120,7 @@ func (aj *AllocationJSON) BuildFromAllocation(a *Allocation) {
 	aj.ProportionalAssetResourceCosts = &a.ProportionalAssetResourceCosts
 	aj.LoadBalancers = a.LoadBalancers
 	aj.SharedCostBreakdown = &a.SharedCostBreakdown
+	aj.GPUAllocation = a.GPUAllocation
 }
 
 // formatFloat64ForResponse - take an existing float64, round it to 6 decimal places and return is possible, or return nil if invalid

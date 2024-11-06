@@ -41,6 +41,12 @@
     "GPU": "B98415",
     "Disk": ""
   },
+  "BM.GPU.L40S.4": {
+    "OCPU": "",
+    "Memory": "",
+    "GPU": "B109479",
+    "Disk": ""
+  },
   "BM.GPU2.2": {
     "OCPU": "",
     "Memory": "",
@@ -185,6 +191,84 @@
     "GPU": "",
     "Disk": ""
   },
+  "PostgreSQL.VM.Standard.Flex.E4": {
+    "OCPU": "B93113",
+    "Memory": "B93114",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard.Flex.E4.16.256GB": {
+    "OCPU": "B93113",
+    "Memory": "B93114",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard.Flex.E4.2.32GB": {
+    "OCPU": "B93113",
+    "Memory": "B93114",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard.Flex.E4.32.512GB": {
+    "OCPU": "B93113",
+    "Memory": "B93114",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard.Flex.E4.4.64GB": {
+    "OCPU": "B93113",
+    "Memory": "B93114",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard.Flex.E4.64.1024GB": {
+    "OCPU": "B93113",
+    "Memory": "B93114",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard.Flex.E4.8.128GB": {
+    "OCPU": "B93113",
+    "Memory": "B93114",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard3.Flex": {
+    "OCPU": "B92306",
+    "Memory": "B92307",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard3.Flex.16.256GB": {
+    "OCPU": "B92306",
+    "Memory": "B92307",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard3.Flex.2.32GB": {
+    "OCPU": "B92306",
+    "Memory": "B92307",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard3.Flex.32.512GB": {
+    "OCPU": "B92306",
+    "Memory": "B92307",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard3.Flex.4.64GB": {
+    "OCPU": "B92306",
+    "Memory": "B92307",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard3.Flex.8.128GB": {
+    "OCPU": "B92306",
+    "Memory": "B92307",
+    "GPU": "",
+    "Disk": ""
+  },
   "VM.DenseIO.E4.Flex": {
     "OCPU": "B93121",
     "Memory": "B93122",
@@ -222,6 +306,12 @@
     "Disk": ""
   },
   "VM.DenseIO2.24": {
+    "OCPU": "B88516",
+    "Memory": "",
+    "GPU": "",
+    "Disk": ""
+  },
+  "VM.DenseIO2.8": {
     "OCPU": "B88516",
     "Memory": "",
     "GPU": "",
@@ -272,6 +362,12 @@
   "VM.Standard.A1.Flex": {
     "OCPU": "B93297",
     "Memory": "B93298",
+    "GPU": "",
+    "Disk": ""
+  },
+  "VM.Standard.A2.Flex": {
+    "OCPU": "B109529",
+    "Memory": "B109530",
     "GPU": "",
     "Disk": ""
   },
