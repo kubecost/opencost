@@ -9,6 +9,7 @@ import (
 	"github.com/opencost/opencost/pkg/cloud/aws"
 	"github.com/opencost/opencost/pkg/cloud/azure"
 	"github.com/opencost/opencost/pkg/cloud/gcp"
+	"github.com/opencost/opencost/pkg/cloud/oracle"
 )
 
 // CloudCostIntegration is an interface for retrieving daily granularity CloudCost data for a given range
@@ -57,15 +58,24 @@ func GetIntegrationFromConfig(kc cloud.KeyedConfig) CloudCostIntegration {
 	case *azure.StorageConnection:
 		return &azure.AzureStorageIntegration{
 			AzureStorageBillingParser: azure.AzureStorageBillingParser{
-				StorageConnection: *keyedConfig,
+				StorageConnection: azure.StorageConnection{
+					StorageConfiguration: keyedConfig.StorageConfiguration},
 			},
 		}
 	case *azure.AzureStorageBillingParser:
 		return &azure.AzureStorageIntegration{
-			AzureStorageBillingParser: *keyedConfig,
+			AzureStorageBillingParser: azure.AzureStorageBillingParser{
+				StorageConnection: azure.StorageConnection{
+					StorageConfiguration: keyedConfig.StorageConfiguration},
+			},
 		}
 	case *azure.AzureStorageIntegration:
-		return keyedConfig
+		return &azure.AzureStorageIntegration{
+			AzureStorageBillingParser: azure.AzureStorageBillingParser{
+				StorageConnection: azure.StorageConnection{
+					StorageConfiguration: keyedConfig.StorageConfiguration},
+			},
+		}
 	// S3SelectIntegration
 	case *aws.S3Configuration:
 		return &aws.S3SelectIntegration{
@@ -90,6 +100,10 @@ func GetIntegrationFromConfig(kc cloud.KeyedConfig) CloudCostIntegration {
 	// Alibaba BOA Integration
 	case *alibaba.BOAConfiguration:
 		return nil
+	case *oracle.UsageApiConfiguration:
+		return &oracle.UsageApiIntegration{
+			UsageApiConfiguration: *keyedConfig,
+		}
 	default:
 		return nil
 	}

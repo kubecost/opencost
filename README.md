@@ -1,7 +1,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/6219/badge)](https://www.bestpractices.dev/projects/6219)
 
-<img src="./opencost-header.png"/>
+![](./opencost-header.png)
 
 # OpenCost — your favorite open source cost monitoring tool for Kubernetes and cloud spend
 

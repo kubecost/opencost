@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
@@ -17,6 +19,7 @@ import (
 // StorageConnection provides access to Azure Storage
 type StorageConnection struct {
 	StorageConfiguration
+	lock             sync.Mutex
 	ConnectionStatus cloud.ConnectionStatus
 }
 
@@ -82,6 +85,9 @@ func (sc *StorageConnection) StreamBlob(blobName string, client *azblob.Client) 
 
 // DownloadBlobToFile downloads the Azure Billing CSV to a local file
 func (sc *StorageConnection) DownloadBlobToFile(localFilePath string, blob container.BlobItem, client *azblob.Client, ctx context.Context) error {
+	// Lock to prevent accessing a file which may not be fully downloaded
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
 	blobName := *blob.Name
 	// Check if file already exists
 	if fileInfo, err := os.Stat(localFilePath); err == nil {
@@ -107,12 +113,59 @@ func (sc *StorageConnection) DownloadBlobToFile(localFilePath string, blob conta
 	defer fp.Close()
 
 	// Download newest Azure Billing CSV to disk
+
+	// Time out to prevent deadlock on download
+	timeoutCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+	defer cancel()
+
 	log.Infof("CloudCost: Azure: DownloadBlobToFile: retrieving blob: %v", blobName)
-	filesize, err := client.DownloadFile(ctx, sc.Container, blobName, fp, nil)
+	filesize, err := client.DownloadFile(timeoutCtx, sc.Container, blobName, fp, nil)
 	if err != nil {
+		// Clean up file from failed download
+		err2 := os.Remove(localFilePath)
+		if err2 != nil {
+			log.Errorf("CloudCost: Azure: DownloadBlobToFile: failed to remove file %s after failed download %s", localFilePath, err2.Error())
+		}
 		return fmt.Errorf("CloudCost: Azure: DownloadBlobToFile: failed to download %w", err)
 	}
 	log.Infof("CloudCost: Azure: DownloadBlobToFile: retrieved %v of size %dMB", blobName, filesize/1024/1024)
 
 	return nil
+}
+
+// deleteFilesOlderThan7d recursively walks the directory specified and deletes
+// files which have not been modified in the last 7 days. Returns a list of
+// files deleted.
+func (sc *StorageConnection) deleteFilesOlderThan7d(localPath string) ([]string, error) {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+	duration := 7 * 24 * time.Hour
+	cleaned := []string{}
+	errs := []string{}
+
+	if _, err := os.Stat(localPath); err != nil {
+		return cleaned, nil // localPath does not exist
+	}
+
+	filepath.Walk(localPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			errs = append(errs, err.Error())
+			return err
+		}
+
+		if time.Since(info.ModTime()) > duration {
+			err := os.Remove(path)
+			if err != nil {
+				errs = append(errs, err.Error())
+			}
+			cleaned = append(cleaned, path)
+		}
+		return nil
+	})
+
+	if len(errs) == 0 {
+		return cleaned, nil
+	} else {
+		return cleaned, fmt.Errorf("deleteFilesOlderThan7d: %v", errs)
+	}
 }

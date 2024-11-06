@@ -34,6 +34,8 @@ const S3SelectNetRICost = `s."reservation/NetEffectiveCost"`
 const S3SelectNetSPCost = `s."savingsPlan/NetSavingsPlanEffectiveCost"`
 
 const S3SelectUserLabelPrefix = "resourceTags/user:"
+const S3SelectAWSLabelPrefix = "resourceTags/aws:"
+const S3SelectResourceTagsPrefix = "resourceTags/"
 
 type S3SelectIntegration struct {
 	S3SelectQuerier
@@ -122,11 +124,17 @@ func (s3si *S3SelectIntegration) GetCloudCost(
 	// Determine which columns are user-defined tags and add those to the list
 	// of columns to query.
 	labelColumns := []string{}
+	awsLabelColumns := []string{}
 	for column := range allColumns {
 		if strings.HasPrefix(column, S3SelectUserLabelPrefix) {
 			quotedTag := fmt.Sprintf(`s."%s"`, column)
 			selectColumns = append(selectColumns, quotedTag)
 			labelColumns = append(labelColumns, quotedTag)
+		}
+		if strings.HasPrefix(column, S3SelectAWSLabelPrefix) {
+			quotedTag := fmt.Sprintf(`s."%s"`, column)
+			selectColumns = append(selectColumns, quotedTag)
+			awsLabelColumns = append(awsLabelColumns, quotedTag)
 		}
 	}
 
@@ -174,6 +182,17 @@ func (s3si *S3SelectIntegration) GetCloudCost(
 				// remove prefix
 				labelName = strings.TrimPrefix(labelName, S3SelectUserLabelPrefix)
 				value := GetCSVRowValue(row, columnIndexes, labelColumnName)
+				if value != "" {
+					labels[labelName] = value
+				}
+			}
+			for _, awsLabelColumnName := range awsLabelColumns {
+				// remove quotes
+				labelName := strings.TrimPrefix(awsLabelColumnName, `s."`)
+				labelName = strings.TrimSuffix(labelName, `"`)
+				// partially remove prefix leaving "aws:"
+				labelName = strings.TrimPrefix(labelName, S3SelectResourceTagsPrefix)
+				value := GetCSVRowValue(row, columnIndexes, awsLabelColumnName)
 				if value != "" {
 					labels[labelName] = value
 				}
@@ -311,21 +330,33 @@ func (s3si *S3SelectIntegration) GetCloudCost(
 	return ccsr, nil
 }
 
+const (
+	TagAWSEKSClusterName     = "aws:eks:cluster-name"
+	TagEKSClusterName        = "eks:cluster-name"
+	TagEKSCtlClusterName     = "alpha.eksctl.io/cluster-name"
+	TagKubernetesServiceName = "kubernetes.io/service-name"
+	TagKubernetesPVCName     = "kubernetes.io/created-for/pvc/name"
+	TagKubernetesPVName      = "kubernetes.io/created-for/pv/name"
+)
+
 // hsK8sLabel checks if the labels contain a k8s label
 func hasK8sLabel(labels opencost.CloudCostLabels) bool {
-	if _, ok := labels["eks:cluster-name"]; ok {
+	if _, ok := labels[TagAWSEKSClusterName]; ok {
 		return true
 	}
-	if _, ok := labels["alpha.eksctl.io/cluster-name"]; ok {
+	if _, ok := labels[TagEKSClusterName]; ok {
 		return true
 	}
-	if _, ok := labels["kubernetes.io/service-name"]; ok {
+	if _, ok := labels[TagEKSCtlClusterName]; ok {
 		return true
 	}
-	if _, ok := labels["kubernetes.io/created-for/pvc/name"]; ok {
+	if _, ok := labels[TagKubernetesServiceName]; ok {
 		return true
 	}
-	if _, ok := labels["kubernetes.io/created-for/pv/name"]; ok {
+	if _, ok := labels[TagKubernetesPVCName]; ok {
+		return true
+	}
+	if _, ok := labels[TagKubernetesPVName]; ok {
 		return true
 	}
 	return false

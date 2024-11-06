@@ -337,14 +337,14 @@ func (ing *CustomCostIngestor) run() {
 			// Wait for next tick
 		}
 
-		// Start from the last covered time, minus the RunWindow
-		start := ing.lastRun
-		start = start.Add(-ing.resolution)
-
 		queryWin := ing.config.DailyQueryWindow
 		if ing.resolution == time.Hour {
 			queryWin = ing.config.HourlyQueryWindow
 		}
+		// Start from the last covered time, minus the query window
+		// this allows re-querying of data as the plugin providers' data may stabilize over time
+		start := ing.lastRun
+		start = start.Add(-1 * queryWin)
 
 		// Round start time back to the nearest Resolution point in the past from the
 		// last update to the QueryWindow

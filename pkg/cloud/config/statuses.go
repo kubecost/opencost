@@ -9,6 +9,7 @@ import (
 	"github.com/opencost/opencost/pkg/cloud/aws"
 	"github.com/opencost/opencost/pkg/cloud/azure"
 	"github.com/opencost/opencost/pkg/cloud/gcp"
+	"github.com/opencost/opencost/pkg/cloud/oracle"
 )
 
 const (
@@ -16,6 +17,7 @@ const (
 	AthenaConfigType       = "athena"
 	BigQueryConfigType     = "bigquery"
 	AzureStorageConfigType = "azurestorage"
+	UsageApiConfigType     = "usageapi"
 )
 
 func ConfigTypeFromConfig(config cloud.KeyedConfig) (string, error) {
@@ -28,6 +30,8 @@ func ConfigTypeFromConfig(config cloud.KeyedConfig) (string, error) {
 		return BigQueryConfigType, nil
 	case *azure.StorageConfiguration:
 		return AzureStorageConfigType, nil
+	case *oracle.UsageApiConfiguration:
+		return UsageApiConfigType, nil
 	}
 	return "", fmt.Errorf("failed to config type for config with key: %s, type %T", config.Key(), config)
 }
@@ -114,6 +118,8 @@ func (s *Status) UnmarshalJSON(b []byte) error {
 		config = &gcp.BigQueryConfiguration{}
 	case AzureStorageConfigType:
 		config = &azure.StorageConfiguration{}
+	case UsageApiConfigType:
+		config = &oracle.UsageApiConfiguration{}
 	default:
 		return fmt.Errorf("Status: UnmarshalJSON: config type '%s' is not recognized", configType)
 	}

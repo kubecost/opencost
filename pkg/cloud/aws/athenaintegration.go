@@ -14,6 +14,8 @@ import (
 )
 
 const LabelColumnPrefix = "resource_tags_user_"
+const AWSLabelColumnPrefix = "resource_tags_aws_"
+const AthenaResourceTagPrefix = "resource_tags_"
 
 // athenaDateLayout is the default AWS date format
 const AthenaDateLayout = "2006-01-02 15:04:05.000"
@@ -52,6 +54,7 @@ type AthenaQueryIndexes struct {
 	Query                  string
 	ColumnIndexes          map[string]int
 	TagColumns             []string
+	AWSTagColumns          []string
 	ListCostColumn         string
 	NetCostColumn          string
 	AmortizedNetCostColumn string
@@ -99,6 +102,10 @@ func (ai *AthenaIntegration) GetCloudCost(start, end time.Time) (*opencost.Cloud
 			quotedTag := fmt.Sprintf(`"%s"`, column)
 			groupByColumns = append(groupByColumns, quotedTag)
 			aqi.TagColumns = append(aqi.TagColumns, quotedTag)
+		}
+		if strings.HasPrefix(column, AWSLabelColumnPrefix) {
+			groupByColumns = append(groupByColumns, column)
+			aqi.AWSTagColumns = append(aqi.AWSTagColumns, column)
 		}
 	}
 	var selectColumns []string
@@ -342,6 +349,15 @@ func (ai *AthenaIntegration) RowToCloudCost(row types.Row, aqi AthenaQueryIndexe
 		// remove prefix
 		labelName = strings.TrimPrefix(labelName, LabelColumnPrefix)
 		value := GetAthenaRowValue(row, aqi.ColumnIndexes, tagColumnName)
+		if value != "" {
+			labels[labelName] = value
+		}
+	}
+
+	for _, awsColumnName := range aqi.AWSTagColumns {
+		// partially remove prefix leaving "aws_"
+		labelName := strings.TrimPrefix(awsColumnName, AthenaResourceTagPrefix)
+		value := GetAthenaRowValue(row, aqi.ColumnIndexes, awsColumnName)
 		if value != "" {
 			labels[labelName] = value
 		}

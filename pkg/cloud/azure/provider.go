@@ -936,6 +936,11 @@ func convertMeterToPricings(info commerce.MeterInfo, regions map[string]string, 
 		return nil, nil
 	}
 
+	if strings.Contains(meterSubCategory, "Cloud Services") || strings.Contains(meterSubCategory, "CloudServices") {
+		// This meter doesn't correspond to any pricings.
+		return nil, nil
+	}
+
 	if strings.Contains(meterCategory, "Storage") {
 		if strings.Contains(meterSubCategory, "HDD") || strings.Contains(meterSubCategory, "SSD") || strings.Contains(meterSubCategory, "Premium Files") {
 			var storageClass string = ""

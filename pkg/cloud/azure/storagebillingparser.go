@@ -69,7 +69,8 @@ func (asbp *AzureStorageBillingParser) ParseBillingData(start, end time.Time, re
 		for _, blob := range blobInfos {
 			blobName := *blob.Name
 
-			localFilePath := filepath.Join(localPath, filepath.Base(blobName))
+			// Use entire blob name to prevent collision with other files from previous months or other integrations (ex "part_0_0001.csv")
+			localFilePath := filepath.Join(localPath, strings.ReplaceAll(blobName, "/", "_"))
 
 			err := asbp.DownloadBlobToFile(localFilePath, blob, client, ctx)
 			if err != nil {
@@ -232,7 +233,7 @@ func (asbp *AzureStorageBillingParser) getMostRecentBlobs(start, end time.Time, 
 		if err != nil {
 			return nil, fmt.Errorf("failed to retrieve manifest %w", err)
 		}
-		
+
 		var manifest manifestJson
 		err = json.Unmarshal(manifestBytes, &manifest)
 		if err != nil {
@@ -293,39 +294,4 @@ func (asbp *AzureStorageBillingParser) timeToMonthString(input time.Time) string
 	startOfMonth := input.AddDate(0, 0, -input.Day()+1)
 	endOfMonth := input.AddDate(0, 1, -input.Day())
 	return startOfMonth.Format(format) + "-" + endOfMonth.Format(format)
-}
-
-// deleteFilesOlderThan7d recursively walks the directory specified and deletes
-// files which have not been modified in the last 7 days. Returns a list of
-// files deleted.
-func (asbp *AzureStorageBillingParser) deleteFilesOlderThan7d(localPath string) ([]string, error) {
-	duration := 7 * 24 * time.Hour
-	cleaned := []string{}
-	errs := []string{}
-
-	if _, err := os.Stat(localPath); err != nil {
-		return cleaned, nil // localPath does not exist
-	}
-
-	filepath.Walk(localPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			errs = append(errs, err.Error())
-			return err
-		}
-
-		if time.Since(info.ModTime()) > duration {
-			err := os.Remove(path)
-			if err != nil {
-				errs = append(errs, err.Error())
-			}
-			cleaned = append(cleaned, path)
-		}
-		return nil
-	})
-
-	if len(errs) == 0 {
-		return cleaned, nil
-	} else {
-		return cleaned, fmt.Errorf("deleteFilesOlderThan7d: %v", errs)
-	}
 }

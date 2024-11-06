@@ -9,6 +9,8 @@ cmd/costmodel/costmodel-tilt
 
 pkg/cloud/azureorphan_test.go
 
+pkg/cloud/oracle/cloud-integration.json
+
 # VS Code
 .vscode
 

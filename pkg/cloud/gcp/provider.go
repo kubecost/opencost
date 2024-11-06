@@ -495,7 +495,8 @@ func (gcp *GCP) GetOrphanedResources() ([]models.OrphanedResource, error) {
 				desc := map[string]string{}
 				if disk.Description != "" {
 					if err := json.Unmarshal([]byte(disk.Description), &desc); err != nil {
-						return nil, fmt.Errorf("error converting string to map: %s", err)
+						log.Errorf("ignoring orphaned disk %s, failed to convert disk description to map: %s", disk.Name, err)
+						continue
 					}
 				}
 
