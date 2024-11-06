@@ -290,7 +290,6 @@ func getRetailPrice(region string, skuName string, currencyCode string, spot boo
 	retailPrice := ""
 	for _, item := range pricingPayload.Items {
 		if item.Type == "Consumption" && !strings.Contains(item.ProductName, "Windows") {
-			// if spot is true SkuName should contain "spot, if it is false it should not
 			if spot == strings.Contains(strings.ToLower(item.SkuName), " spot") {
 				retailPrice = fmt.Sprintf("%f", item.RetailPrice)
 			} else {
@@ -938,11 +937,6 @@ func convertMeterToPricings(info commerce.MeterInfo, regions map[string]string, 
 		return nil, nil
 	}
 
-	if strings.Contains(meterSubCategory, "Cloud Services") || strings.Contains(meterSubCategory, "CloudServices") {
-		// This meter doesn't correspond to any pricings.
-		return nil, nil
-	}
-
 	if strings.Contains(meterCategory, "Storage") {
 		if strings.Contains(meterSubCategory, "HDD") || strings.Contains(meterSubCategory, "SSD") || strings.Contains(meterSubCategory, "Premium Files") {
 			var storageClass string = ""
@@ -1145,7 +1139,7 @@ func (az *Azure) NodePricing(key models.Key) (*models.Node, models.PricingMetada
 			}
 		}
 
-		az.addPricing(azKey.Features(), &AzurePricing{
+		az.addPricing(featureString, &AzurePricing{
 			Node: node,
 		})
 		return node, meta, nil
