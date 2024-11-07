@@ -925,25 +925,28 @@ func (az *Azure) DownloadPricingData() error {
 
 	envManagedClustersName := env.GetAzureClusterName()
 
-	err = az.refreshClusterManagementPricing(config, envResourceGroupName, envManagedClustersName)
-	if err != nil {
-		log.Errorf("error getting managed cluster cost: %s", err.Error())
-	}
+	if envResourceGroupName != "" && envManagedClustersName != "" {
 
-	// AKS Tier can change. So we need to refresh the tier information to get the cluster management cost.
-	go func() {
-		defer errs.HandlePanic()
-
-		for {
-			log.Infof("Azure AKS Tier Refresh scheduled in %.2f minutes.", AzureAksTierRefreshDuration.Minutes())
-			time.Sleep(AzureAksTierRefreshDuration)
-
-			err := az.refreshClusterManagementPricing(config, envResourceGroupName, envManagedClustersName)
-			if err != nil {
-				log.Errorf("error getting managed cluster cost: %s", err.Error())
-			}
+		err = az.refreshClusterManagementPricing(config, envResourceGroupName, envManagedClustersName)
+		if err != nil {
+			log.Errorf("error getting managed cluster cost: %s", err.Error())
 		}
-	}()
+
+		// AKS Tier can change. So we need to refresh the tier information to get the cluster management cost.
+		go func() {
+			defer errs.HandlePanic()
+
+			for {
+				log.Infof("Azure AKS Tier Refresh scheduled in %.2f minutes.", AzureAksTierRefreshDuration.Minutes())
+				time.Sleep(AzureAksTierRefreshDuration)
+
+				err := az.refreshClusterManagementPricing(config, envResourceGroupName, envManagedClustersName)
+				if err != nil {
+					log.Errorf("error getting managed cluster cost: %s", err.Error())
+				}
+			}
+		}()
+	}
 
 	return nil
 }
