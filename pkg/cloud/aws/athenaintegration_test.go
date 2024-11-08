@@ -237,6 +237,141 @@ func Test_athenaRowToCloudCost(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "valid load balancer product code",
+			row:  []string{"1", "2", "3", "4", "false", "2024-09-01 00:00:00.000", "resourceID/lbID", "payerAccountID", "usageAccountID", "AWSELB", "usageType", "regionCode", "availabilityZone", "", ""},
+			aqi:  aqi,
+			want: &opencost.CloudCost{
+				Properties: &opencost.CloudCostProperties{
+					ProviderID:        "lbID",
+					Provider:          "AWS",
+					AccountID:         "usageAccountID",
+					AccountName:       "usageAccountID",
+					InvoiceEntityID:   "payerAccountID",
+					InvoiceEntityName: "payerAccountID",
+					RegionID:          "regionCode",
+					AvailabilityZone:  "availabilityZone",
+					Service:           "AWSELB",
+					Category:          opencost.NetworkCategory,
+					Labels:            opencost.CloudCostLabels{},
+				},
+				Window: opencost.NewClosedWindow(
+					time.Date(2024, 9, 1, 0, 0, 0, 0, time.UTC),
+					time.Date(2024, 9, 2, 0, 0, 0, 0, time.UTC),
+				),
+				ListCost: opencost.CostMetric{
+					Cost:              1,
+					KubernetesPercent: 0,
+				},
+				NetCost: opencost.CostMetric{
+					Cost:              2,
+					KubernetesPercent: 0,
+				},
+				AmortizedNetCost: opencost.CostMetric{
+					Cost:              3,
+					KubernetesPercent: 0,
+				},
+				InvoicedCost: opencost.CostMetric{
+					Cost:              2,
+					KubernetesPercent: 0,
+				},
+				AmortizedCost: opencost.CostMetric{
+					Cost:              4,
+					KubernetesPercent: 0,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid non-kubernetes, Fargate CPU",
+			row:  []string{"1", "2", "3", "4", "false", "2024-09-01 00:00:00.000", "123:pod/resource", "payerAccountID", "usageAccountID", "AmazonEKS", "CPU", "regionCode", "availabilityZone", "", ""},
+			aqi:  aqi,
+			want: &opencost.CloudCost{
+				Properties: &opencost.CloudCostProperties{
+					ProviderID:        "123:pod/resource/CPU",
+					Provider:          "AWS",
+					AccountID:         "usageAccountID",
+					AccountName:       "usageAccountID",
+					InvoiceEntityID:   "payerAccountID",
+					InvoiceEntityName: "payerAccountID",
+					RegionID:          "regionCode",
+					AvailabilityZone:  "availabilityZone",
+					Service:           "AmazonEKS",
+					Category:          opencost.ComputeCategory,
+					Labels:            opencost.CloudCostLabels{},
+				},
+				Window: opencost.NewClosedWindow(
+					time.Date(2024, 9, 1, 0, 0, 0, 0, time.UTC),
+					time.Date(2024, 9, 2, 0, 0, 0, 0, time.UTC),
+				),
+				ListCost: opencost.CostMetric{
+					Cost:              1,
+					KubernetesPercent: 0,
+				},
+				NetCost: opencost.CostMetric{
+					Cost:              2,
+					KubernetesPercent: 0,
+				},
+				AmortizedNetCost: opencost.CostMetric{
+					Cost:              3,
+					KubernetesPercent: 0,
+				},
+				InvoicedCost: opencost.CostMetric{
+					Cost:              2,
+					KubernetesPercent: 0,
+				},
+				AmortizedCost: opencost.CostMetric{
+					Cost:              4,
+					KubernetesPercent: 0,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid non-kubernetes, Fargate RAM",
+			row:  []string{"1", "2", "3", "4", "false", "2024-09-01 00:00:00.000", "123:pod/resource", "payerAccountID", "usageAccountID", "AmazonEKS", "GB", "regionCode", "availabilityZone", "", ""},
+			aqi:  aqi,
+			want: &opencost.CloudCost{
+				Properties: &opencost.CloudCostProperties{
+					ProviderID:        "123:pod/resource/RAM",
+					Provider:          "AWS",
+					AccountID:         "usageAccountID",
+					AccountName:       "usageAccountID",
+					InvoiceEntityID:   "payerAccountID",
+					InvoiceEntityName: "payerAccountID",
+					RegionID:          "regionCode",
+					AvailabilityZone:  "availabilityZone",
+					Service:           "AmazonEKS",
+					Category:          opencost.ComputeCategory,
+					Labels:            opencost.CloudCostLabels{},
+				},
+				Window: opencost.NewClosedWindow(
+					time.Date(2024, 9, 1, 0, 0, 0, 0, time.UTC),
+					time.Date(2024, 9, 2, 0, 0, 0, 0, time.UTC),
+				),
+				ListCost: opencost.CostMetric{
+					Cost:              1,
+					KubernetesPercent: 0,
+				},
+				NetCost: opencost.CostMetric{
+					Cost:              2,
+					KubernetesPercent: 0,
+				},
+				AmortizedNetCost: opencost.CostMetric{
+					Cost:              3,
+					KubernetesPercent: 0,
+				},
+				InvoicedCost: opencost.CostMetric{
+					Cost:              2,
+					KubernetesPercent: 0,
+				},
+				AmortizedCost: opencost.CostMetric{
+					Cost:              4,
+					KubernetesPercent: 0,
+				},
+			},
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

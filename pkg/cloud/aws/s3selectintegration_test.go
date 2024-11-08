@@ -312,6 +312,53 @@ func Test_s3RowToCloudCost(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name:           "valid Kubernetes load balancer product code",
+			row:            []string{"1", "2", "3", "4", "5", "6", "2024-09-01T00:00:00Z", "payerAccountID", "usageAccountID", "resourceID/lbID", TypeSavingsPlanCoveredUsage, "AWSELB", "usageType", "regionCode", "availabilityZone", "", "", ""},
+			columnIndexes:  columnIndexes,
+			userTagColumns: userTagColumns,
+			awsTagColumns:  awsTagColumns,
+			want: &opencost.CloudCost{
+				Properties: &opencost.CloudCostProperties{
+					ProviderID:        "lbID",
+					Provider:          "AWS",
+					AccountID:         "usageAccountID",
+					AccountName:       "usageAccountID",
+					InvoiceEntityID:   "payerAccountID",
+					InvoiceEntityName: "payerAccountID",
+					RegionID:          "regionCode",
+					AvailabilityZone:  "availabilityZone",
+					Service:           "AWSELB",
+					Category:          opencost.NetworkCategory,
+					Labels:            opencost.CloudCostLabels{},
+				},
+				Window: opencost.NewClosedWindow(
+					time.Date(2024, 9, 1, 0, 0, 0, 0, time.UTC),
+					time.Date(2024, 9, 2, 0, 0, 0, 0, time.UTC),
+				),
+				ListCost: opencost.CostMetric{
+					Cost:              1,
+					KubernetesPercent: 0,
+				},
+				NetCost: opencost.CostMetric{
+					Cost:              2,
+					KubernetesPercent: 0,
+				},
+				AmortizedNetCost: opencost.CostMetric{
+					Cost:              6,
+					KubernetesPercent: 0,
+				},
+				InvoicedCost: opencost.CostMetric{
+					Cost:              2,
+					KubernetesPercent: 0,
+				},
+				AmortizedCost: opencost.CostMetric{
+					Cost:              5,
+					KubernetesPercent: 0,
+				},
+			},
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
