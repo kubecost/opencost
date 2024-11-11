@@ -778,6 +778,10 @@ func (gcp *GCP) parsePage(r io.Reader, inputKeys map[string]models.Key, pvKeys m
 					instanceType = "c2standard"
 				}
 
+				if (instanceType == "ram" || instanceType == "cpu") && strings.Contains(strings.ToUpper(product.Description), "C2D AMD INSTANCE") {
+					instanceType = "c2dstandard"
+				}
+
 				if (instanceType == "ram" || instanceType == "cpu") && strings.Contains(strings.ToUpper(product.Description), "E2 INSTANCE") {
 					instanceType = "e2"
 				}
