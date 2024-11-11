@@ -1463,13 +1463,12 @@ func (awsProvider *AWS) ClusterInfo() (map[string]string, error) {
 			clusterName = awsClusterID
 			log.Warnf("Warning - %s will be deprecated in a future release. Use %s instead", ocenv.AWSClusterIDEnvVar, ocenv.ClusterIDEnvVar)
 		} else if clusterName = ocenv.GetClusterID(); clusterName != "" {
-			log.Infof("Setting cluster name to %s from %s ", clusterName, ocenv.ClusterIDEnvVar)
+			log.DedupedInfof(5, "Setting cluster name to %s from %s ", clusterName, ocenv.ClusterIDEnvVar)
 		} else {
 			clusterName = defaultClusterName
-			log.Warnf("Unable to detect cluster name - using default of %s", defaultClusterName)
-			log.Warnf("Please set cluster name through configmap or via %s env var", ocenv.ClusterIDEnvVar)
+			log.DedupedWarningf(5, "Unable to detect cluster name - using default of %s", defaultClusterName)
+			log.DedupedWarningf(5, "Please set cluster name through configmap or via %s env var", ocenv.ClusterIDEnvVar)
 		}
-
 	}
 
 	// this value requires configuration but is unavailable else where
