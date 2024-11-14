@@ -292,8 +292,6 @@ func getRetailPrice(region string, skuName string, currencyCode string, spot boo
 		if item.Type == "Consumption" && !strings.Contains(item.ProductName, "Windows") {
 			if spot == strings.Contains(strings.ToLower(item.SkuName), " spot") {
 				retailPrice = fmt.Sprintf("%f", item.RetailPrice)
-			} else {
-				retailPrice = fmt.Sprintf("%f", item.RetailPrice)
 			}
 		}
 	}
@@ -937,6 +935,11 @@ func convertMeterToPricings(info commerce.MeterInfo, regions map[string]string, 
 		return nil, nil
 	}
 
+	if strings.Contains(meterSubCategory, "Cloud Services") || strings.Contains(meterSubCategory, "CloudServices") {
+		// This meter doesn't correspond to any pricings.
+		return nil, nil
+	}
+
 	if strings.Contains(meterCategory, "Storage") {
 		if strings.Contains(meterSubCategory, "HDD") || strings.Contains(meterSubCategory, "SSD") || strings.Contains(meterSubCategory, "Premium Files") {
 			var storageClass string = ""
@@ -1091,6 +1094,10 @@ func (az *Azure) NodePricing(key models.Key) (*models.Node, models.PricingMetada
 
 	meta := models.PricingMetadata{}
 
+	if az.Pricing == nil {
+		return nil, meta, fmt.Errorf("Unable to download Azure pricing data")
+	}
+
 	azKey, ok := key.(*azureKey)
 	if !ok {
 		return nil, meta, fmt.Errorf("azure: NodePricing: key is of type %T", key)
@@ -1103,9 +1110,11 @@ func (az *Azure) NodePricing(key models.Key) (*models.Node, models.PricingMetada
 	features := strings.Split(azKey.Features(), ",")
 	region := features[0]
 	instance := features[1]
-	featureString := fmt.Sprintf("%s,%s", region, instance)
+	var featureString string
 	if isSpot {
-		featureString = fmt.Sprintf("%s,spot", featureString)
+		featureString = fmt.Sprintf("%s,%s,spot", region, instance)
+	} else {
+		featureString = azKey.Features()
 	}
 
 	if n, ok := az.Pricing[featureString]; ok {
@@ -1119,11 +1128,11 @@ func (az *Azure) NodePricing(key models.Key) (*models.Node, models.PricingMetada
 	cost, err := getRetailPrice(region, instance, config.CurrencyCode, isSpot)
 
 	if err != nil {
-		log.DedupedWarningf(5, "failed to retrieve spot retail pricing: %s", err)
+		log.DedupedWarningf(5, "failed to retrieve retail pricing: %s", err)
 	} else {
 		gpu := ""
 		if azKey.isValidGPUNode() {
-			gpu = "1"
+			gpu = azKey.GetGPUCount()
 		}
 		var node *models.Node
 		if isSpot {
