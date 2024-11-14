@@ -1414,21 +1414,6 @@ func (a *Allocation) add(that *Allocation) {
 	// Sum LoadBalancer Allocations
 	a.LoadBalancers = a.LoadBalancers.Add(that.LoadBalancers)
 
-	// Sum GPU Allocations
-	if that.GPUAllocation != nil {
-		if a.GPUAllocation == nil {
-			a.GPUAllocation = that.GPUAllocation.Clone()
-		} else {
-			if a.GPUAllocation.GPUUsageAverage != nil && that.GPUAllocation.GPUUsageAverage != nil {
-				*a.GPUAllocation.GPUUsageAverage += *that.GPUAllocation.GPUUsageAverage
-			}
-
-			if a.GPUAllocation.GPURequestAverage != nil && that.GPUAllocation.GPURequestAverage != nil {
-				*a.GPUAllocation.GPURequestAverage += *that.GPUAllocation.GPURequestAverage
-			}
-		}
-	}
-
 	// Any data that is in a "raw allocation only" is not valid in any
 	// sort of cumulative Allocation (like one that is added).
 	a.RawAllocationOnly = nil
