@@ -849,7 +849,7 @@ func (az *Azure) DownloadPricingData() error {
 	// rate-card client is old, it can hang indefinitely in some cases
 	// this happens on the main thread, so it may block the whole app
 	// there is can be a better way to set timeout for the client
-	ctx, cancel := context.WithTimeout(context.TODO(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.TODO(), 300*time.Second)
 	defer cancel()
 	result, err := rcClient.Get(ctx, rateCardFilter)
 	if err != nil {
