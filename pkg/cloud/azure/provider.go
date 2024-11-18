@@ -288,6 +288,7 @@ func getRetailPrice(region string, skuName string, currencyCode string, spot boo
 	}
 
 	retailPrice := ""
+	spotPrice := ""
 	for _, item := range pricingPayload.Items {
 		if item.Type == "Consumption" && !strings.Contains(item.ProductName, "Windows") {
 			if spot == strings.Contains(strings.ToLower(item.SkuName), " spot") {
