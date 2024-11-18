@@ -279,7 +279,7 @@ func (r *RawAllocationOnlyData) SanitizeNaN() {
 		log.DedupedWarningf(5, "RawAllocationOnlyData: Unexpected NaN found for RAMBytesUsageMax")
 		r.RAMBytesUsageMax = 0
 	}
-	if r.GPUUsageMax == nil || math.IsNaN(*r.GPUUsageMax) {
+	if r.GPUUsageMax != nil && math.IsNaN(*r.GPUUsageMax) {
 		log.DedupedWarningf(5, "RawAllocationOnlyData: Unexpected NaN found for GPUUsageMax")
 		r.GPUUsageMax = nil
 	}
