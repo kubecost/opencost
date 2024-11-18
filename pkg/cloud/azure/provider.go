@@ -1112,9 +1112,10 @@ func (az *Azure) NodePricing(key models.Key) (*models.Node, models.PricingMetada
 	instance := features[1]
 	var featureString string
 	if isSpot {
+		features := strings.Split(featureString, ",")
+		region := features[0]
+		instance := features[1]
 		featureString = fmt.Sprintf("%s,%s,spot", region, instance)
-	} else {
-		featureString = azKey.Features()
 	}
 
 	if n, ok := az.Pricing[featureString]; ok {
