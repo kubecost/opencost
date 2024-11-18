@@ -1107,10 +1107,7 @@ func (az *Azure) NodePricing(key models.Key) (*models.Node, models.PricingMetada
 	slv, ok := azKey.Labels[config.SpotLabel]
 	isSpot := ok && slv == config.SpotLabelValue && config.SpotLabel != "" && config.SpotLabelValue != ""
 
-	features := strings.Split(azKey.Features(), ",")
-	region := features[0]
-	instance := features[1]
-	var featureString string
+	featureString := azKey.Features()
 	if isSpot {
 		features := strings.Split(featureString, ",")
 		region := features[0]
