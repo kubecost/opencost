@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/opencost/opencost/core/pkg/log"
 	"github.com/opencost/opencost/core/pkg/util/promutil"
@@ -45,8 +46,11 @@ func (kpmc KubecostPodCollector) Collect(ch chan<- prometheus.Metric) {
 		podName := pod.GetName()
 		podNS := pod.GetNamespace()
 
-		// Pod Annotations
-		labels, values := promutil.KubeAnnotationsToLabels(pod.Annotations)
+		// Resolves bug found after https://github.com/opencost/opencost/pull/2725
+		// The removal of deep copy for memory improvement, introduced this bug with
+		// duplicate annotations being emitted.
+		deduplicatedAnnotations := deduplicateAnnotations(pod.Annotations)
+		labels, values := promutil.KubeAnnotationsToLabels(deduplicatedAnnotations)
 		if len(labels) > 0 {
 			ch <- newPodAnnotationMetric("kube_pod_annotations", podNS, podName, labels, values)
 		}
@@ -1071,4 +1075,20 @@ func (kpo KubePodOwnerMetric) Write(m *dto.Metric) error {
 		},
 	}
 	return nil
+}
+
+func deduplicateAnnotations(annotations map[string]string) map[string]string {
+	uniqueAnnotations := make(map[string]string)
+	normalizedKeyMap := make(map[string]string) // maps normalized key to original key
+
+	for key, value := range annotations {
+		normalizedKey := strings.ReplaceAll(key, "_", ".")
+
+		if _, exists := normalizedKeyMap[normalizedKey]; !exists {
+			normalizedKeyMap[normalizedKey] = key
+			uniqueAnnotations[key] = value
+		}
+	}
+
+	return uniqueAnnotations
 }
