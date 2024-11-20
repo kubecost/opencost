@@ -288,16 +288,22 @@ func getRetailPrice(region string, skuName string, currencyCode string, spot boo
 	}
 
 	retailPrice := ""
+	spotPrice := ""
 	for _, item := range pricingPayload.Items {
 		if item.Type == "Consumption" && !strings.Contains(item.ProductName, "Windows") {
-			// if spot is true SkuName should contain "spot, if it is false it should not
-			if spot == strings.Contains(strings.ToLower(item.SkuName), " spot") {
+			if !strings.Contains(strings.ToLower(item.SkuName), " spot") {
+				spotPrice = fmt.Sprintf("%f", item.RetailPrice)
+			} else {
 				retailPrice = fmt.Sprintf("%f", item.RetailPrice)
 			}
 		}
 	}
 
 	log.DedupedInfof(5, "done parsing retail price payload from \"%s\"\n", pricingURL)
+
+	if spot && spotPrice != "" {
+		return spotPrice, nil
+	}
 
 	if retailPrice == "" {
 		return retailPrice, fmt.Errorf("Couldn't find price for product \"%s\" in \"%s\" region", skuName, region)
@@ -1092,13 +1098,12 @@ func (az *Azure) AllNodePricing() (interface{}, error) {
 func (az *Azure) NodePricing(key models.Key) (*models.Node, models.PricingMetadata, error) {
 	az.DownloadPricingDataLock.RLock()
 	defer az.DownloadPricingDataLock.RUnlock()
-	pricingDataExists := true
-	if az.Pricing == nil {
-		pricingDataExists = false
-		log.DedupedWarningf(1, "Unable to download Azure pricing data")
-	}
 
 	meta := models.PricingMetadata{}
+
+	if az.Pricing == nil {
+		return nil, meta, fmt.Errorf("Unable to download Azure pricing data")
+	}
 
 	azKey, ok := key.(*azureKey)
 	if !ok {
@@ -1106,54 +1111,58 @@ func (az *Azure) NodePricing(key models.Key) (*models.Node, models.PricingMetada
 	}
 	config, _ := az.GetConfig()
 
-	// Spot Node
 	slv, ok := azKey.Labels[config.SpotLabel]
 	isSpot := ok && slv == config.SpotLabelValue && config.SpotLabel != "" && config.SpotLabelValue != ""
+
+	features := strings.Split(azKey.Features(), ",")
+	region := features[0]
+	instance := features[1]
+	var featureString string
 	if isSpot {
-		features := strings.Split(azKey.Features(), ",")
-		region := features[0]
-		instance := features[1]
-		spotFeatures := fmt.Sprintf("%s,%s,%s", region, instance, "spot")
-		if n, ok := az.Pricing[spotFeatures]; ok {
-			log.DedupedInfof(5, "Returning pricing for node %s: %+v from key %s", azKey, n, spotFeatures)
-			if azKey.isValidGPUNode() {
-				n.Node.GPU = "1" // TODO: support multiple GPUs
-			}
-			return n.Node, meta, nil
+		featureString = fmt.Sprintf("%s,%s,spot", region, instance)
+	} else {
+		featureString = azKey.Features()
+	}
+
+	if n, ok := az.Pricing[featureString]; ok {
+		log.Debugf("Returning pricing for node %s: %+v from key %s", azKey, n, azKey.Features())
+		if azKey.isValidGPUNode() {
+			n.Node.GPU = azKey.GetGPUCount()
 		}
-		log.Infof("[Info] found spot instance, trying to get retail price for %s: %s, ", spotFeatures, azKey)
-		spotCost, err := getRetailPrice(region, instance, config.CurrencyCode, true)
-		if err != nil {
-			log.DedupedWarningf(5, "failed to retrieve spot retail pricing")
-		} else {
-			gpu := ""
-			if azKey.isValidGPUNode() {
-				gpu = "1"
-			}
-			spotNode := &models.Node{
-				Cost:      spotCost,
+		return n.Node, meta, nil
+	}
+
+	cost, err := getRetailPrice(region, instance, config.CurrencyCode, isSpot)
+
+	if err != nil {
+		log.DedupedWarningf(5, "failed to retrieve retail pricing: %s", err)
+	} else {
+		gpu := ""
+		if azKey.isValidGPUNode() {
+			gpu = azKey.GetGPUCount()
+		}
+		var node *models.Node
+		if isSpot {
+			node = &models.Node{
+				Cost:      cost,
 				UsageType: "spot",
 				GPU:       gpu,
 			}
-			az.addPricing(spotFeatures, &AzurePricing{
-				Node: spotNode,
-			})
-			return spotNode, meta, nil
+		} else {
+			node = &models.Node{
+				Cost: cost,
+				GPU:  gpu,
+			}
 		}
+
+		az.addPricing(featureString, &AzurePricing{
+			Node: node,
+		})
+		return node, meta, nil
 	}
 
-	// Use the downloaded pricing data if possible. Otherwise, use default
-	// configured pricing data.
-	if pricingDataExists {
-		if n, ok := az.Pricing[azKey.Features()]; ok {
-			log.Debugf("Returning pricing for node %s: %+v from key %s", azKey, n, azKey.Features())
-			if azKey.isValidGPUNode() {
-				n.Node.GPU = azKey.GetGPUCount()
-			}
-			return n.Node, meta, nil
-		}
-		log.DedupedWarningf(5, "No pricing data found for node %s from key %s", azKey, azKey.Features())
-	}
+	log.DedupedWarningf(5, "No pricing data found for node %s from key %s", azKey, azKey.Features())
+
 	c, err := az.GetConfig()
 	if err != nil {
 		return nil, meta, fmt.Errorf("No default pricing data available")
