@@ -88,7 +88,19 @@ func NewCachingWatcher(restClient rest.Interface, resource string, resourceType 
 }
 
 func (c *CachingWatchController) GetAll() []interface{} {
-	return c.indexer.List()
+	list := c.indexer.List()
+
+	// since the indexer returns the as-is pointer to the resource,
+	// we deep copy the resources such that callers don't corrupt the
+	// index
+	cloneList := make([]interface{}, 0, len(list))
+	for _, v := range list {
+		if deepCopyable, ok := v.(rt.Object); ok {
+			cloneList = append(cloneList, deepCopyable.DeepCopyObject())
+		}
+	}
+
+	return cloneList
 }
 
 func (c *CachingWatchController) SetUpdateHandler(handler WatchHandler) WatchController {
