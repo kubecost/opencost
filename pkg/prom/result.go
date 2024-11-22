@@ -20,8 +20,8 @@ func DataFieldFormatErr(query string, promResponse interface{}) error {
 	return fmt.Errorf("Data field improperly formatted in prometheus response fetching query '%s'. Prometheus response: '%+v'", query, promResponse)
 }
 
-func DataPointFormatErr(query string, dataPoint interface{}) error {
-	return fmt.Errorf("Improperly formatted datapoint from Prometheus fetching query '%s'. Prometheus response: '%+v'", query, dataPoint)
+func DataPointFormatErr(query string, promResponse interface{}) error {
+	return fmt.Errorf("Improperly formatted datapoint from Prometheus fetching query '%s'. Prometheus response: '%+v'", query, promResponse)
 }
 
 func MetricFieldDoesNotExistErr(query string, promResponse interface{}) error {
