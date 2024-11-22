@@ -3790,6 +3790,7 @@ func getMockRawAllocationOnlyData(f float64) *RawAllocationOnlyData {
 	return &RawAllocationOnlyData{
 		CPUCoreUsageMax:  f,
 		RAMBytesUsageMax: f,
+		GPUUsageMax:      &f,
 	}
 }
 
