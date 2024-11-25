@@ -78,13 +78,13 @@ var diagnosticDefinitions map[string]*diagnosticDefinition = map[string]*diagnos
 		Label:       "Kubecost metrics available",
 		Description: "Determine if metrics from Kubecost are available during last 5 minutes.",
 	},
-	NodeExporterDiagnosticMetricID: {
-		ID:          NodeExporterDiagnosticMetricID,
-		QueryFmt:    `absent_over_time(node_cpu_seconds_total{%s}[5m] %s)`,
-		Label:       "Node-exporter metrics available",
-		Description: "Determine if metrics from node-exporter are available during last 5 minutes.",
-		DocLink:     fmt.Sprintf("%s#node-exporter-metrics-available", DocumentationBaseURL),
-	},
+	// NodeExporterDiagnosticMetricID: {
+	// 	ID:          NodeExporterDiagnosticMetricID,
+	// 	QueryFmt:    `absent_over_time(node_cpu_seconds_total{%s}[5m] %s)`,
+	// 	Label:       "Node-exporter metrics available",
+	// 	Description: "Determine if metrics from node-exporter are available during last 5 minutes.",
+	// 	DocLink:     fmt.Sprintf("%s#node-exporter-metrics-available", DocumentationBaseURL),
+	// },
 	CAdvisorLabelDiagnosticMetricID: {
 		ID:          CAdvisorLabelDiagnosticMetricID,
 		QueryFmt:    `absent_over_time(container_cpu_usage_seconds_total{container!="",pod!="", %s}[5m] %s)`,
