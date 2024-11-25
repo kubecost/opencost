@@ -234,7 +234,7 @@ const (
 	normalizationStr          = `max(count_over_time(kube_pod_container_resource_requests{resource="memory", unit="byte", %s}[%s] %s))`
 )
 
-func (cm *CostModel) ComputeCostData(cli prometheusClient.Client, cp costAnalyzerCloud.Provider, window string, offset string, filterNamespace string) (map[string]*CostData, error) {
+func (cm *CostModel) ComputeCostData(window string, offset string, filterNamespace string) (map[string]*CostData, error) {
 	queryRAMUsage := fmt.Sprintf(queryRAMUsageStr, env.GetPromClusterFilter(), window, offset, env.GetPromClusterLabel())
 	queryCPUUsage := fmt.Sprintf(queryCPUUsageStr, env.GetPromClusterFilter(), window, offset, env.GetPromClusterLabel())
 	queryNetZoneRequests := fmt.Sprintf(queryZoneNetworkUsage, env.GetPromClusterFilter(), window, "", env.GetPromClusterLabel())
@@ -246,7 +246,7 @@ func (cm *CostModel) ComputeCostData(cli prometheusClient.Client, cp costAnalyze
 	clusterID := env.GetClusterID()
 
 	// Submit all Prometheus queries asynchronously
-	ctx := prom.NewNamedContext(cli, prom.ComputeCostDataContextName)
+	ctx := prom.NewNamedContext(cm.PrometheusClient, prom.ComputeCostDataContextName)
 	resChRAMUsage := ctx.Query(queryRAMUsage)
 	resChCPUUsage := ctx.Query(queryCPUUsage)
 	resChNetZoneRequests := ctx.Query(queryNetZoneRequests)
@@ -312,7 +312,7 @@ func (cm *CostModel) ComputeCostData(cli prometheusClient.Client, cp costAnalyze
 		log.Warnf("ComputeCostData: continuing despite error parsing normalization values from %s: %s", queryNormalization, err.Error())
 	}
 
-	nodes, err := cm.GetNodeCost(cp)
+	nodes, err := cm.GetNodeCost()
 	if err != nil {
 		log.Warnf("GetNodeCost: no node cost model available: " + err.Error())
 		return nil, err
@@ -325,7 +325,7 @@ func (cm *CostModel) ComputeCostData(cli prometheusClient.Client, cp costAnalyze
 		log.Warnf("GetPVInfo: unable to get PV data: %s", err.Error())
 	}
 	if pvClaimMapping != nil {
-		err = addPVData(cm.Cache, pvClaimMapping, cp)
+		err = addPVData(cm.Cache, pvClaimMapping, cm.Provider)
 		if err != nil {
 			return nil, err
 		}
@@ -444,7 +444,7 @@ func (cm *CostModel) ComputeCostData(cli prometheusClient.Client, cp costAnalyze
 
 			var podNetCosts []*util.Vector
 			if usage, ok := networkUsageMap[ns+","+podName+","+clusterID]; ok {
-				netCosts, err := GetNetworkCost(usage, cp)
+				netCosts, err := GetNetworkCost(usage, cm.Provider)
 				if err != nil {
 					log.Debugf("Error pulling network costs: %s", err.Error())
 				} else {
@@ -679,12 +679,12 @@ func (cm *CostModel) ComputeCostData(cli prometheusClient.Client, cp costAnalyze
 		}
 	}
 
-	err = findDeletedNodeInfo(cli, missingNodes, window, "")
+	err = findDeletedNodeInfo(cm.PrometheusClient, missingNodes, window, "")
 	if err != nil {
 		log.Errorf("Error fetching historical node data: %s", err.Error())
 	}
 
-	err = findDeletedPodInfo(cli, missingContainers, window)
+	err = findDeletedPodInfo(cm.PrometheusClient, missingContainers, window)
 	if err != nil {
 		log.Errorf("Error fetching historical pod data: %s", err.Error())
 	}
@@ -979,8 +979,8 @@ func (cm *CostModel) GetPricingSourceCounts() (*costAnalyzerCloud.PricingMatchMe
 	}
 }
 
-func (cm *CostModel) GetNodeCost(cp costAnalyzerCloud.Provider) (map[string]*costAnalyzerCloud.Node, error) {
-	cfg, err := cp.GetConfig()
+func (cm *CostModel) GetNodeCost() (map[string]*costAnalyzerCloud.Node, error) {
+	cfg, err := cm.Provider.GetConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -999,7 +999,7 @@ func (cm *CostModel) GetNodeCost(cp costAnalyzerCloud.Provider) (map[string]*cos
 
 		pmd.TotalNodes++
 
-		cnode, _, err := cp.NodePricing(cp.GetKey(nodeLabels, n))
+		cnode, _, err := cm.Provider.NodePricing(cm.Provider.GetKey(nodeLabels, n))
 		if err != nil {
 			log.Infof("Error getting node pricing. Error: %s", err.Error())
 			if cnode != nil {
@@ -1089,7 +1089,7 @@ func (cm *CostModel) GetNodeCost(cp costAnalyzerCloud.Provider) (map[string]*cos
 		if newCnode.InstanceType == "rke2" {
 			log.Infof(
 				"Found a SUSE Rancher node %s, defaulting and skipping math",
-				cp.GetKey(nodeLabels, n).Features(),
+				cm.Provider.GetKey(nodeLabels, n).Features(),
 			)
 
 			defaultCPUCorePrice, err := strconv.ParseFloat(cfg.CPU, 64)
@@ -1141,7 +1141,7 @@ func (cm *CostModel) GetNodeCost(cp costAnalyzerCloud.Provider) (map[string]*cos
 			// the GPU is defined in the OnDemand pricing. Calculate ratios of
 			// CPU to RAM and GPU to RAM costs, then distribute the total node
 			// cost among the CPU, RAM, and GPU.
-			log.Tracef("GPU without cost found for %s, calculating...", cp.GetKey(nodeLabels, n).Features())
+			log.Tracef("GPU without cost found for %s, calculating...", cm.Provider.GetKey(nodeLabels, n).Features())
 
 			defaultCPU, err := strconv.ParseFloat(cfg.CPU, 64)
 			if err != nil {
@@ -1236,7 +1236,7 @@ func (cm *CostModel) GetNodeCost(cp costAnalyzerCloud.Provider) (map[string]*cos
 			// We reach this when no RAM cost is defined in the OnDemand
 			// pricing. It calculates a cpuToRAMRatio and ramMultiple to
 			// distrubte the total node cost among CPU and RAM costs.
-			log.Tracef("No RAM cost found for %s, calculating...", cp.GetKey(nodeLabels, n).Features())
+			log.Tracef("No RAM cost found for %s, calculating...", cm.Provider.GetKey(nodeLabels, n).Features())
 
 			defaultCPU, err := strconv.ParseFloat(cfg.CPU, 64)
 			if err != nil {
@@ -1332,13 +1332,13 @@ func (cm *CostModel) GetNodeCost(cp costAnalyzerCloud.Provider) (map[string]*cos
 		nodes[name] = &newCnode
 	}
 	cm.pricingMetadata = pmd
-	cp.ApplyReservedInstancePricing(nodes)
+	cm.Provider.ApplyReservedInstancePricing(nodes)
 
 	return nodes, nil
 }
 
 // TODO: drop some logs
-func (cm *CostModel) GetLBCost(cp costAnalyzerCloud.Provider) (map[serviceKey]*costAnalyzerCloud.LoadBalancer, error) {
+func (cm *CostModel) GetLBCost() (map[serviceKey]*costAnalyzerCloud.LoadBalancer, error) {
 	// for fetching prices from cloud provider
 	// cfg, err := cp.GetConfig()
 	// if err != nil {
@@ -1358,7 +1358,7 @@ func (cm *CostModel) GetLBCost(cp costAnalyzerCloud.Provider) (map[serviceKey]*c
 		}
 
 		if service.Spec.Type == "LoadBalancer" {
-			loadBalancer, err := cp.LoadBalancerPricing()
+			loadBalancer, err := cm.Provider.LoadBalancerPricing()
 			if err != nil {
 				return nil, err
 			}

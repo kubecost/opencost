@@ -453,8 +453,7 @@ func (cmme *CostModelMetricsEmitter) Start() bool {
 				cmme.NetworkInternetEgressRecorder.Set(networkCosts.InternetNetworkEgressCost)
 			}
 
-			// TODO: Pass PrometheusClient and CloudProvider into CostModel on instantiation so this isn't so awkward
-			data, err := cmme.Model.ComputeCostData(cmme.PrometheusClient, cmme.CloudProvider, "2m", "", "")
+			data, err := cmme.Model.ComputeCostData("2m", "", "")
 			if err != nil {
 				// For an error collection, we'll just log the length of the errors (ComputeCostData already logs the
 				// actual errors)
@@ -470,8 +469,7 @@ func (cmme *CostModelMetricsEmitter) Start() bool {
 				data = map[string]*CostData{}
 			}
 
-			// TODO: Pass CloudProvider into CostModel on instantiation so this isn't so awkward
-			nodes, err := cmme.Model.GetNodeCost(cmme.CloudProvider)
+			nodes, err := cmme.Model.GetNodeCost()
 			if err != nil {
 				log.Warnf("Error getting Node cost: %s", err)
 			}
@@ -570,8 +568,7 @@ func (cmme *CostModelMetricsEmitter) Start() bool {
 				nodeSeen[labelKey] = true
 			}
 
-			// TODO: Pass CloudProvider into CostModel on instantiation so this isn't so awkward
-			loadBalancers, err := cmme.Model.GetLBCost(cmme.CloudProvider)
+			loadBalancers, err := cmme.Model.GetLBCost()
 			if err != nil {
 				log.Warnf("Error getting LoadBalancer cost: %s", err)
 			}

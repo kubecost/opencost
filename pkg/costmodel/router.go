@@ -405,7 +405,7 @@ func (a *Accesses) CostDataModel(w http.ResponseWriter, r *http.Request, ps http
 		offset = "offset " + offset
 	}
 
-	data, err := a.Model.ComputeCostData(a.PrometheusClient, a.CloudProvider, window, offset, namespace)
+	data, err := a.Model.ComputeCostData(window, offset, namespace)
 
 	if fields != "" {
 		filteredData := filterFields(fields, data)
