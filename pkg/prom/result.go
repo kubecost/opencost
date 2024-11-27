@@ -17,19 +17,19 @@ var (
 )
 
 func DataFieldFormatErr(query string, promResponse interface{}) error {
-	return fmt.Errorf("Data field improperly formatted in prometheus response fetching query '%s'. Prometheus response: '%+v'", query, promResponse)
+	return fmt.Errorf("Error parsing Prometheus response: 'data' field improperly formatted. Query: '%s'. Response: '%+v'", query, promResponse)
 }
 
 func DataPointFormatErr(query string, promResponse interface{}) error {
-	return fmt.Errorf("Improperly formatted datapoint from Prometheus fetching query '%s'. Prometheus response: '%+v'", query, promResponse)
+	return fmt.Errorf("Error parsing Prometheus response: improperly formatted datapoint. Query: '%s'. Response: '%+v'", query, promResponse)
 }
 
 func MetricFieldDoesNotExistErr(query string, promResponse interface{}) error {
-	return fmt.Errorf("Metric field does not exist in data result vector fetching query '%s'. Prometheus response: '%+v'", query, promResponse)
+	return fmt.Errorf("Error parsing Prometheus Response: 'metric' field does not exist in data result vector. Query: '%s'. Response: '%+v'", query, promResponse)
 }
 
 func MetricFieldFormatErr(query string, promResponse interface{}) error {
-	return fmt.Errorf("Metric field is improperly formatted fetching query '%s'. Prometheus response: '%+v'", query, promResponse)
+	return fmt.Errorf("Error parsing Prometheus response: 'metric' field improperly formatted. Query: '%s'. Response: '%+v'", query, promResponse)
 }
 
 func NoDataErr(query string) error {
@@ -37,7 +37,7 @@ func NoDataErr(query string) error {
 }
 
 func PromUnexpectedResponseErr(query string, promResponse interface{}) error {
-	return fmt.Errorf("Unexpected response from Prometheus fetching query '%s'. Prometheus response: '%+v'", query, promResponse)
+	return fmt.Errorf("Error parsing Prometheus response: unexpected response. Query: '%s'. Response: '%+v'", query, promResponse)
 }
 
 func QueryResultNilErr(query string) error {
@@ -45,23 +45,23 @@ func QueryResultNilErr(query string) error {
 }
 
 func ResultFieldDoesNotExistErr(query string, promResponse interface{}) error {
-	return fmt.Errorf("Result field not does not exist in prometheus response fetching query '%s'. Prometheus response: '%+v'", query, promResponse)
+	return fmt.Errorf("Error parsing Prometheus response: 'result' field does not exist. Query: '%s'. Response: '%+v'", query, promResponse)
 }
 
 func ResultFieldFormatErr(query string, promResponse interface{}) error {
-	return fmt.Errorf("Result field improperly formatted in prometheus response fetching query '%s'. Prometheus response: '%+v'", query, promResponse)
+	return fmt.Errorf("Error parsing Prometheus response: 'result' field improperly formatted. Query: '%s'. Response: '%+v'", query, promResponse)
 }
 
 func ResultFormatErr(query string, promResponse interface{}) error {
-	return fmt.Errorf("Result is improperly formatted fetching query '%s'. Prometheus response: '%+v'", query, promResponse)
+	return fmt.Errorf("Error parsing Prometheus response: 'result' field improperly formatted. Query: '%s'. Response: '%+v'", query, promResponse)
 }
 
 func ValueFieldDoesNotExistErr(query string, promResponse interface{}) error {
-	return fmt.Errorf("Value field does not exist in data result vector fetching query '%s'. Prometheus response: '%+v'", query, promResponse)
+	return fmt.Errorf("Error parsing Prometheus response: 'value' field does not exist in data result vector. Query: '%s'. Response: '%+v'", query, promResponse)
 }
 
 func ValueFieldFormatErr(query string) error {
-	return fmt.Errorf("Values field is improperly formatted fetching query '%s'", query)
+	return fmt.Errorf("Error parsing Prometheus response: 'values' field improperly formatted. Query: '%s'", query)
 }
 
 // QueryResultsChan is a channel of query results
