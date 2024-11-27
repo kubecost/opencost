@@ -60,10 +60,6 @@ func ValueFieldDoesNotExistErr(query string, promResponse interface{}) error {
 	return fmt.Errorf("Error parsing Prometheus response: 'value' field does not exist in data result vector. Query: '%s'. Response: '%+v'", query, promResponse)
 }
 
-func ValueFieldFormatErr(query string) error {
-	return fmt.Errorf("Error parsing Prometheus response: 'values' field improperly formatted. Query: '%s'", query)
-}
-
 // QueryResultsChan is a channel of query results
 type QueryResultsChan chan *QueryResults
 
