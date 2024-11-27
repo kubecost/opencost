@@ -9,6 +9,7 @@ Official list of [OpenCost Maintainers](https://github.com/orgs/opencost/teams/o
 | Ajay Tripathy | @AjayTripathy | Kubecost | <Ajay@kubecost.com> |
 | Alex Meijer | @ameijer | Kubecost | <ameijer@kubecost.com> |
 | Artur Khantimirov | @r2k1 | Microsoft | <akhantimirov@microsoft.com> |
+| Cliff Colvin | @cliffcolvin | Kubecost | <ccolvin@kubecost.com> |
 | Matt Bolt | @​mbolt35 | Kubecost | <matt@kubecost.com> |
 | Niko Kovacevic | @nikovacevic | Kubecost | <niko@kubecost.com> |
 | Sean Holcomb | @Sean-Holcomb | Kubecost | <Sean@kubecost.com> |
