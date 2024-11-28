@@ -3784,12 +3784,38 @@ func TestRawAllocationOnlyData_SanitizeNaN(t *testing.T) {
 	raw.SanitizeNaN()
 	v := reflect.ValueOf(*raw)
 	checkAllFloat64sForNaN(t, v, "TestRawAllocationOnlyData_SanitizeNaN")
+
+	nan := math.NaN()
+	nilRawAllocation := &RawAllocationOnlyData{
+		CPUCoreUsageMax:  nan,
+		RAMBytesUsageMax: nan,
+		GPUUsageMax:      &nan,
+	}
+
+	nilRawAllocation.SanitizeNaN()
+
+	// SanitizeNaN allocates nil if NaN is passed
+	if nilRawAllocation.GPUUsageMax != nil {
+		t.Fatalf("want: nil, got: %v", nilRawAllocation.GPUUsageMax)
+	}
+
+	// SanitizeNaN allocates 0.0 if NaN is passed
+	if nilRawAllocation.CPUCoreUsageMax != 0.0 {
+		t.Fatalf("want: 0.0, got: %v", nilRawAllocation.CPUCoreUsageMax)
+	}
+
+	// SanitizeNaN allocates 0.0 if NaN is passed
+	if nilRawAllocation.RAMBytesUsageMax != 0.0 {
+		t.Fatalf("want: 0.0, got: %v", nilRawAllocation.RAMBytesUsageMax)
+	}
+
 }
 
 func getMockRawAllocationOnlyData(f float64) *RawAllocationOnlyData {
 	return &RawAllocationOnlyData{
 		CPUCoreUsageMax:  f,
 		RAMBytesUsageMax: f,
+		GPUUsageMax:      &f,
 	}
 }
 

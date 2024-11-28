@@ -58,8 +58,8 @@ func (sa *SummaryAllocation) ToResponse() *SummaryAllocationResponse {
 		CPUCoreUsageAverage:    formatutil.Float64ToResponse(sa.CPUCoreUsageAverage),
 		CPUCost:                formatutil.Float64ToResponse(sa.CPUCost),
 		CPUCostIdle:            formatutil.Float64ToResponse(sa.CPUCostIdle),
-		GPURequestAverage:      formatutil.Float64ToResponse(sa.GPURequestAverage),
-		GPUUsageAverage:        formatutil.Float64ToResponse(sa.GPUUsageAverage),
+		GPURequestAverage:      sa.GPURequestAverage, // already in *float64
+		GPUUsageAverage:        sa.GPUUsageAverage,   // already in *float64
 		GPUCost:                formatutil.Float64ToResponse(sa.GPUCost),
 		GPUCostIdle:            formatutil.Float64ToResponse(sa.GPUCostIdle),
 		NetworkCost:            formatutil.Float64ToResponse(sa.NetworkCost),

@@ -13,11 +13,12 @@ package opencost
 
 import (
 	"fmt"
-	util "github.com/opencost/opencost/core/pkg/util"
 	"reflect"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/opencost/opencost/core/pkg/util"
 )
 
 const (
@@ -40,7 +41,7 @@ const (
 	AssetsCodecVersion uint8 = 21
 
 	// AllocationCodecVersion is used for any resources listed in the Allocation version set
-	AllocationCodecVersion uint8 = 22
+	AllocationCodecVersion uint8 = 23
 
 	// CloudCostCodecVersion is used for any resources listed in the CloudCost version set
 	CloudCostCodecVersion uint8 = 3
@@ -72,6 +73,7 @@ var typeMap map[string]reflect.Type = map[string]reflect.Type{
 	"Coverage":              reflect.TypeOf((*Coverage)(nil)).Elem(),
 	"CoverageSet":           reflect.TypeOf((*CoverageSet)(nil)).Elem(),
 	"Disk":                  reflect.TypeOf((*Disk)(nil)).Elem(),
+	"GPUAllocation":         reflect.TypeOf((*GPUAllocation)(nil)).Elem(),
 	"LbAllocation":          reflect.TypeOf((*LbAllocation)(nil)).Elem(),
 	"LoadBalancer":          reflect.TypeOf((*LoadBalancer)(nil)).Elem(),
 	"Network":               reflect.TypeOf((*Network)(nil)).Elem(),
@@ -456,8 +458,22 @@ func (target *Allocation) MarshalBinaryWithContext(ctx *EncodingContext) (err er
 	}
 	// --- [end][write][alias](LbAllocations) ---
 
-	buff.WriteFloat64(target.GPURequestAverage) // write float64
-	buff.WriteFloat64(target.GPUUsageAverage)   // write float64
+	buff.WriteFloat64(target.deprecatedGPURequestAverage) // write float64
+	buff.WriteFloat64(target.deprecatedGPUUsageAverage)   // write float64
+	if target.GPUAllocation == nil {
+		buff.WriteUInt8(uint8(0)) // write nil byte
+	} else {
+		buff.WriteUInt8(uint8(1)) // write non-nil byte
+
+		// --- [begin][write][struct](GPUAllocation) ---
+		buff.WriteInt(0) // [compatibility, unused]
+		errI := target.GPUAllocation.MarshalBinaryWithContext(ctx)
+		if errI != nil {
+			return errI
+		}
+		// --- [end][write][struct](GPUAllocation) ---
+
+	}
 	return nil
 }
 
@@ -773,19 +789,45 @@ func (target *Allocation) UnmarshalBinaryWithContext(ctx *DecodingContext) (err 
 	// field version check
 	if uint8(22) <= version {
 		fff := buff.ReadFloat64() // read float64
-		target.GPURequestAverage = fff
+		target.deprecatedGPURequestAverage = fff
 
 	} else {
-		target.GPURequestAverage = float64(0) // default
+		target.deprecatedGPURequestAverage = float64(0) // default
 	}
 
 	// field version check
 	if uint8(22) <= version {
 		ggg := buff.ReadFloat64() // read float64
-		target.GPUUsageAverage = ggg
+		target.deprecatedGPUUsageAverage = ggg
 
 	} else {
-		target.GPUUsageAverage = float64(0) // default
+		target.deprecatedGPUUsageAverage = float64(0) // default
+	}
+
+	// field version check
+	if uint8(23) <= version {
+		if buff.ReadUInt8() == uint8(0) {
+			target.GPUAllocation = nil
+		} else {
+			// --- [begin][read][struct](GPUAllocation) ---
+			hhh := &GPUAllocation{}
+			buff.ReadInt() // [compatibility, unused]
+			errI := hhh.UnmarshalBinaryWithContext(ctx)
+			if errI != nil {
+				return errI
+			}
+			target.GPUAllocation = hhh
+			// --- [end][read][struct](GPUAllocation) ---
+
+		}
+	} else {
+		target.GPUAllocation = nil
+
+	}
+
+	// execute migration func if version delta detected
+	if version != AllocationCodecVersion {
+		migrateAllocation(target, version, AllocationCodecVersion)
 	}
 
 	return nil
@@ -5487,6 +5529,196 @@ func (target *Disk) UnmarshalBinaryWithContext(ctx *DecodingContext) (err error)
 }
 
 //--------------------------------------------------------------------------
+//  GPUAllocation
+//--------------------------------------------------------------------------
+
+// MarshalBinary serializes the internal properties of this GPUAllocation instance
+// into a byte array
+func (target *GPUAllocation) MarshalBinary() (data []byte, err error) {
+	ctx := &EncodingContext{
+		Buffer: util.NewBuffer(),
+		Table:  nil,
+	}
+
+	e := target.MarshalBinaryWithContext(ctx)
+	if e != nil {
+		return nil, e
+	}
+
+	encBytes := ctx.Buffer.Bytes()
+	return encBytes, nil
+}
+
+// MarshalBinaryWithContext serializes the internal properties of this GPUAllocation instance
+// into a byte array leveraging a predefined context.
+func (target *GPUAllocation) MarshalBinaryWithContext(ctx *EncodingContext) (err error) {
+	// panics are recovered and propagated as errors
+	defer func() {
+		if r := recover(); r != nil {
+			if e, ok := r.(error); ok {
+				err = e
+			} else if s, ok := r.(string); ok {
+				err = fmt.Errorf("Unexpected panic: %s", s)
+			} else {
+				err = fmt.Errorf("Unexpected panic: %+v", r)
+			}
+		}
+	}()
+
+	buff := ctx.Buffer
+	buff.WriteUInt8(AllocationCodecVersion) // version
+
+	if ctx.IsStringTable() {
+		a := ctx.Table.AddOrGet(target.GPUDevice)
+		buff.WriteInt(a) // write table index
+	} else {
+		buff.WriteString(target.GPUDevice) // write string
+	}
+	if ctx.IsStringTable() {
+		b := ctx.Table.AddOrGet(target.GPUModel)
+		buff.WriteInt(b) // write table index
+	} else {
+		buff.WriteString(target.GPUModel) // write string
+	}
+	if ctx.IsStringTable() {
+		c := ctx.Table.AddOrGet(target.GPUUUID)
+		buff.WriteInt(c) // write table index
+	} else {
+		buff.WriteString(target.GPUUUID) // write string
+	}
+	if target.IsGPUShared == nil {
+		buff.WriteUInt8(uint8(0)) // write nil byte
+	} else {
+		buff.WriteUInt8(uint8(1)) // write non-nil byte
+
+		buff.WriteBool(*target.IsGPUShared) // write bool
+	}
+	if target.GPUUsageAverage == nil {
+		buff.WriteUInt8(uint8(0)) // write nil byte
+	} else {
+		buff.WriteUInt8(uint8(1)) // write non-nil byte
+
+		buff.WriteFloat64(*target.GPUUsageAverage) // write float64
+	}
+	if target.GPURequestAverage == nil {
+		buff.WriteUInt8(uint8(0)) // write nil byte
+	} else {
+		buff.WriteUInt8(uint8(1)) // write non-nil byte
+
+		buff.WriteFloat64(*target.GPURequestAverage) // write float64
+	}
+	return nil
+}
+
+// UnmarshalBinary uses the data passed byte array to set all the internal properties of
+// the GPUAllocation type
+func (target *GPUAllocation) UnmarshalBinary(data []byte) error {
+	var table []string
+	buff := util.NewBufferFromBytes(data)
+
+	// string table header validation
+	if isBinaryTag(data, BinaryTagStringTable) {
+		buff.ReadBytes(len(BinaryTagStringTable)) // strip tag length
+		tl := buff.ReadInt()                      // table length
+		if tl > 0 {
+			table = make([]string, tl, tl)
+			for i := 0; i < tl; i++ {
+				table[i] = buff.ReadString()
+			}
+		}
+	}
+
+	ctx := &DecodingContext{
+		Buffer: buff,
+		Table:  table,
+	}
+
+	err := target.UnmarshalBinaryWithContext(ctx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// UnmarshalBinaryWithContext uses the context containing a string table and binary buffer to set all the internal properties of
+// the GPUAllocation type
+func (target *GPUAllocation) UnmarshalBinaryWithContext(ctx *DecodingContext) (err error) {
+	// panics are recovered and propagated as errors
+	defer func() {
+		if r := recover(); r != nil {
+			if e, ok := r.(error); ok {
+				err = e
+			} else if s, ok := r.(string); ok {
+				err = fmt.Errorf("Unexpected panic: %s", s)
+			} else {
+				err = fmt.Errorf("Unexpected panic: %+v", r)
+			}
+		}
+	}()
+
+	buff := ctx.Buffer
+	version := buff.ReadUInt8()
+
+	if version > AllocationCodecVersion {
+		return fmt.Errorf("Invalid Version Unmarshaling GPUAllocation. Expected %d or less, got %d", AllocationCodecVersion, version)
+	}
+
+	var b string
+	if ctx.IsStringTable() {
+		c := buff.ReadInt() // read string index
+		b = ctx.Table[c]
+	} else {
+		b = buff.ReadString() // read string
+	}
+	a := b
+	target.GPUDevice = a
+
+	var e string
+	if ctx.IsStringTable() {
+		f := buff.ReadInt() // read string index
+		e = ctx.Table[f]
+	} else {
+		e = buff.ReadString() // read string
+	}
+	d := e
+	target.GPUModel = d
+
+	var h string
+	if ctx.IsStringTable() {
+		k := buff.ReadInt() // read string index
+		h = ctx.Table[k]
+	} else {
+		h = buff.ReadString() // read string
+	}
+	g := h
+	target.GPUUUID = g
+
+	if buff.ReadUInt8() == uint8(0) {
+		target.IsGPUShared = nil
+	} else {
+		l := buff.ReadBool() // read bool
+		target.IsGPUShared = &l
+
+	}
+	if buff.ReadUInt8() == uint8(0) {
+		target.GPUUsageAverage = nil
+	} else {
+		m := buff.ReadFloat64() // read float64
+		target.GPUUsageAverage = &m
+
+	}
+	if buff.ReadUInt8() == uint8(0) {
+		target.GPURequestAverage = nil
+	} else {
+		n := buff.ReadFloat64() // read float64
+		target.GPURequestAverage = &n
+
+	}
+	return nil
+}
+
+//--------------------------------------------------------------------------
 //  LbAllocation
 //--------------------------------------------------------------------------
 
@@ -7012,6 +7244,13 @@ func (target *RawAllocationOnlyData) MarshalBinaryWithContext(ctx *EncodingConte
 
 	buff.WriteFloat64(target.CPUCoreUsageMax)  // write float64
 	buff.WriteFloat64(target.RAMBytesUsageMax) // write float64
+	if target.GPUUsageMax == nil {
+		buff.WriteUInt8(uint8(0)) // write nil byte
+	} else {
+		buff.WriteUInt8(uint8(1)) // write non-nil byte
+
+		buff.WriteFloat64(*target.GPUUsageMax) // write float64
+	}
 	return nil
 }
 
@@ -7074,6 +7313,20 @@ func (target *RawAllocationOnlyData) UnmarshalBinaryWithContext(ctx *DecodingCon
 
 	b := buff.ReadFloat64() // read float64
 	target.RAMBytesUsageMax = b
+
+	// field version check
+	if uint8(23) <= version {
+		if buff.ReadUInt8() == uint8(0) {
+			target.GPUUsageMax = nil
+		} else {
+			c := buff.ReadFloat64() // read float64
+			target.GPUUsageMax = &c
+
+		}
+	} else {
+		target.GPUUsageMax = nil
+
+	}
 
 	return nil
 }

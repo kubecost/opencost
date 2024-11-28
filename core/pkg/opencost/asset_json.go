@@ -531,8 +531,12 @@ func (n *Node) InterfaceToNode(itf interface{}) error {
 
 	// parse labels map to AssetLabels
 	labels := make(map[string]string)
-	for k, v := range fmap["labels"].(map[string]interface{}) {
-		labels[k] = v.(string)
+	if labelsInterface, ok := fmap["labels"].(map[string]interface{}); ok {
+		for k, v := range labelsInterface {
+			if strValue, ok := v.(string); ok {
+				labels[k] = strValue
+			}
+		}
 	}
 
 	// parse start and end strings to time.Time
