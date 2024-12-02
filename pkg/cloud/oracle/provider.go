@@ -255,7 +255,7 @@ func (o *Oracle) Regions() []string {
 		log.Debugf("Overriding Oracle regions with configured region list: %+v", regionOverrides)
 		return regionOverrides
 	}
-	return oracleRegions
+	return oracleRegions()
 }
 
 func (o *Oracle) PricingSourceSummary() interface{} {

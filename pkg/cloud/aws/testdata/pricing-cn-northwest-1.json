@@ -1,0 +1,54 @@
+{
+  "formatVersion": "v1.0",
+  "disclaimer": "This pricing list is for informational purposes only. All prices are subject to the additional terms included in the pricing pages on http://www.amazonaws.cn.",
+  "offerCode": "AmazonEC2",
+  "version": "20230314154740",
+  "publicationDate": "2023-03-14T15:47:40Z",
+  "products": {
+    "R83VXG9NAPDASEGN": {
+      "sku": "R83VXG9NAPDASEGN",
+      "productFamily": "Storage",
+      "attributes": {
+        "servicecode": "AmazonEC2",
+        "location": "China (Ningxia)",
+        "locationType": "AWS Region",
+        "storageMedia": "SSD-backed",
+        "volumeType": "General Purpose",
+        "maxVolumeSize": "16 TiB",
+        "maxIopsvolume": "16000",
+        "maxThroughputvolume": "1000 MiB/s",
+        "usagetype": "CNW1-EBS:VolumeUsage.gp3",
+        "operation": "",
+        "regionCode": "cn-northwest-1",
+        "servicename": "Amazon Elastic Compute Cloud",
+        "volumeApiName": "gp3"
+      }
+    }
+  },
+  "terms": {
+    "OnDemand": {
+      "R83VXG9NAPDASEGN": {
+        "R83VXG9NAPDASEGN.5Y9WH78GDR": {
+          "offerTermCode": "5Y9WH78GDR",
+          "sku": "R83VXG9NAPDASEGN",
+          "effectiveDate": "2023-03-01T00:00:00Z",
+          "priceDimensions": {
+            "R83VXG9NAPDASEGN.5Y9WH78GDR.Q7UJUT2CE6": {
+              "rateCode": "R83VXG9NAPDASEGN.5Y9WH78GDR.Q7UJUT2CE6",
+              "description": "0.5312 CNY per GB-month of General Purpose (gp3) provisioned storage - China (Ningxia)",
+              "beginRange": "0",
+              "endRange": "Inf",
+              "unit": "GB-Mo",
+              "pricePerUnit": {
+                "CNY": "0.5312000000"
+              },
+              "appliesTo": []
+            }
+          },
+          "termAttributes": {}
+        }
+      }
+    }
+  },
+  "attributesList": {}
+}

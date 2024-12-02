@@ -30,8 +30,8 @@ type SummaryAllocation struct {
 	CPUCoreUsageAverage    float64               `json:"cpuCoreUsageAverage"`
 	CPUCost                float64               `json:"cpuCost"`
 	CPUCostIdle            float64               `json:"cpuCostIdle"`
-	GPURequestAverage      float64               `json:"gpuRequestAverage"`
-	GPUUsageAverage        float64               `json:"gpuUsageAverage"`
+	GPURequestAverage      *float64              `json:"gpuRequestAverage"`
+	GPUUsageAverage        *float64              `json:"gpuUsageAverage"`
 	GPUCost                float64               `json:"gpuCost"`
 	GPUCostIdle            float64               `json:"gpuCostIdle"`
 	NetworkCost            float64               `json:"networkCost"`
@@ -57,6 +57,12 @@ func NewSummaryAllocation(alloc *Allocation, reconcile, reconcileNetwork bool) *
 		return nil
 	}
 
+	var gpuRequestAvg, gpuUsageAvg *float64
+	if alloc.GPUAllocation != nil {
+		gpuRequestAvg = alloc.GPUAllocation.GPURequestAverage
+		gpuUsageAvg = alloc.GPUAllocation.GPUUsageAverage
+	}
+
 	sa := &SummaryAllocation{
 		Name:                   alloc.Name,
 		Properties:             alloc.Properties,
@@ -65,8 +71,8 @@ func NewSummaryAllocation(alloc *Allocation, reconcile, reconcileNetwork bool) *
 		CPUCoreRequestAverage:  alloc.CPUCoreRequestAverage,
 		CPUCoreUsageAverage:    alloc.CPUCoreUsageAverage,
 		CPUCost:                alloc.CPUCost + alloc.CPUCostAdjustment,
-		GPURequestAverage:      alloc.GPURequestAverage,
-		GPUUsageAverage:        alloc.GPUUsageAverage,
+		GPURequestAverage:      gpuRequestAvg,
+		GPUUsageAverage:        gpuUsageAvg,
 		GPUCost:                alloc.GPUCost + alloc.GPUCostAdjustment,
 		NetworkCost:            alloc.NetworkCost + alloc.NetworkCostAdjustment,
 		LoadBalancerCost:       alloc.LoadBalancerCost + alloc.LoadBalancerCostAdjustment,
@@ -128,11 +134,37 @@ func (sa *SummaryAllocation) Add(that *SummaryAllocation) error {
 	ramUseByteMins := sa.RAMBytesUsageAverage * sa.Minutes()
 	ramUseByteMins += that.RAMBytesUsageAverage * that.Minutes()
 
-	gpuReqMins := sa.GPURequestAverage * sa.Minutes()
-	gpuReqMins += that.GPURequestAverage * that.Minutes()
+	var gpuReqMins *float64 = nil
+	if sa.GPURequestAverage != nil {
+		result := *sa.GPURequestAverage * sa.Minutes()
+		gpuReqMins = &result
+	}
 
-	gpuUseMins := sa.GPUUsageAverage * sa.Minutes()
-	gpuUseMins += that.GPUUsageAverage * that.Minutes()
+	if sa.GPURequestAverage != nil && that.GPURequestAverage != nil {
+		if gpuReqMins == nil {
+			result := *that.GPURequestAverage * that.Minutes()
+			gpuReqMins = &result
+		} else {
+			result := *gpuReqMins + *that.GPURequestAverage*that.Minutes()
+			gpuReqMins = &result
+		}
+	}
+
+	var gpuUseMins *float64 = nil
+	if sa.GPUUsageAverage != nil {
+		result := *sa.GPUUsageAverage * sa.Minutes()
+		gpuUseMins = &result
+	}
+
+	if that.GPUUsageAverage != nil {
+		if gpuUseMins == nil {
+			result := *that.GPUUsageAverage * that.Minutes()
+			gpuUseMins = &result
+		} else {
+			result := *gpuUseMins + *that.GPUUsageAverage*that.Minutes()
+			gpuUseMins = &result
+		}
+	}
 
 	// Expand Start and End to be the "max" of among the given Allocations
 	if that.Start.Before(sa.Start) {
@@ -148,15 +180,27 @@ func (sa *SummaryAllocation) Add(that *SummaryAllocation) error {
 		sa.CPUCoreUsageAverage = cpuUseCoreMins / sa.Minutes()
 		sa.RAMBytesRequestAverage = ramReqByteMins / sa.Minutes()
 		sa.RAMBytesUsageAverage = ramUseByteMins / sa.Minutes()
-		sa.GPURequestAverage = gpuReqMins / sa.Minutes()
-		sa.GPUUsageAverage = gpuUseMins / sa.Minutes()
+
+		var gpuReqAvgVal, gpuUsageAvgVal *float64
+		if gpuReqMins != nil {
+			result := *gpuReqMins / sa.Minutes()
+			gpuReqAvgVal = &result
+		}
+
+		if gpuUseMins != nil {
+			result := *gpuUseMins / sa.Minutes()
+			gpuUsageAvgVal = &result
+		}
+
+		sa.GPURequestAverage = gpuReqAvgVal
+		sa.GPUUsageAverage = gpuUsageAvgVal
 	} else {
 		sa.CPUCoreRequestAverage = 0.0
 		sa.CPUCoreUsageAverage = 0.0
 		sa.RAMBytesRequestAverage = 0.0
 		sa.RAMBytesUsageAverage = 0.0
-		sa.GPURequestAverage = 0.0
-		sa.GPUUsageAverage = 0.0
+		sa.GPURequestAverage = nil
+		sa.GPUUsageAverage = nil
 	}
 
 	// Sum all cumulative cost fields

@@ -187,6 +187,9 @@ const ScalewayProvider = "Scaleway"
 // OracleProvider describes the provider Oracle
 const OracleProvider = "Oracle"
 
+// OTCProvider describes the provider OTC
+const OTCProvider = "OTC"
+
 // NilProvider describes unknown provider
 const NilProvider = "-"
 
