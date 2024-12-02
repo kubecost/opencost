@@ -25,7 +25,7 @@ func DataPointFormatErr(query string, promResponse interface{}) error {
 }
 
 func MetricFieldDoesNotExistErr(query string, promResponse interface{}) error {
-	return fmt.Errorf("Error parsing Prometheus Response: 'metric' field does not exist in data result vector. Query: '%s'. Response: '%+v'", query, promResponse)
+	return fmt.Errorf("Error parsing Prometheus response: 'metric' field does not exist in data result vector. Query: '%s'. Response: '%+v'", query, promResponse)
 }
 
 func MetricFieldFormatErr(query string, promResponse interface{}) error {
