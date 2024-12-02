@@ -667,7 +667,13 @@ func applyGPUUsage(podMap map[podKey]*pod, resGPUUsageAvgOrMax []*prom.QueryResu
 					thisPod.Allocations[container].GPUAllocation.GPUUsageAverage = &res.Values[0].Value
 				}
 			case GpuUsageMaxMode:
-				thisPod.Allocations[container].RawAllocationOnly.GPUUsageMax = &res.Values[0].Value
+				if thisPod.Allocations[container].RawAllocationOnly == nil {
+					thisPod.Allocations[container].RawAllocationOnly = &opencost.RawAllocationOnlyData{
+						GPUUsageMax: &res.Values[0].Value,
+					}
+				} else {
+					thisPod.Allocations[container].RawAllocationOnly.GPUUsageMax = &res.Values[0].Value
+				}
 			case GpuIsSharedMode:
 				// if a container is using a GPU and it is shared, isGPUShared will be true
 				// if a container is using GPU and it is NOT shared, isGPUShared will be false
@@ -768,13 +774,6 @@ func applyGPUsAllocated(podMap map[podKey]*pod, resGPUsRequested []*prom.QueryRe
 				}
 			} else {
 				thisPod.Allocations[container].GPUAllocation.GPURequestAverage = &res.Values[0].Value
-				if thisPod.Allocations[container].GPUAllocation == nil {
-					thisPod.Allocations[container].GPUAllocation = &opencost.GPUAllocation{
-						GPURequestAverage: &res.Values[0].Value,
-					}
-				} else {
-					thisPod.Allocations[container].GPUAllocation.GPURequestAverage = &res.Values[0].Value
-				}
 			}
 		}
 	}
