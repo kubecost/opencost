@@ -16,6 +16,7 @@ import (
 	"github.com/opencost/opencost/pkg/cloud/models"
 	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/opencost/opencost/pkg/env"
+	v1 "k8s.io/api/core/v1"
 )
 
 // OTC node pricing attributes
