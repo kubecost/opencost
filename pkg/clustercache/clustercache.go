@@ -2,11 +2,13 @@ package clustercache
 
 import (
 	"sync"
+	"time"
 
 	"github.com/opencost/opencost/core/pkg/log"
 	"github.com/opencost/opencost/pkg/env"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -24,14 +26,15 @@ type Namespace struct {
 }
 
 type Pod struct {
-	UID             types.UID
-	Name            string
-	Namespace       string
-	Labels          map[string]string
-	Annotations     map[string]string
-	OwnerReferences []metav1.OwnerReference
-	Status          PodStatus
-	Spec            PodSpec
+	UID               types.UID
+	Name              string
+	Namespace         string
+	Labels            map[string]string
+	Annotations       map[string]string
+	OwnerReferences   []metav1.OwnerReference
+	Status            PodStatus
+	Spec              PodSpec
+	DeletionTimestamp *time.Time
 }
 
 type PodStatus struct {
@@ -40,9 +43,10 @@ type PodStatus struct {
 }
 
 type PodSpec struct {
-	NodeName   string
-	Containers []Container
-	Volumes    []v1.Volume
+	NodeName      string
+	Containers    []Container
+	Volumes       []v1.Volume
+	RestartPolicy v1.RestartPolicy
 }
 
 type Container struct {
@@ -77,30 +81,41 @@ type Deployment struct {
 	Name                    string
 	Namespace               string
 	Labels                  map[string]string
+	Annotations             map[string]string
 	MatchLabels             map[string]string
 	SpecSelector            *metav1.LabelSelector
 	SpecReplicas            *int32
+	SpecStrategy            appsv1.DeploymentStrategy
 	StatusAvailableReplicas int32
+	PodSpec                 PodSpec
 }
 
 type StatefulSet struct {
 	Name         string
 	Namespace    string
+	Labels       map[string]string
+	Annotations  map[string]string
 	SpecSelector *metav1.LabelSelector
+	SpecReplicas *int32
+	PodSpec      PodSpec
 }
 
 type PersistentVolumeClaim struct {
 	Name        string
 	Namespace   string
 	Spec        v1.PersistentVolumeClaimSpec
+	Labels      map[string]string
 	Annotations map[string]string
 }
 
 type StorageClass struct {
 	Name        string
+	Labels      map[string]string
 	Annotations map[string]string
 	Parameters  map[string]string
 	Provisioner string
+	TypeMeta    metav1.TypeMeta
+	Size        int
 }
 
 type Job struct {
@@ -118,11 +133,52 @@ type PersistentVolume struct {
 	Status      v1.PersistentVolumeStatus
 }
 
-type ReplicationController struct{}
+type ReplicationController struct {
+	Name      string
+	Namespace string
+	Spec      v1.ReplicationControllerSpec
+}
 
-type PodDisruptionBudget struct{}
+type PodDisruptionBudget struct {
+	Name      string
+	Namespace string
+	Spec      policyv1.PodDisruptionBudgetSpec
+	Status    policyv1.PodDisruptionBudgetStatus
+}
+
 type ReplicaSet struct {
+	Name         string
+	Namespace    string
 	SpecSelector *metav1.LabelSelector
+	Spec         appsv1.ReplicaSetSpec
+}
+
+type Volume struct {
+}
+
+// GetControllerOf returns a pointer to a copy of the controllerRef if controllee has a controller
+func GetControllerOf(pod *Pod) *metav1.OwnerReference {
+	ref := GetControllerOfNoCopy(pod)
+	if ref == nil {
+		return nil
+	}
+	cp := *ref
+	cp.Controller = ptr.To(*ref.Controller)
+	if ref.BlockOwnerDeletion != nil {
+		cp.BlockOwnerDeletion = ptr.To(*ref.BlockOwnerDeletion)
+	}
+	return &cp
+}
+
+// GetControllerOfNoCopy returns a pointer to the controllerRef if controllee has a controller
+func GetControllerOfNoCopy(pod *Pod) *metav1.OwnerReference {
+	refs := pod.OwnerReferences
+	for i := range refs {
+		if refs[i].Controller != nil && *refs[i].Controller {
+			return &refs[i]
+		}
+	}
+	return nil
 }
 
 func transformNamespace(input *v1.Namespace) *Namespace {
@@ -153,23 +209,34 @@ func transformPodSpec(input v1.PodSpec) PodSpec {
 		containers[i] = transformPodContainer(container)
 	}
 	return PodSpec{
-		NodeName:   input.NodeName,
-		Containers: containers,
-		Volumes:    input.Volumes,
+		NodeName:      input.NodeName,
+		Containers:    containers,
+		Volumes:       input.Volumes,
+		RestartPolicy: input.RestartPolicy,
 	}
 
 }
 
+func transformTimestamp(input *metav1.Time) *time.Time {
+	if input == nil {
+		return nil
+	}
+
+	t := input.Time
+	return &t
+}
+
 func transformPod(input *v1.Pod) *Pod {
 	return &Pod{
-		UID:             input.UID,
-		Name:            input.Name,
-		Namespace:       input.Namespace,
-		Labels:          input.Labels,
-		Annotations:     input.Annotations,
-		OwnerReferences: input.OwnerReferences,
-		Spec:            transformPodSpec(input.Spec),
-		Status:          transformPodStatus(input.Status),
+		UID:               input.UID,
+		Name:              input.Name,
+		Namespace:         input.Namespace,
+		Labels:            input.Labels,
+		Annotations:       input.Annotations,
+		OwnerReferences:   input.OwnerReferences,
+		Spec:              transformPodSpec(input.Spec),
+		Status:            transformPodStatus(input.Status),
+		DeletionTimestamp: transformTimestamp(input.DeletionTimestamp),
 	}
 }
 
@@ -210,7 +277,9 @@ func transformDeployment(input *appsv1.Deployment) *Deployment {
 		MatchLabels:             input.Spec.Selector.MatchLabels,
 		SpecReplicas:            input.Spec.Replicas,
 		SpecSelector:            input.Spec.Selector,
+		SpecStrategy:            input.Spec.Strategy,
 		StatusAvailableReplicas: input.Status.AvailableReplicas,
+		PodSpec:                 transformPodSpec(input.Spec.Template.Spec),
 	}
 }
 
@@ -219,6 +288,8 @@ func transformStatefulSet(input *appsv1.StatefulSet) *StatefulSet {
 		Name:         input.Name,
 		Namespace:    input.Namespace,
 		SpecSelector: input.Spec.Selector,
+		SpecReplicas: input.Spec.Replicas,
+		PodSpec:      transformPodSpec(input.Spec.Template.Spec),
 	}
 }
 
@@ -238,6 +309,7 @@ func transformPersistentVolumeClaim(input *v1.PersistentVolumeClaim) *Persistent
 		Name:        input.Name,
 		Namespace:   input.Namespace,
 		Spec:        input.Spec,
+		Labels:      input.Labels,
 		Annotations: input.Annotations,
 	}
 }
@@ -246,8 +318,11 @@ func transformStorageClass(input *stv1.StorageClass) *StorageClass {
 	return &StorageClass{
 		Name:        input.Name,
 		Annotations: input.Annotations,
+		Labels:      input.Labels,
 		Parameters:  input.Parameters,
 		Provisioner: input.Provisioner,
+		TypeMeta:    input.TypeMeta,
+		Size:        input.Size(),
 	}
 }
 
@@ -260,15 +335,27 @@ func transformJob(input *batchv1.Job) *Job {
 }
 
 func transformReplicationController(input *v1.ReplicationController) *ReplicationController {
-	return &ReplicationController{}
+	return &ReplicationController{
+		Name:      input.Name,
+		Namespace: input.Namespace,
+		Spec:      input.Spec,
+	}
 }
 
 func transformPodDisruptionBudget(input *policyv1.PodDisruptionBudget) *PodDisruptionBudget {
-	return &PodDisruptionBudget{}
+	return &PodDisruptionBudget{
+		Name:      input.Name,
+		Namespace: input.Namespace,
+		Spec:      input.Spec,
+		Status:    input.Status,
+	}
 }
 
 func transformReplicaSet(input *appsv1.ReplicaSet) *ReplicaSet {
 	return &ReplicaSet{
+		Name:         input.Name,
+		Namespace:    input.Namespace,
+		Spec:         input.Spec,
 		SpecSelector: input.Spec.Selector,
 	}
 }
