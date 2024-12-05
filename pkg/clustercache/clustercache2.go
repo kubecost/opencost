@@ -54,8 +54,6 @@ func (kcc *KubernetesClusterCacheV2) Run() {
 func (kcc *KubernetesClusterCacheV2) Stop() {
 }
 
-func (kcc *KubernetesClusterCacheV2) SetConfigMapUpdateFunc(f func(interface{})) {}
-
 func (kcc *KubernetesClusterCacheV2) GetAllNamespaces() []*Namespace {
 	return kcc.namespaceStore.GetAll()
 }
