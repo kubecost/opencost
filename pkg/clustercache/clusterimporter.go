@@ -196,10 +196,3 @@ func (ci *ClusterImporter) GetAllReplicationControllers() []*ReplicationControll
 
 	return slices.Clone(ci.data.ReplicationControllers)
 }
-
-// SetConfigMapUpdateFunc sets the configmap update function
-func (ci *ClusterImporter) SetConfigMapUpdateFunc(_ func(interface{})) {
-	// TODO: (bolt) This function is still a bit strange to me for the ClusterCache interface.
-	// TODO: (bolt) no-op for now.
-	log.Warnf("SetConfigMapUpdateFunc is disabled for imported cluster data.")
-}
