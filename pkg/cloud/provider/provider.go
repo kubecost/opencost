@@ -26,10 +26,10 @@ import (
 
 	"github.com/opencost/opencost/core/pkg/log"
 	"github.com/opencost/opencost/core/pkg/util/httputil"
-	"github.com/opencost/opencost/core/pkg/util/watcher"
 	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/opencost/opencost/pkg/config"
 	"github.com/opencost/opencost/pkg/env"
+	"github.com/opencost/opencost/pkg/util/watcher"
 )
 
 // ClusterName returns the name defined in cluster info, defaulting to the

@@ -19,7 +19,6 @@ import (
 	"github.com/opencost/opencost/core/pkg/opencost"
 	"github.com/opencost/opencost/core/pkg/util/httputil"
 	"github.com/opencost/opencost/core/pkg/util/timeutil"
-	"github.com/opencost/opencost/core/pkg/util/watcher"
 	"github.com/opencost/opencost/core/pkg/version"
 	"github.com/opencost/opencost/pkg/cloud/aws"
 	cloudconfig "github.com/opencost/opencost/pkg/cloud/config"
@@ -32,6 +31,7 @@ import (
 	"github.com/opencost/opencost/pkg/kubeconfig"
 	"github.com/opencost/opencost/pkg/metrics"
 	"github.com/opencost/opencost/pkg/services"
+	"github.com/opencost/opencost/pkg/util/watcher"
 	"github.com/spf13/viper"
 	v1 "k8s.io/api/core/v1"
 
@@ -1451,8 +1451,6 @@ func handlePanic(p errors.Panic) bool {
 }
 
 func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.ConfigMapWatcher) *Accesses {
-	configWatchers := watcher.NewConfigMapWatchers(additionalConfigWatchers...)
-
 	var err error
 	if errorReportingEnabled {
 		err = sentry.Init(sentry.ClientOptions{Release: version.FriendlyVersion()})
@@ -1561,25 +1559,12 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 	}
 
 	// Append the pricing config watcher
+	kubecostNamespace := env.GetKubecostNamespace()
+
+	configWatchers := watcher.NewConfigMapWatchers(kubeClientset, kubecostNamespace, additionalConfigWatchers...)
 	configWatchers.AddWatcher(provider.ConfigWatcherFor(cloudProvider))
 	configWatchers.AddWatcher(metrics.GetMetricsConfigWatcher())
-
-	watchConfigFunc := configWatchers.ToWatchFunc()
-	watchedConfigs := configWatchers.GetWatchedConfigs()
-
-	kubecostNamespace := env.GetKubecostNamespace()
-	// We need an initial invocation because the init of the cache has happened before we had access to the provider.
-	for _, cw := range watchedConfigs {
-		configs, err := kubeClientset.CoreV1().ConfigMaps(kubecostNamespace).Get(context.Background(), cw, metav1.GetOptions{})
-		if err != nil {
-			log.Infof("No %s configmap found at install time, using existing configs: %s", cw, err.Error())
-		} else {
-			log.Infof("Found configmap %s, watching...", configs.Name)
-			watchConfigFunc(configs)
-		}
-	}
-
-	k8sCache.SetConfigMapUpdateFunc(watchConfigFunc)
+	configWatchers.Watch()
 
 	remoteEnabled := env.IsRemoteEnabled()
 	if remoteEnabled {

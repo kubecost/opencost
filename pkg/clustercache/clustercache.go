@@ -410,9 +410,6 @@ type ClusterCache interface {
 
 	// GetAllReplicationControllers returns all cached replication controllers
 	GetAllReplicationControllers() []*ReplicationController
-
-	// SetConfigMapUpdateFunc sets the configmap update function
-	SetConfigMapUpdateFunc(func(interface{}))
 }
 
 // KubernetesClusterCache is the implementation of ClusterCache
@@ -422,7 +419,6 @@ type KubernetesClusterCache struct {
 	namespaceWatch             WatchController
 	nodeWatch                  WatchController
 	podWatch                   WatchController
-	kubecostConfigMapWatch     WatchController
 	serviceWatch               WatchController
 	daemonsetsWatch            WatchController
 	deploymentsWatch           WatchController
@@ -464,7 +460,6 @@ func NewKubernetesClusterCacheV1(client kubernetes.Interface) ClusterCache {
 		namespaceWatch:             NewCachingWatcher(coreRestClient, "namespaces", &v1.Namespace{}, "", fields.Everything()),
 		nodeWatch:                  NewCachingWatcher(coreRestClient, "nodes", &v1.Node{}, "", fields.Everything()),
 		podWatch:                   NewCachingWatcher(coreRestClient, "pods", &v1.Pod{}, "", fields.Everything()),
-		kubecostConfigMapWatch:     NewCachingWatcher(coreRestClient, "configmaps", &v1.ConfigMap{}, kubecostNamespace, fields.Everything()),
 		serviceWatch:               NewCachingWatcher(coreRestClient, "services", &v1.Service{}, "", fields.Everything()),
 		daemonsetsWatch:            NewCachingWatcher(appsRestClient, "daemonsets", &appsv1.DaemonSet{}, "", fields.Everything()),
 		deploymentsWatch:           NewCachingWatcher(appsRestClient, "deployments", &appsv1.Deployment{}, "", fields.Everything()),
@@ -481,12 +476,8 @@ func NewKubernetesClusterCacheV1(client kubernetes.Interface) ClusterCache {
 	// Wait for each caching watcher to initialize
 	cancel := make(chan struct{})
 	var wg sync.WaitGroup
-	if env.IsETLReadOnlyMode() {
-		wg.Add(1)
-		go initializeCache(kcc.kubecostConfigMapWatch, &wg, cancel)
-	} else {
-		wg.Add(15)
-		go initializeCache(kcc.kubecostConfigMapWatch, &wg, cancel)
+	if !env.IsETLReadOnlyMode() {
+		wg.Add(14)
 		go initializeCache(kcc.namespaceWatch, &wg, cancel)
 		go initializeCache(kcc.nodeWatch, &wg, cancel)
 		go initializeCache(kcc.podWatch, &wg, cancel)
@@ -520,7 +511,6 @@ func (kcc *KubernetesClusterCache) Run() {
 	go kcc.nodeWatch.Run(1, stopCh)
 	go kcc.podWatch.Run(1, stopCh)
 	go kcc.serviceWatch.Run(1, stopCh)
-	go kcc.kubecostConfigMapWatch.Run(1, stopCh)
 	go kcc.daemonsetsWatch.Run(1, stopCh)
 	go kcc.deploymentsWatch.Run(1, stopCh)
 	go kcc.statefulsetWatch.Run(1, stopCh)
@@ -668,8 +658,4 @@ func (kcc *KubernetesClusterCache) GetAllReplicationControllers() []*Replication
 		rcs = append(rcs, transformReplicationController(rc.(*v1.ReplicationController)))
 	}
 	return rcs
-}
-
-func (kcc *KubernetesClusterCache) SetConfigMapUpdateFunc(f func(interface{})) {
-	kcc.kubecostConfigMapWatch.SetUpdateHandler(f)
 }
