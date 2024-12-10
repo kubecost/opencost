@@ -164,6 +164,10 @@ func (c *Scaleway) NodePricing(key models.Key) (*models.Node, models.PricingMeta
 	return nil, meta, fmt.Errorf("Unable to find node pricing matching thes features `%s`", key.Features())
 }
 
+func (c *Scaleway) GpuPricing(nodeLabels map[string]string) (string, error) {
+	return "", nil
+}
+
 func (c *Scaleway) LoadBalancerPricing() (*models.LoadBalancer, error) {
 	// Different LB types, lets take the cheaper for now, we can't get the type
 	// without a service specifying the type in the annotations
