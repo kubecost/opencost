@@ -23,6 +23,8 @@ const (
 	AzureOfferIDEnvVar                   = "AZURE_OFFER_ID"
 	AzureBillingAccountEnvVar            = "AZURE_BILLING_ACCOUNT"
 	AzureDownloadBillingDataToDiskEnvVar = "AZURE_DOWNLOAD_BILLING_DATA_TO_DISK"
+	AzureResourceGroupEnvVar             = "AZURE_RESOURCE_GROUP_NAME"
+	AzureClusterNameEnvVar               = "AZURE_CLUSTER_NAME"
 
 	KubecostNamespaceEnvVar        = "KUBECOST_NAMESPACE"
 	KubecostScrapeIntervalEnvVar   = "KUBECOST_SCRAPE_INTERVAL"
@@ -322,6 +324,22 @@ func GetAlibabaAccessKeySecret() string {
 // the Azure offer ID for determining prices.
 func GetAzureOfferID() string {
 	return env.Get(AzureOfferIDEnvVar, "")
+}
+
+// GetAzureResourceGroupName returns the environment variable value for
+// AzureResourceGroupEnvVar which represents the Azure resource
+// group in which the cluster was created. This is being used to get
+// pricing tier of AKS
+func GetAzureResourceGroupName() string {
+	return env.Get(AzureResourceGroupEnvVar, "")
+}
+
+// GetAzureClusterName returns the environment variable value for
+// AzureClusterNameEnvVar which represents the Azure cluster
+// name. This is being used to get
+// pricing tier of AKS
+func GetAzureClusterName() string {
+	return env.Get(AzureClusterNameEnvVar, "")
 }
 
 // GetAzureBillingAccount returns the environment variable value for

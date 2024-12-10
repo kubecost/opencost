@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v4"
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2021-11-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/preview/commerce/mgmt/2015-06-01-preview/commerce"
 	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2016-06-01/subscriptions"
@@ -31,6 +33,7 @@ import (
 	"github.com/opencost/opencost/pkg/cloud/utils"
 	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/opencost/opencost/pkg/env"
+	errs "github.com/opencost/opencost/pkg/errors"
 
 	v1 "k8s.io/api/core/v1"
 )
@@ -44,6 +47,7 @@ const (
 	defaultSpotLabel                 = "kubernetes.azure.com/scalesetpriority"
 	defaultSpotLabelValue            = "spot"
 	AzureStorageUpdateType           = "AzureStorage"
+	AzureAksTierRefreshDuration      = 15 * time.Minute
 )
 
 var (
@@ -414,6 +418,7 @@ type Azure struct {
 	azureSecret                    *AzureServiceKey
 	loadedAzureStorageConfigSecret bool
 	azureStorageConfig             *AzureStorageConfig
+	clusterManagementPrice         float64
 }
 
 // PricingSourceSummary returns the pricing source summary for the provider.
@@ -919,6 +924,33 @@ func (az *Azure) DownloadPricingData() error {
 			az.Pricing = allPrices
 			az.pricingSource = priceSheetPricingSource
 			az.priceSheetPricingError = nil
+		}()
+	}
+
+	envResourceGroupName := env.GetAzureResourceGroupName()
+
+	envManagedClustersName := env.GetAzureClusterName()
+
+	if envResourceGroupName != "" && envManagedClustersName != "" {
+
+		err = az.refreshClusterManagementPricing(config, envResourceGroupName, envManagedClustersName)
+		if err != nil {
+			log.Errorf("error getting managed cluster cost: %s", err.Error())
+		}
+
+		// AKS Tier can change. So we need to refresh the tier information to get the cluster management cost.
+		go func() {
+			defer errs.HandlePanic()
+
+			for {
+				log.Infof("Azure AKS Tier Refresh scheduled in %.2f minutes.", AzureAksTierRefreshDuration.Minutes())
+				time.Sleep(AzureAksTierRefreshDuration)
+
+				err := az.refreshClusterManagementPricing(config, envResourceGroupName, envManagedClustersName)
+				if err != nil {
+					log.Errorf("error getting managed cluster cost: %s", err.Error())
+				}
+			}
 		}()
 	}
 
@@ -1672,8 +1704,70 @@ func (az *Azure) PricingSourceStatus() map[string]*models.PricingSource {
 	return sources
 }
 
-func (*Azure) ClusterManagementPricing() (string, float64, error) {
-	return "", 0.0, nil
+func getManagedCluster(ctx context.Context, managedClustersClient *armcontainerservice.ManagedClustersClient, resourceGroupName string, managedClustersName string) (*armcontainerservice.ManagedCluster, error) {
+	if resourceGroupName == "" || managedClustersName == "" {
+		return nil, fmt.Errorf("cluster name or resource group name not found")
+	}
+
+	getClusterResp, err := managedClustersClient.Get(
+		ctx,
+		resourceGroupName,
+		managedClustersName,
+		nil,
+	)
+	if err != nil {
+		log.Errorf("could not get managed cluster from azure: %s", err.Error())
+		return nil, err
+	}
+	return &getClusterResp.ManagedCluster, nil
+}
+
+func (az *Azure) refreshClusterManagementPricing(config *models.CustomPricing, resourceGroupName, clusterName string) error {
+
+	cred, err := azidentity.NewClientSecretCredential(config.AzureTenantID, config.AzureClientID, config.AzureClientSecret, nil)
+	if err != nil {
+		log.Errorf("error while creating new default azure creds %s", err.Error())
+		return nil
+	}
+	ctx := context.Background()
+
+	containerserviceClientFactory, err := armcontainerservice.NewClientFactory(config.AzureSubscriptionID, cred, nil)
+	if err != nil {
+		log.Errorf("error while creating new container service client factory %s", err.Error())
+		return nil
+	}
+	managedClustersClient := containerserviceClientFactory.NewManagedClustersClient()
+
+	managedCluster, err := getManagedCluster(ctx, managedClustersClient, resourceGroupName, clusterName)
+	if err != nil {
+		log.Errorf("error getting AKS cluster %s info, err: %s", clusterName, err.Error())
+		return nil
+	}
+
+	if managedCluster == nil {
+		log.Errorf("managed cluster info not present: %s", clusterName)
+		return nil
+	}
+
+	if managedCluster.SKU == nil || managedCluster.SKU.Tier == nil {
+		log.Errorf("managed cluster sku info not present. cluster name: %s, managed cluster id: %s", clusterName, *managedCluster.ID)
+		return nil
+	}
+
+	if *managedCluster.SKU.Tier == "Premium" {
+		az.clusterManagementPrice = 0.6
+	} else if *managedCluster.SKU.Tier == "Standard" {
+		az.clusterManagementPrice = 0.1
+	} else {
+		az.clusterManagementPrice = 0.0
+	}
+
+	log.Infof("AKS cluster management price: %f", az.clusterManagementPrice)
+	return nil
+}
+
+func (az *Azure) ClusterManagementPricing() (string, float64, error) {
+	return "AKS", az.clusterManagementPrice, nil
 }
 
 func (az *Azure) CombinedDiscountForNode(instanceType string, isPreemptible bool, defaultDiscount, negotiatedDiscount float64) float64 {
