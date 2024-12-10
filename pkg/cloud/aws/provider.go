@@ -1445,6 +1445,10 @@ func (aws *AWS) NodePricing(k models.Key) (*models.Node, models.PricingMetadata,
 	}
 }
 
+func (awsProvider *AWS) GpuPricing(nodeLabels map[string]string) (string, error) {
+	return "", nil
+}
+
 // ClusterInfo returns an object that represents the cluster. TODO: actually return the name of the cluster. Blocked on cluster federation.
 func (awsProvider *AWS) ClusterInfo() (map[string]string, error) {
 

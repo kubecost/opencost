@@ -210,6 +210,10 @@ func (cp *CustomProvider) NodePricing(key models.Key) (*models.Node, models.Pric
 	}, meta, nil
 }
 
+func (cp *CustomProvider) GpuPricing(nodeLabels map[string]string) (string, error) {
+	return "", nil
+}
+
 func (cp *CustomProvider) DownloadPricingData() error {
 	cp.DownloadPricingDataLock.Lock()
 	defer cp.DownloadPricingDataLock.Unlock()
