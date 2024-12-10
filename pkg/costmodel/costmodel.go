@@ -1149,7 +1149,7 @@ func (cm *CostModel) GetNodeCost(cp costAnalyzerCloud.Provider) (map[string]*cos
 			// for an example implementation.
 			gpuPricing, err := cp.GpuPricing(nodeLabels)
 			if err != nil {
-				log.Errorf("Could not determine custom GPU pricing")
+				log.Errorf("Could not determine custom GPU pricing: %s", err)
 			} else if len(gpuPricing) > 0 {
 				newCnode.GPUCost = gpuPricing
 			}
