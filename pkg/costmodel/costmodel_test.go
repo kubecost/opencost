@@ -4,23 +4,23 @@ import (
 	"testing"
 
 	"github.com/opencost/opencost/core/pkg/util"
+	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestGetGPUCount(t *testing.T) {
 	tests := []struct {
 		name          string
-		node          *v1.Node
+		node          *clustercache.Node
 		expectedGPU   float64
 		expectedVGPU  float64
 		expectedError bool
 	}{
 		{
 			name: "Standard NVIDIA GPU",
-			node: &v1.Node{
+			node: &clustercache.Node{
 				Status: v1.NodeStatus{
 					Capacity: v1.ResourceList{
 						"nvidia.com/gpu": resource.MustParse("2"),
@@ -32,12 +32,10 @@ func TestGetGPUCount(t *testing.T) {
 		},
 		{
 			name: "NVIDIA GPU with GFD - renameByDefault=true",
-			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"nvidia.com/gpu.replicas": "4",
-						"nvidia.com/gpu.count":    "1",
-					},
+			node: &clustercache.Node{
+				Labels: map[string]string{
+					"nvidia.com/gpu.replicas": "4",
+					"nvidia.com/gpu.count":    "1",
 				},
 				Status: v1.NodeStatus{
 					Capacity: v1.ResourceList{
@@ -50,12 +48,10 @@ func TestGetGPUCount(t *testing.T) {
 		},
 		{
 			name: "NVIDIA GPU with GFD - renameByDefault=false",
-			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"nvidia.com/gpu.replicas": "4",
-						"nvidia.com/gpu.count":    "1",
-					},
+			node: &clustercache.Node{
+				Labels: map[string]string{
+					"nvidia.com/gpu.replicas": "4",
+					"nvidia.com/gpu.count":    "1",
 				},
 				Status: v1.NodeStatus{
 					Capacity: v1.ResourceList{
@@ -68,7 +64,7 @@ func TestGetGPUCount(t *testing.T) {
 		},
 		{
 			name: "No GPU",
-			node: &v1.Node{
+			node: &clustercache.Node{
 				Status: v1.NodeStatus{
 					Capacity: v1.ResourceList{},
 				},

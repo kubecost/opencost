@@ -19,8 +19,6 @@ import (
 	"github.com/opencost/opencost/pkg/env"
 
 	"github.com/opencost/opencost/core/pkg/log"
-	v1 "k8s.io/api/core/v1"
-
 	"github.com/scaleway/scaleway-sdk-go/api/instance/v1"
 	"github.com/scaleway/scaleway-sdk-go/scw"
 )
@@ -181,7 +179,7 @@ func (c *Scaleway) NetworkPricing() (*models.Network, error) {
 	}, nil
 }
 
-func (c *Scaleway) GetKey(l map[string]string, n *v1.Node) models.Key {
+func (c *Scaleway) GetKey(l map[string]string, n *clustercache.Node) models.Key {
 	return &scalewayKey{
 		Labels: l,
 	}
@@ -208,7 +206,7 @@ func (key *scalewayPVKey) Features() string {
 	return key.Zone
 }
 
-func (c *Scaleway) GetPVKey(pv *v1.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
+func (c *Scaleway) GetPVKey(pv *clustercache.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
 	// the csi volume handle is the form <az>/<volume-id>
 	zone := ""
 	if pv.Spec.CSI != nil {

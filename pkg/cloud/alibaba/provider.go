@@ -27,7 +27,6 @@ import (
 
 	ocenv "github.com/opencost/opencost/pkg/env"
 	"golang.org/x/exp/slices"
-	v1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -847,7 +846,7 @@ func (alibabaNodeKey *AlibabaNodeKey) GPUCount() int {
 }
 
 // Get's the key for the k8s node input
-func (alibaba *Alibaba) GetKey(mapValue map[string]string, node *v1.Node) models.Key {
+func (alibaba *Alibaba) GetKey(mapValue map[string]string, node *clustercache.Node) models.Key {
 	slimK8sNode := generateSlimK8sNodeFromV1Node(node)
 
 	var aak *credentials.AccessKeyCredential
@@ -913,7 +912,7 @@ type AlibabaPVKey struct {
 	SizeInGiB         string
 }
 
-func (alibaba *Alibaba) GetPVKey(pv *v1.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
+func (alibaba *Alibaba) GetPVKey(pv *clustercache.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
 	regionID := defaultRegion
 	// If default Region is not passed default it to cluster region ID.
 	if defaultRegion == "" {
@@ -1253,7 +1252,7 @@ func getSystemDiskInfoOfANode(instanceID, regionID string, client *sdk.Client, s
 }
 
 // generateSlimK8sNodeFromV1Node generates SlimK8sNode struct from v1.Node to fetch pricing information and call alibaba API.
-func generateSlimK8sNodeFromV1Node(node *v1.Node) *SlimK8sNode {
+func generateSlimK8sNodeFromV1Node(node *clustercache.Node) *SlimK8sNode {
 	var regionID, osType, instanceType, providerID, priceUnit, instanceFamily string
 	var memorySizeInKiB string // TO-DO: try to convert it into float
 	var ok, IsIoOptimized bool
@@ -1272,7 +1271,7 @@ func generateSlimK8sNodeFromV1Node(node *v1.Node) *SlimK8sNode {
 
 	instanceFamily = getInstanceFamilyFromType(instanceType)
 	memorySizeInKiB = fmt.Sprintf("%s", node.Status.Capacity.Memory())
-	providerID = node.Spec.ProviderID // Alibaba Cloud provider doesnt follow convention of prefix with cloud provider name
+	providerID = node.SpecProviderID // Alibaba Cloud provider doesnt follow convention of prefix with cloud provider name
 
 	// Looking at current Instance offering , all of the Instances seem to be I/O optimized - https://www.alibabacloud.com/help/en/elastic-compute-service/latest/instance-family
 	// Basic price Json has it as part of the key so defaulting to true.
@@ -1303,7 +1302,7 @@ func getNumericalValueFromResourceQuantity(quantity string) (value string) {
 
 // generateSlimK8sDiskFromV1PV function generates SlimK8sDisk from v1.PersistentVolume
 // to generate slim disk type that can be used to fetch pricing information for Data disk type.
-func generateSlimK8sDiskFromV1PV(pv *v1.PersistentVolume, regionID string) *SlimK8sDisk {
+func generateSlimK8sDiskFromV1PV(pv *clustercache.PersistentVolume, regionID string) *SlimK8sDisk {
 
 	// All PVs are data disks while local disk are categorized as system disk
 	diskType := ALIBABA_DATA_DISK_CATEGORY
@@ -1349,7 +1348,7 @@ func generateSlimK8sDiskFromV1PV(pv *v1.PersistentVolume, regionID string) *Slim
 // if topology.diskplugin.csi.alibabacloud.com/zone label/annotation is passed during PV creation determine the region based on this pv label.
 // if neither of the above label/annotation is present check node affinity for the zone affinity and determine the region based on this zone.
 // if nether of the above yields a region , return empty string to default it to cluster region.
-func determinePVRegion(pv *v1.PersistentVolume) string {
+func determinePVRegion(pv *clustercache.PersistentVolume) string {
 	// if "topology.diskplugin.csi.alibabacloud.com/region" is present as a label or annotation return that as the PV region
 	if val, ok := pv.Labels[ALIBABA_DISK_TOPOLOGY_REGION_LABEL]; ok {
 		log.Debugf("determinePVRegion returned a region value of: %s through label: %s for PV name: %s", val, ALIBABA_DISK_TOPOLOGY_REGION_LABEL, pv.Name)

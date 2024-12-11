@@ -15,7 +15,6 @@ import (
 	"github.com/opencost/opencost/pkg/cloud/utils"
 	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/opencost/opencost/pkg/env"
-	v1 "k8s.io/api/core/v1"
 )
 
 const nodePoolIdAnnotation = "oci.oraclecloud.com/node-pool-id"
@@ -125,7 +124,7 @@ func (o *Oracle) DownloadPricingData() error {
 	return nil
 }
 
-func (o *Oracle) GetKey(labels map[string]string, n *v1.Node) models.Key {
+func (o *Oracle) GetKey(labels map[string]string, n *clustercache.Node) models.Key {
 	var gpuCount int
 	var gpuType string
 	if gpuc, ok := n.Status.Capacity["nvidia.com/gpu"]; ok {
@@ -134,7 +133,7 @@ func (o *Oracle) GetKey(labels map[string]string, n *v1.Node) models.Key {
 	}
 	instanceType, _ := util.GetInstanceType(labels)
 	return &oracleKey{
-		providerID:   n.Spec.ProviderID,
+		providerID:   n.SpecProviderID,
 		instanceType: instanceType,
 		labels:       labels,
 		gpuCount:     gpuCount,
@@ -142,7 +141,7 @@ func (o *Oracle) GetKey(labels map[string]string, n *v1.Node) models.Key {
 	}
 }
 
-func (o *Oracle) GetPVKey(pv *v1.PersistentVolume, parameters map[string]string, _ string) models.PVKey {
+func (o *Oracle) GetPVKey(pv *clustercache.PersistentVolume, parameters map[string]string, _ string) models.PVKey {
 	var providerID string
 	var driver string
 	if pv.Spec.CSI != nil {
@@ -211,10 +210,10 @@ func (o *Oracle) GetConfig() (*models.CustomPricing, error) {
 func (o *Oracle) GetManagementPlatform() (string, error) {
 	nodes := o.Clientset.GetAllNodes()
 	for _, node := range nodes {
-		if _, ok := node.GetObjectMeta().GetAnnotations()[nodePoolIdAnnotation]; ok {
+		if _, ok := node.Annotations[nodePoolIdAnnotation]; ok {
 			return managementPlatformOKE, nil
 		}
-		if _, ok := node.GetObjectMeta().GetAnnotations()[virtualPoolIdAnnotation]; ok {
+		if _, ok := node.Annotations[virtualPoolIdAnnotation]; ok {
 			return managementPlatformOKE, nil
 		}
 	}

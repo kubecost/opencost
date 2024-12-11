@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/opencost/opencost/pkg/env"
-	v1 "k8s.io/api/core/v1"
 )
 
 var (
@@ -135,9 +135,9 @@ func NewContainerMetricFromValues(ns, podName, containerName, nodeName, clusterI
 
 // NewContainerMetricsFromPod creates a slice of ContainerMetric instances for each container in the
 // provided Pod.
-func NewContainerMetricsFromPod(pod *v1.Pod, clusterID string) ([]*ContainerMetric, error) {
-	podName := pod.GetObjectMeta().GetName()
-	ns := pod.GetObjectMeta().GetNamespace()
+func NewContainerMetricsFromPod(pod *clustercache.Pod, clusterID string) ([]*ContainerMetric, error) {
+	podName := pod.Name
+	ns := pod.Namespace
 	node := pod.Spec.NodeName
 
 	var cs []*ContainerMetric
