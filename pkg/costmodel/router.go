@@ -4,12 +4,10 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path"
 	"reflect"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,7 +17,6 @@ import (
 	"github.com/opencost/opencost/core/pkg/opencost"
 	"github.com/opencost/opencost/core/pkg/util/httputil"
 	"github.com/opencost/opencost/core/pkg/util/timeutil"
-	"github.com/opencost/opencost/core/pkg/util/watcher"
 	"github.com/opencost/opencost/core/pkg/version"
 	"github.com/opencost/opencost/pkg/cloud/aws"
 	cloudconfig "github.com/opencost/opencost/pkg/cloud/config"
@@ -32,8 +29,7 @@ import (
 	"github.com/opencost/opencost/pkg/kubeconfig"
 	"github.com/opencost/opencost/pkg/metrics"
 	"github.com/opencost/opencost/pkg/services"
-	"github.com/spf13/viper"
-	v1 "k8s.io/api/core/v1"
+	"github.com/opencost/opencost/pkg/util/watcher"
 
 	"github.com/julienschmidt/httprouter"
 
@@ -53,7 +49,6 @@ import (
 	"github.com/opencost/opencost/pkg/thanos"
 	prometheus "github.com/prometheus/client_golang/api"
 	prometheusAPI "github.com/prometheus/client_golang/api/prometheus/v1"
-	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/patrickmn/go-cache"
@@ -72,15 +67,11 @@ const (
 	CustomPricingSetting = "CustomPricing"
 	DiscountSetting      = "Discount"
 	epRules              = apiPrefix + "/rules"
-	LogSeparator         = "+-------------------------------------------------------------------------------------"
 )
 
 var (
 	// gitCommit is set by the build system
 	gitCommit string
-
-	// ANSIRegex matches ANSI escape and colors https://en.wikipedia.org/wiki/ANSI_escape_code
-	ANSIRegex = regexp.MustCompile("\x1b\\[[0-9;]*m")
 )
 
 // Accesses defines a singleton application instance, providing access to
@@ -930,182 +921,6 @@ func (a *Accesses) GetPrometheusMetrics(w http.ResponseWriter, _ *http.Request, 
 	w.Write(WrapData(result, nil))
 }
 
-func (a *Accesses) GetAllPersistentVolumes(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	pvList := a.ClusterCache.GetAllPersistentVolumes()
-
-	body, err := json.Marshal(wrapAsObjectItems(pvList))
-	if err != nil {
-		fmt.Fprintf(w, "Error decoding persistent volumes: "+err.Error())
-	} else {
-		w.Write(body)
-	}
-
-}
-
-func (a *Accesses) GetAllDeployments(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	qp := httputil.NewQueryParams(r.URL.Query())
-
-	namespace := qp.Get("namespace", "")
-
-	deploymentsList := a.ClusterCache.GetAllDeployments()
-
-	// filter for provided namespace
-	var deployments []*appsv1.Deployment
-	if namespace == "" {
-		deployments = deploymentsList
-	} else {
-		deployments = []*appsv1.Deployment{}
-
-		for _, d := range deploymentsList {
-			if d.Namespace == namespace {
-				deployments = append(deployments, d)
-			}
-		}
-	}
-
-	body, err := json.Marshal(wrapAsObjectItems(deployments))
-	if err != nil {
-		fmt.Fprintf(w, "Error decoding deployment: "+err.Error())
-	} else {
-		w.Write(body)
-	}
-}
-
-func (a *Accesses) GetAllStorageClasses(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	scList := a.ClusterCache.GetAllStorageClasses()
-
-	body, err := json.Marshal(wrapAsObjectItems(scList))
-	if err != nil {
-		fmt.Fprintf(w, "Error decoding storageclasses: "+err.Error())
-	} else {
-		w.Write(body)
-	}
-}
-
-func (a *Accesses) GetAllStatefulSets(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	qp := httputil.NewQueryParams(r.URL.Query())
-
-	namespace := qp.Get("namespace", "")
-
-	statefulSetsList := a.ClusterCache.GetAllStatefulSets()
-
-	// filter for provided namespace
-	var statefulSets []*appsv1.StatefulSet
-	if namespace == "" {
-		statefulSets = statefulSetsList
-	} else {
-		statefulSets = []*appsv1.StatefulSet{}
-
-		for _, ss := range statefulSetsList {
-			if ss.Namespace == namespace {
-				statefulSets = append(statefulSets, ss)
-			}
-		}
-	}
-
-	body, err := json.Marshal(wrapAsObjectItems(statefulSets))
-	if err != nil {
-		fmt.Fprintf(w, "Error decoding deployment: "+err.Error())
-	} else {
-		w.Write(body)
-	}
-}
-
-func (a *Accesses) GetAllNodes(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	nodeList := a.ClusterCache.GetAllNodes()
-
-	body, err := json.Marshal(wrapAsObjectItems(nodeList))
-	if err != nil {
-		fmt.Fprintf(w, "Error decoding nodes: "+err.Error())
-	} else {
-		w.Write(body)
-	}
-}
-
-func (a *Accesses) GetAllPods(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	podlist := a.ClusterCache.GetAllPods()
-
-	body, err := json.Marshal(wrapAsObjectItems(podlist))
-	if err != nil {
-		fmt.Fprintf(w, "Error decoding pods: "+err.Error())
-	} else {
-		w.Write(body)
-	}
-}
-
-func (a *Accesses) GetAllNamespaces(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	namespaces := a.ClusterCache.GetAllNamespaces()
-
-	body, err := json.Marshal(wrapAsObjectItems(namespaces))
-	if err != nil {
-		fmt.Fprintf(w, "Error decoding deployment: "+err.Error())
-	} else {
-		w.Write(body)
-	}
-}
-
-func (a *Accesses) GetAllDaemonSets(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	daemonSets := a.ClusterCache.GetAllDaemonSets()
-
-	body, err := json.Marshal(wrapAsObjectItems(daemonSets))
-	if err != nil {
-		fmt.Fprintf(w, "Error decoding daemon set: "+err.Error())
-	} else {
-		w.Write(body)
-	}
-}
-
-func (a *Accesses) GetPod(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	podName := ps.ByName("name")
-	podNamespace := ps.ByName("namespace")
-
-	// TODO: ClusterCache API could probably afford to have some better filtering
-	allPods := a.ClusterCache.GetAllPods()
-	for _, pod := range allPods {
-		for _, container := range pod.Spec.Containers {
-			container.Env = make([]v1.EnvVar, 0)
-		}
-		if pod.Namespace == podNamespace && pod.Name == podName {
-			body, err := json.Marshal(pod)
-			if err != nil {
-				fmt.Fprintf(w, "Error decoding pod: "+err.Error())
-			} else {
-				w.Write(body)
-			}
-			return
-		}
-	}
-
-	fmt.Fprintf(w, "Pod not found\n")
-}
-
 func (a *Accesses) PrometheusRecordingRules(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -1166,7 +981,7 @@ func (a *Accesses) GetOrphanedPods(w http.ResponseWriter, r *http.Request, ps ht
 
 	podlist := a.ClusterCache.GetAllPods()
 
-	var lonePods []*v1.Pod
+	var lonePods []*clustercache.Pod
 	for _, pod := range podlist {
 		if len(pod.OwnerReferences) == 0 {
 			lonePods = append(lonePods, pod)
@@ -1261,118 +1076,6 @@ func GetKubecostContainers(kubeClientSet kubernetes.Interface) ([]ContainerInfo,
 	return containers, nil
 }
 
-// logsFor pulls the logs for a specific pod, namespace, and container
-func logsFor(c kubernetes.Interface, namespace string, pod string, container string, dur time.Duration, ctx context.Context) (string, error) {
-	since := time.Now().UTC().Add(-dur)
-
-	logOpts := v1.PodLogOptions{
-		SinceTime: &metav1.Time{Time: since},
-	}
-	if container != "" {
-		logOpts.Container = container
-	}
-
-	req := c.CoreV1().Pods(namespace).GetLogs(pod, &logOpts)
-	reader, err := req.Stream(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	podLogs, err := io.ReadAll(reader)
-	if err != nil {
-		return "", err
-	}
-
-	// If color is already disabled then we don't need to process the logs
-	// to drop ANSI colors
-	if !viper.GetBool("disable-log-color") {
-		podLogs = ANSIRegex.ReplaceAll(podLogs, []byte{})
-	}
-
-	return string(podLogs), nil
-}
-
-func (a *Accesses) GetPodLogs(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	qp := httputil.NewQueryParams(r.URL.Query())
-
-	ns := qp.Get("namespace", env.GetKubecostNamespace())
-	pod := qp.Get("pod", "")
-	selector := qp.Get("selector", "")
-	container := qp.Get("container", "")
-	since := qp.Get("since", "24h")
-
-	sinceDuration, err := time.ParseDuration(since)
-	if err != nil {
-		fmt.Fprintf(w, "Invalid Duration String: "+err.Error())
-		return
-	}
-
-	var logResult string
-	appendLog := func(ns string, pod string, container string, l string) {
-		if l == "" {
-			return
-		}
-
-		logResult += fmt.Sprintf("%s\n| %s:%s:%s\n%s\n%s\n\n", LogSeparator, ns, pod, container, LogSeparator, l)
-	}
-
-	if pod != "" {
-		pd, err := a.KubeClientSet.CoreV1().Pods(ns).Get(r.Context(), pod, metav1.GetOptions{})
-		if err != nil {
-			fmt.Fprintf(w, "Error Finding Pod: "+err.Error())
-			return
-		}
-
-		if container != "" {
-			var foundContainer bool
-			for _, cont := range pd.Spec.Containers {
-				if strings.EqualFold(cont.Name, container) {
-					foundContainer = true
-					break
-				}
-			}
-			if !foundContainer {
-				fmt.Fprintf(w, "Could not find container: "+container)
-				return
-			}
-		}
-
-		logs, err := logsFor(a.KubeClientSet, ns, pod, container, sinceDuration, r.Context())
-		if err != nil {
-			fmt.Fprintf(w, "Error Getting Logs: "+err.Error())
-			return
-		}
-
-		appendLog(ns, pod, container, logs)
-
-		w.Write([]byte(logResult))
-		return
-	}
-
-	if selector != "" {
-		pods, err := a.KubeClientSet.CoreV1().Pods(ns).List(r.Context(), metav1.ListOptions{LabelSelector: selector})
-		if err != nil {
-			fmt.Fprintf(w, "Error Finding Pod: "+err.Error())
-			return
-		}
-
-		for _, pd := range pods.Items {
-			for _, cont := range pd.Spec.Containers {
-				logs, err := logsFor(a.KubeClientSet, ns, pd.Name, cont.Name, sinceDuration, r.Context())
-				if err != nil {
-					continue
-				}
-				appendLog(ns, pd.Name, cont.Name, logs)
-			}
-		}
-	}
-
-	w.Write([]byte(logResult))
-}
-
 func (a *Accesses) AddServiceKey(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -1455,8 +1158,6 @@ func handlePanic(p errors.Panic) bool {
 }
 
 func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.ConfigMapWatcher) *Accesses {
-	configWatchers := watcher.NewConfigMapWatchers(additionalConfigWatchers...)
-
 	var err error
 	if errorReportingEnabled {
 		err = sentry.Init(sentry.ClientOptions{Release: version.FriendlyVersion()})
@@ -1555,13 +1256,7 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 	configPrefix := env.GetConfigPathWithDefault("/var/configs/")
 
 	// Create Kubernetes Cluster Cache + Watchers
-	var k8sCache clustercache.ClusterCache
-	if env.IsClusterCacheFileEnabled() {
-		importLocation := confManager.ConfigFileAt(path.Join(configPrefix, "cluster-cache.json"))
-		k8sCache = clustercache.NewClusterImporter(importLocation)
-	} else {
-		k8sCache = clustercache.NewKubernetesClusterCache(kubeClientset)
-	}
+	k8sCache := clustercache.NewKubernetesClusterCache(kubeClientset)
 	k8sCache.Run()
 
 	cloudProviderKey := env.GetCloudProviderAPIKey()
@@ -1571,25 +1266,12 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 	}
 
 	// Append the pricing config watcher
+	kubecostNamespace := env.GetKubecostNamespace()
+
+	configWatchers := watcher.NewConfigMapWatchers(kubeClientset, kubecostNamespace, additionalConfigWatchers...)
 	configWatchers.AddWatcher(provider.ConfigWatcherFor(cloudProvider))
 	configWatchers.AddWatcher(metrics.GetMetricsConfigWatcher())
-
-	watchConfigFunc := configWatchers.ToWatchFunc()
-	watchedConfigs := configWatchers.GetWatchedConfigs()
-
-	kubecostNamespace := env.GetKubecostNamespace()
-	// We need an initial invocation because the init of the cache has happened before we had access to the provider.
-	for _, cw := range watchedConfigs {
-		configs, err := kubeClientset.CoreV1().ConfigMaps(kubecostNamespace).Get(context.Background(), cw, metav1.GetOptions{})
-		if err != nil {
-			log.Infof("No %s configmap found at install time, using existing configs: %s", cw, err.Error())
-		} else {
-			log.Infof("Found configmap %s, watching...", configs.Name)
-			watchConfigFunc(configs)
-		}
-	}
-
-	k8sCache.SetConfigMapUpdateFunc(watchConfigFunc)
+	configWatchers.Watch()
 
 	remoteEnabled := env.IsRemoteEnabled()
 	if remoteEnabled {
@@ -1752,22 +1434,12 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 	router.GET("/pricingSourceCounts", a.GetPricingSourceCounts)
 
 	// endpoints migrated from server
-	router.GET("/allPersistentVolumes", a.GetAllPersistentVolumes)
-	router.GET("/allDeployments", a.GetAllDeployments)
-	router.GET("/allStorageClasses", a.GetAllStorageClasses)
-	router.GET("/allStatefulSets", a.GetAllStatefulSets)
-	router.GET("/allNodes", a.GetAllNodes)
-	router.GET("/allPods", a.GetAllPods)
-	router.GET("/allNamespaces", a.GetAllNamespaces)
-	router.GET("/allDaemonSets", a.GetAllDaemonSets)
-	router.GET("/pod/:namespace/:name", a.GetPod)
 	router.GET("/prometheusRecordingRules", a.PrometheusRecordingRules)
 	router.GET("/prometheusConfig", a.PrometheusConfig)
 	router.GET("/prometheusTargets", a.PrometheusTargets)
 	router.GET("/orphanedPods", a.GetOrphanedPods)
 	router.GET("/installNamespace", a.GetInstallNamespace)
 	router.GET("/installInfo", a.GetInstallInfo)
-	router.GET("/podLogs", a.GetPodLogs)
 	router.POST("/serviceKey", a.AddServiceKey)
 	router.GET("/helmValues", a.GetHelmValues)
 	router.GET("/status", a.Status)

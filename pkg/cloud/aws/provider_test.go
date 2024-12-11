@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/opencost/opencost/pkg/cloud/models"
+	"github.com/opencost/opencost/pkg/clustercache"
 	v1 "k8s.io/api/core/v1"
 )
 
@@ -119,11 +120,12 @@ func Test_PricingData_Regression(t *testing.T) {
 
 	// Check pricing data produced for each region
 	for _, region := range awsRegions {
-		node := v1.Node{}
-		node.SetLabels(map[string]string{"topology.kubernetes.io/region": region})
 
 		awsTest := AWS{}
-		res, _, err := awsTest.getRegionPricing([]*v1.Node{&node})
+		res, _, err := awsTest.getRegionPricing([]*clustercache.Node{
+			{
+				Labels: map[string]string{"topology.kubernetes.io/region": region},
+			}})
 		if err != nil {
 			t.Errorf("Failed to download pricing data for region %s: %v", region, err)
 		}

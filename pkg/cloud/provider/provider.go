@@ -26,12 +26,10 @@ import (
 
 	"github.com/opencost/opencost/core/pkg/log"
 	"github.com/opencost/opencost/core/pkg/util/httputil"
-	"github.com/opencost/opencost/core/pkg/util/watcher"
 	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/opencost/opencost/pkg/config"
 	"github.com/opencost/opencost/pkg/env"
-
-	v1 "k8s.io/api/core/v1"
+	"github.com/opencost/opencost/pkg/util/watcher"
 )
 
 // ClusterName returns the name defined in cluster info, defaulting to the
@@ -278,8 +276,8 @@ type clusterProperties struct {
 	projectID      string
 }
 
-func getClusterProperties(node *v1.Node) clusterProperties {
-	providerID := strings.ToLower(node.Spec.ProviderID)
+func getClusterProperties(node *clustercache.Node) clusterProperties {
+	providerID := strings.ToLower(node.SpecProviderID)
 	region, _ := util.GetRegion(node.Labels)
 	cp := clusterProperties{
 		provider:       "DEFAULT",
