@@ -4,12 +4,10 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path"
 	"reflect"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,8 +30,6 @@ import (
 	"github.com/opencost/opencost/pkg/metrics"
 	"github.com/opencost/opencost/pkg/services"
 	"github.com/opencost/opencost/pkg/util/watcher"
-	"github.com/spf13/viper"
-	v1 "k8s.io/api/core/v1"
 
 	"github.com/julienschmidt/httprouter"
 
@@ -71,15 +67,11 @@ const (
 	CustomPricingSetting = "CustomPricing"
 	DiscountSetting      = "Discount"
 	epRules              = apiPrefix + "/rules"
-	LogSeparator         = "+-------------------------------------------------------------------------------------"
 )
 
 var (
 	// gitCommit is set by the build system
 	gitCommit string
-
-	// ANSIRegex matches ANSI escape and colors https://en.wikipedia.org/wiki/ANSI_escape_code
-	ANSIRegex = regexp.MustCompile("\x1b\\[[0-9;]*m")
 )
 
 // Accesses defines a singleton application instance, providing access to
@@ -1084,118 +1076,6 @@ func GetKubecostContainers(kubeClientSet kubernetes.Interface) ([]ContainerInfo,
 	return containers, nil
 }
 
-// logsFor pulls the logs for a specific pod, namespace, and container
-func logsFor(c kubernetes.Interface, namespace string, pod string, container string, dur time.Duration, ctx context.Context) (string, error) {
-	since := time.Now().UTC().Add(-dur)
-
-	logOpts := v1.PodLogOptions{
-		SinceTime: &metav1.Time{Time: since},
-	}
-	if container != "" {
-		logOpts.Container = container
-	}
-
-	req := c.CoreV1().Pods(namespace).GetLogs(pod, &logOpts)
-	reader, err := req.Stream(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	podLogs, err := io.ReadAll(reader)
-	if err != nil {
-		return "", err
-	}
-
-	// If color is already disabled then we don't need to process the logs
-	// to drop ANSI colors
-	if !viper.GetBool("disable-log-color") {
-		podLogs = ANSIRegex.ReplaceAll(podLogs, []byte{})
-	}
-
-	return string(podLogs), nil
-}
-
-func (a *Accesses) GetPodLogs(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	qp := httputil.NewQueryParams(r.URL.Query())
-
-	ns := qp.Get("namespace", env.GetKubecostNamespace())
-	pod := qp.Get("pod", "")
-	selector := qp.Get("selector", "")
-	container := qp.Get("container", "")
-	since := qp.Get("since", "24h")
-
-	sinceDuration, err := time.ParseDuration(since)
-	if err != nil {
-		fmt.Fprintf(w, "Invalid Duration String: "+err.Error())
-		return
-	}
-
-	var logResult string
-	appendLog := func(ns string, pod string, container string, l string) {
-		if l == "" {
-			return
-		}
-
-		logResult += fmt.Sprintf("%s\n| %s:%s:%s\n%s\n%s\n\n", LogSeparator, ns, pod, container, LogSeparator, l)
-	}
-
-	if pod != "" {
-		pd, err := a.KubeClientSet.CoreV1().Pods(ns).Get(r.Context(), pod, metav1.GetOptions{})
-		if err != nil {
-			fmt.Fprintf(w, "Error Finding Pod: "+err.Error())
-			return
-		}
-
-		if container != "" {
-			var foundContainer bool
-			for _, cont := range pd.Spec.Containers {
-				if strings.EqualFold(cont.Name, container) {
-					foundContainer = true
-					break
-				}
-			}
-			if !foundContainer {
-				fmt.Fprintf(w, "Could not find container: "+container)
-				return
-			}
-		}
-
-		logs, err := logsFor(a.KubeClientSet, ns, pod, container, sinceDuration, r.Context())
-		if err != nil {
-			fmt.Fprintf(w, "Error Getting Logs: "+err.Error())
-			return
-		}
-
-		appendLog(ns, pod, container, logs)
-
-		w.Write([]byte(logResult))
-		return
-	}
-
-	if selector != "" {
-		pods, err := a.KubeClientSet.CoreV1().Pods(ns).List(r.Context(), metav1.ListOptions{LabelSelector: selector})
-		if err != nil {
-			fmt.Fprintf(w, "Error Finding Pod: "+err.Error())
-			return
-		}
-
-		for _, pd := range pods.Items {
-			for _, cont := range pd.Spec.Containers {
-				logs, err := logsFor(a.KubeClientSet, ns, pd.Name, cont.Name, sinceDuration, r.Context())
-				if err != nil {
-					continue
-				}
-				appendLog(ns, pd.Name, cont.Name, logs)
-			}
-		}
-	}
-
-	w.Write([]byte(logResult))
-}
-
 func (a *Accesses) AddServiceKey(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -1560,7 +1440,6 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 	router.GET("/orphanedPods", a.GetOrphanedPods)
 	router.GET("/installNamespace", a.GetInstallNamespace)
 	router.GET("/installInfo", a.GetInstallInfo)
-	router.GET("/podLogs", a.GetPodLogs)
 	router.POST("/serviceKey", a.AddServiceKey)
 	router.GET("/helmValues", a.GetHelmValues)
 	router.GET("/status", a.Status)
