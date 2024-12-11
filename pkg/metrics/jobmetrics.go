@@ -41,8 +41,8 @@ func (kjc KubeJobCollector) Collect(ch chan<- prometheus.Metric) {
 
 	jobs := kjc.KubeClusterCache.GetAllJobs()
 	for _, job := range jobs {
-		jobName := job.GetName()
-		jobNS := job.GetNamespace()
+		jobName := job.Name
+		jobNS := job.Namespace
 
 		if job.Status.Failed == 0 {
 			ch <- newKubeJobStatusFailedMetric(jobName, jobNS, "kube_job_status_failed", "", 0)

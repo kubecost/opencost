@@ -140,6 +140,8 @@ const (
 	OCIPricingURL = "OCI_PRICING_URL"
 
 	CarbonEstimatesEnabledEnvVar = "CARBON_ESTIMATES_ENABLED"
+
+	UseCacheV1 = "USE_CACHE_V1"
 )
 
 const DefaultConfigMountPath = "/var/configs"
@@ -727,4 +729,10 @@ func GetCustomCostRefreshRateHours() string {
 
 func IsCarbonEstimatesEnabled() bool {
 	return env.GetBool(CarbonEstimatesEnabledEnvVar, false)
+}
+
+// GetUseCacheV1 is a temporary flag to allow users to opt-in to using the old cache
+// Mainly for comparison purposes
+func GetUseCacheV1() bool {
+	return env.GetBool(UseCacheV1, false)
 }

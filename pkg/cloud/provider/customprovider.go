@@ -16,8 +16,6 @@ import (
 	"github.com/opencost/opencost/pkg/cloud/utils"
 	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/opencost/opencost/pkg/env"
-
-	v1 "k8s.io/api/core/v1"
 )
 
 type NodePrice struct {
@@ -242,7 +240,7 @@ func (cp *CustomProvider) DownloadPricingData() error {
 	return nil
 }
 
-func (cp *CustomProvider) GetKey(labels map[string]string, n *v1.Node) models.Key {
+func (cp *CustomProvider) GetKey(labels map[string]string, n *clustercache.Node) models.Key {
 	return &customProviderKey{
 		SpotLabel:      cp.SpotLabel,
 		SpotLabelValue: cp.SpotLabelValue,
@@ -329,7 +327,7 @@ func (cp *CustomProvider) LoadBalancerPricing() (*models.LoadBalancer, error) {
 	}, nil
 }
 
-func (*CustomProvider) GetPVKey(pv *v1.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
+func (*CustomProvider) GetPVKey(pv *clustercache.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
 	return &customPVKey{
 		Labels:                 pv.Labels,
 		StorageClassName:       pv.Spec.StorageClassName,

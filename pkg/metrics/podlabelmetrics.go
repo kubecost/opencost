@@ -39,18 +39,18 @@ func (kpmc KubePodLabelsCollector) Describe(ch chan<- *prometheus.Desc) {
 
 func (kpmc *KubePodLabelsCollector) UpdateControllerSelectorsCache() {
 	for _, r := range kpmc.KubeClusterCache.GetAllReplicaSets() {
-		for k := range r.Spec.Selector.MatchLabels {
+		for k := range r.SpecSelector.MatchLabels {
 			kpmc.labelsWhitelist[k] = true
 		}
-		for _, v := range r.Spec.Selector.MatchExpressions {
+		for _, v := range r.SpecSelector.MatchExpressions {
 			kpmc.labelsWhitelist[v.Key] = true
 		}
 	}
 	for _, ss := range kpmc.KubeClusterCache.GetAllStatefulSets() {
-		for k := range ss.Spec.Selector.MatchLabels {
+		for k := range ss.SpecSelector.MatchLabels {
 			kpmc.labelsWhitelist[k] = true
 		}
-		for _, v := range ss.Spec.Selector.MatchExpressions {
+		for _, v := range ss.SpecSelector.MatchExpressions {
 			kpmc.labelsWhitelist[v.Key] = true
 		}
 	}
@@ -59,7 +59,7 @@ func (kpmc *KubePodLabelsCollector) UpdateControllerSelectorsCache() {
 func (kpmc *KubePodLabelsCollector) UpdateServiceLabels() {
 	for _, service := range kpmc.KubeClusterCache.GetAllServices() {
 		// Just unroll the selector and keep all labels whose keys could match a service selector
-		for k := range service.Spec.Selector {
+		for k := range service.SpecSelector {
 			kpmc.labelsWhitelist[k] = true
 		}
 	}
@@ -77,16 +77,16 @@ func (kpmc KubePodLabelsCollector) Collect(ch chan<- prometheus.Metric) {
 	disabledMetrics := kpmc.metricsConfig.GetDisabledMetricsMap()
 
 	for _, pod := range pods {
-		podName := pod.GetName()
-		podNS := pod.GetNamespace()
-		podUID := string(pod.GetUID())
+		podName := pod.Name
+		podNS := pod.Namespace
+		podUID := string(pod.UID)
 
 		// Pod Labels
 		if _, disabled := disabledMetrics["kube_pod_labels"]; !disabled {
-			podLabels := pod.GetLabels()
+			podLabels := pod.Labels
 			if kpmc.metricsConfig.UseLabelsWhitelist {
 				kpmc.UpdateWhitelist()
-				for lname := range podLabels {
+				for lname := range pod.Labels {
 					if _, ok := kpmc.labelsWhitelist[lname]; !ok {
 						delete(podLabels, lname)
 					}
