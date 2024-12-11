@@ -185,6 +185,7 @@ func (c *CSVProvider) DownloadPricingData() error {
 			gpupricing[key] = &p
 			c.GPUMapFields = append(c.GPUMapFields, strings.ToLower(p.InstanceIDField))
 		} else if p.AssetClass == "gpulabel" {
+			log.Infof("Found gpulabel info %+v", p)
 			labelKeyValue := p.InstanceIDField + "=" + p.InstanceID
 			gpulabelpricing[labelKeyValue] = &p
 		} else {
@@ -193,7 +194,7 @@ func (c *CSVProvider) DownloadPricingData() error {
 			c.NodeMapField = p.InstanceIDField
 		}
 	}
-	if len(pricing) > 0 {
+	if len(pricing) > 0 || len(gpupricing) > 0 || len(gpulabelpricing) > 0 {
 		c.Pricing = pricing
 		c.NodeClassPricing = nodeclasspricing
 		c.NodeClassCount = nodeclasscount
