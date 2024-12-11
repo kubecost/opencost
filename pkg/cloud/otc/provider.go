@@ -16,7 +16,6 @@ import (
 	"github.com/opencost/opencost/pkg/cloud/models"
 	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/opencost/opencost/pkg/env"
-	v1 "k8s.io/api/core/v1"
 )
 
 // OTC node pricing attributes
@@ -116,7 +115,7 @@ func (k *otcKey) Features() string {
 
 // Extract/generate a key that holds the data required to calculate
 // the cost of the given node (like s2.large.4).
-func (otc *OTC) GetKey(labels map[string]string, n *v1.Node) models.Key {
+func (otc *OTC) GetKey(labels map[string]string, n *clustercache.Node) models.Key {
 	return &otcKey{
 		Labels:     labels,
 		ProviderID: labels["providerID"],
@@ -133,7 +132,7 @@ func (k *otcPVKey) ID() string {
 	return k.ProviderId
 }
 
-func (otc *OTC) GetPVKey(pv *v1.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
+func (otc *OTC) GetPVKey(pv *clustercache.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
 	providerID := ""
 	return &otcPVKey{
 		Labels:                 pv.Labels,
@@ -229,7 +228,7 @@ func (otc *OTC) DownloadPricingData() error {
 		fmt.Println(tmp.Parameters)
 		fmt.Println(tmp.Labels)
 		fmt.Println(tmp.TypeMeta)
-		fmt.Println(tmp.Size())
+		fmt.Println(tmp.Size)
 	}
 
 	// Slice with all persistent volumes present in the cluster
@@ -240,7 +239,7 @@ func (otc *OTC) DownloadPricingData() error {
 	inputkeys := make(map[string]bool)
 	tmp := []string{}
 	for _, node := range nodeList {
-		labels := node.GetObjectMeta().GetLabels()
+		labels := node.Labels
 		key := otc.GetKey(labels, node)
 		inputkeys[key.Features()] = true
 		tmp = append(tmp, key.Features())

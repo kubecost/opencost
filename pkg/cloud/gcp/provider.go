@@ -32,7 +32,6 @@ import (
 	"cloud.google.com/go/compute/metadata"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/compute/v1"
-	v1 "k8s.io/api/core/v1"
 )
 
 const GKE_GPU_TAG = "cloud.google.com/gke-accelerator"
@@ -1099,7 +1098,7 @@ func (gcp *GCP) DownloadPricingData() error {
 
 	defaultRegion := "" // Sometimes, PVs may be missing the region label. In that case assume that they are in the same region as the nodes
 	for _, n := range nodeList {
-		labels := n.GetObjectMeta().GetLabels()
+		labels := n.Labels
 		if _, ok := labels["cloud.google.com/gke-nodepool"]; ok { // The node is part of a GKE nodepool, so you're paying a cluster management cost
 			gcp.clusterManagementPrice = 0.10
 			gcp.clusterProvisioner = "GKE"
@@ -1117,8 +1116,8 @@ func (gcp *GCP) DownloadPricingData() error {
 	storageClassMap := make(map[string]map[string]string)
 	for _, storageClass := range storageClasses {
 		params := storageClass.Parameters
-		storageClassMap[storageClass.ObjectMeta.Name] = params
-		if storageClass.GetAnnotations()["storageclass.kubernetes.io/is-default-class"] == "true" || storageClass.GetAnnotations()["storageclass.beta.kubernetes.io/is-default-class"] == "true" {
+		storageClassMap[storageClass.Name] = params
+		if storageClass.Annotations["storageclass.kubernetes.io/is-default-class"] == "true" || storageClass.Annotations["storageclass.beta.kubernetes.io/is-default-class"] == "true" {
 			storageClassMap["default"] = params
 			storageClassMap[""] = params
 		}
@@ -1296,12 +1295,12 @@ func (gcp *GCP) ApplyReservedInstancePricing(nodes map[string]*models.Node) {
 		}
 	}
 
-	gcpNodes := make(map[string]*v1.Node)
+	gcpNodes := make(map[string]*clustercache.Node)
 	currentNodes := gcp.Clientset.GetAllNodes()
 
 	// Create a node name -> node map
 	for _, gcpNode := range currentNodes {
-		gcpNodes[gcpNode.GetName()] = gcpNode
+		gcpNodes[gcpNode.Name] = gcpNode
 	}
 
 	// go through all provider nodes using k8s nodes for region
@@ -1453,7 +1452,7 @@ func (key *pvKey) GetStorageClass() string {
 	return key.StorageClass
 }
 
-func (gcp *GCP) GetPVKey(pv *v1.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
+func (gcp *GCP) GetPVKey(pv *clustercache.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
 	providerID := ""
 	if pv.Spec.GCEPersistentDisk != nil {
 		providerID = pv.Spec.GCEPersistentDisk.PDName
@@ -1492,7 +1491,7 @@ type gcpKey struct {
 	Labels map[string]string
 }
 
-func (gcp *GCP) GetKey(labels map[string]string, n *v1.Node) models.Key {
+func (gcp *GCP) GetKey(labels map[string]string, n *clustercache.Node) models.Key {
 	return &gcpKey{
 		Labels: labels,
 	}
