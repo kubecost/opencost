@@ -1,4 +1,8 @@
-<img src="./opencost-header.png"/>
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/6219/badge)](https://www.bestpractices.dev/projects/6219)
+[![Gurubase](https://img.shields.io/badge/Gurubase-Ask%20OpenCost%20Guru-006BFF)](https://gurubase.io/g/opencost)
+
+![](./opencost-header.png)
 
 # OpenCost — your favorite open source cost monitoring tool for Kubernetes and cloud spend
 
@@ -6,7 +10,7 @@ OpenCost give teams visibility into current and historical Kubernetes and cloud 
 These models provide cost transparency in Kubernetes environments that support multiple applications, teams, departments, etc.
 It also provides visibility into the cloud costs across multiple providers.
 
-OpenCost was originally developed and open sourced by [Kubecost](https://kubecost.com). This project combines a [specification](/spec/) as well as a Golang implementation of these detailed requirements.
+OpenCost was originally developed and open sourced by [Kubecost](https://kubecost.com). This project combines a [specification](/spec/) as well as a Golang implementation of these detailed requirements. The web UI is available in the [opencost/opencost-ui](http://github.com/opencost/opencost-ui) repository.
 
 [![OpenCost UI Walkthrough](./ui/src/thumbnail.png)](https://youtu.be/lCP4Ci9Kcdg)
 *OpenCost UI Walkthrough*
@@ -19,6 +23,8 @@ To see the full functionality of OpenCost you can view [OpenCost features](https
 - Supports on-prem k8s clusters with custom CSV pricing
 - Allocation for in-cluster K8s resources like CPU, GPU, memory, and persistent volumes
 - Easily export pricing data to Prometheus with /metrics endpoint ([learn more](https://www.opencost.io/docs/installation/prometheus))
+- Carbon costs for cloud resources
+- Support for external costs like Datadog through [OpenCost Plugins](https://github.com/opencost/opencost-plugins)
 - Free and open source distribution ([Apache2 license](LICENSE))
 
 ## Getting Started

@@ -3,7 +3,7 @@ package storage
 import (
 	"testing"
 
-	"github.com/opencost/opencost/pkg/util/json"
+	"github.com/opencost/opencost/core/pkg/util/json"
 )
 
 func assert(t *testing.T, condition bool, msg string) {

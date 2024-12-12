@@ -8,16 +8,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/util"
+	"github.com/opencost/opencost/core/pkg/util/json"
 	"github.com/opencost/opencost/pkg/cloud/models"
 	"github.com/opencost/opencost/pkg/cloud/utils"
 	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/opencost/opencost/pkg/env"
-	"github.com/opencost/opencost/pkg/kubecost"
-	"github.com/opencost/opencost/pkg/log"
-	"github.com/opencost/opencost/pkg/util"
-	"github.com/opencost/opencost/pkg/util/json"
-
-	v1 "k8s.io/api/core/v1"
 )
 
 type NodePrice struct {
@@ -146,7 +144,7 @@ func (cp *CustomProvider) ClusterInfo() (map[string]string, error) {
 	if conf.ClusterName != "" {
 		m["name"] = conf.ClusterName
 	}
-	m["provider"] = kubecost.CustomProvider
+	m["provider"] = opencost.CustomProvider
 	m["region"] = cp.ClusterRegion
 	m["account"] = cp.ClusterAccountID
 	m["id"] = env.GetClusterID()
@@ -242,7 +240,7 @@ func (cp *CustomProvider) DownloadPricingData() error {
 	return nil
 }
 
-func (cp *CustomProvider) GetKey(labels map[string]string, n *v1.Node) models.Key {
+func (cp *CustomProvider) GetKey(labels map[string]string, n *clustercache.Node) models.Key {
 	return &customProviderKey{
 		SpotLabel:      cp.SpotLabel,
 		SpotLabelValue: cp.SpotLabelValue,
@@ -329,7 +327,7 @@ func (cp *CustomProvider) LoadBalancerPricing() (*models.LoadBalancer, error) {
 	}, nil
 }
 
-func (*CustomProvider) GetPVKey(pv *v1.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
+func (*CustomProvider) GetPVKey(pv *clustercache.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
 	return &customPVKey{
 		Labels:                 pv.Labels,
 		StorageClassName:       pv.Spec.StorageClassName,

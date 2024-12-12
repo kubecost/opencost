@@ -14,7 +14,7 @@ var (
 )
 
 // PrometheusMetadata represents a validation result for prometheus/thanos running
-// kubecost.
+// opencost.
 type PrometheusMetadata struct {
 	Running            bool `json:"running"`
 	KubecostDataExists bool `json:"kubecostDataExists"`

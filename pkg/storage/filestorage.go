@@ -1,13 +1,14 @@
 package storage
 
 import (
+	"fmt"
 	gofs "io/fs"
 	"os"
 	gopath "path"
 	"path/filepath"
 
-	"github.com/opencost/opencost/pkg/log"
-	"github.com/opencost/opencost/pkg/util/fileutil"
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/util/fileutil"
 	"github.com/pkg/errors"
 )
 
@@ -90,15 +91,17 @@ func (fs *FileStorage) ListDirectories(path string) ([]*StorageInfo, error) {
 
 // Read uses the relative path of the storage combined with the provided path to
 // read the contents.
+//
+// It takes advantage of flock() based locking to improve safety.
 func (fs *FileStorage) Read(path string) ([]byte, error) {
 	f := gopath.Join(fs.baseDir, path)
 
-	b, err := os.ReadFile(f)
+	b, err := fileutil.ReadLocked(f)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil, DoesNotExistError
 		}
-		return nil, errors.Wrap(err, "Failed to read file")
+		return nil, fmt.Errorf("reading %s: %w", f, err)
 	}
 
 	return b, nil
@@ -106,14 +109,16 @@ func (fs *FileStorage) Read(path string) ([]byte, error) {
 
 // Write uses the relative path of the storage combined with the provided path
 // to write a new file or overwrite an existing file.
+//
+// It takes advantage of flock() based locking to improve safety.
 func (fs *FileStorage) Write(path string, data []byte) error {
 	f, err := fs.prepare(path)
 	if err != nil {
 		return errors.Wrap(err, "Failed to prepare path")
 	}
-	err = os.WriteFile(f, data, os.ModePerm)
-	if err != nil {
-		return errors.Wrap(err, "Failed to write file")
+
+	if _, err := fileutil.WriteLocked(f, data); err != nil {
+		return fmt.Errorf("writing %s: %w", f, err)
 	}
 
 	return nil

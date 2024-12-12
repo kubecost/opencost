@@ -3,7 +3,7 @@ package cloud
 import (
 	"fmt"
 
-	"github.com/opencost/opencost/pkg/util/json"
+	"github.com/opencost/opencost/core/pkg/util/json"
 )
 
 // AuthorizerTypeProperty is the property where the id of an Authorizer should be placed in its custom MarshalJSON function

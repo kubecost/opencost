@@ -6,13 +6,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/util/stringutil"
+	"github.com/opencost/opencost/core/pkg/util/timeutil"
 	"github.com/opencost/opencost/pkg/cloud"
 	"github.com/opencost/opencost/pkg/env"
 	"github.com/opencost/opencost/pkg/errors"
-	"github.com/opencost/opencost/pkg/kubecost"
-	"github.com/opencost/opencost/pkg/log"
-	"github.com/opencost/opencost/pkg/util/stringutil"
-	"github.com/opencost/opencost/pkg/util/timeutil"
 )
 
 // IngestorStatus includes diagnostic values for a given Ingestor
@@ -21,7 +21,7 @@ type IngestorStatus struct {
 	LastRun          time.Time
 	NextRun          time.Time
 	Runs             int
-	Coverage         kubecost.Window
+	Coverage         opencost.Window
 	ConnectionStatus cloud.ConnectionStatus
 }
 
@@ -57,7 +57,7 @@ type ingestor struct {
 	lastRun      time.Time
 	runs         int
 	creationTime time.Time
-	coverage     kubecost.Window
+	coverage     opencost.Window
 	coverageLock sync.Mutex
 	isRunning    atomic.Bool
 	isStopping   atomic.Bool
@@ -78,7 +78,7 @@ func NewIngestor(ingestorConfig IngestorConfig, repo Repository, config cloud.Ke
 		return nil, fmt.Errorf("CloudCost: NewIngestor: provider integration config was not a valid type: %T", config)
 	}
 	now := time.Now().UTC()
-	midnight := kubecost.RoundForward(now, timeutil.Day)
+	midnight := opencost.RoundForward(now, timeutil.Day)
 	return &ingestor{
 		config:       ingestorConfig,
 		repo:         repo,
@@ -86,14 +86,14 @@ func NewIngestor(ingestorConfig IngestorConfig, repo Repository, config cloud.Ke
 		integration:  cci,
 		creationTime: now,
 		lastRun:      now,
-		coverage:     kubecost.NewClosedWindow(midnight, midnight),
+		coverage:     opencost.NewClosedWindow(midnight, midnight),
 	}, nil
 }
 
 func (ing *ingestor) LoadWindow(start, end time.Time) {
-	windows, err := kubecost.GetWindows(start, end, timeutil.Day)
+	windows, err := opencost.GetWindows(start, end, timeutil.Day)
 	if err != nil {
-		log.Errorf("CloudCost[%s]: ingestor: invalid window %s", ing.key, kubecost.NewWindow(&start, &end))
+		log.Errorf("CloudCost[%s]: ingestor: invalid window %s", ing.key, opencost.NewWindow(&start, &end))
 		return
 	}
 
@@ -113,10 +113,10 @@ func (ing *ingestor) LoadWindow(start, end time.Time) {
 }
 
 func (ing *ingestor) BuildWindow(start, end time.Time) {
-	log.Infof("CloudCost[%s]: ingestor: building window %s", ing.key, kubecost.NewWindow(&start, &end))
+	log.Infof("CloudCost[%s]: ingestor: building window %s", ing.key, opencost.NewWindow(&start, &end))
 	ccsr, err := ing.integration.GetCloudCost(start, end)
 	if err != nil {
-		log.Errorf("CloudCost[%s]: ingestor: build failed for window %s: %s", ing.key, kubecost.NewWindow(&start, &end), err.Error())
+		log.Errorf("CloudCost[%s]: ingestor: build failed for window %s: %s", ing.key, opencost.NewWindow(&start, &end), err.Error())
 		return
 	}
 	for _, ccs := range ccsr.CloudCostSets {
@@ -205,7 +205,7 @@ func (ing *ingestor) build(rebuild bool) {
 	buildStart := time.Now()
 
 	// Build as far back as the configures build Duration
-	limit := kubecost.RoundBack(time.Now().UTC().Add(-ing.config.Duration), ing.config.Resolution)
+	limit := opencost.RoundBack(time.Now().UTC().Add(-ing.config.Duration), ing.config.Resolution)
 
 	queryWindowStr := timeutil.FormatStoreResolution(ing.config.QueryWindow)
 	log.Infof("CloudCost[%s]: ingestor: build[%s]: Starting build back to %s in blocks of %s", ing.key, ing.runID, limit.String(), queryWindowStr)
@@ -216,7 +216,7 @@ func (ing *ingestor) build(rebuild bool) {
 
 	// Round end times back to nearest Resolution points in the past,
 	// querying for exactly one interval
-	e := kubecost.RoundBack(time.Now().UTC(), ing.config.Resolution)
+	e := opencost.RoundBack(time.Now().UTC(), ing.config.Resolution)
 	s := e.Add(-ing.config.QueryWindow)
 
 	// Continue until limit is reached
@@ -239,7 +239,7 @@ func (ing *ingestor) build(rebuild bool) {
 			ing.LoadWindow(s, e)
 		}
 
-		log.Infof("CloudCost[%s]: ingestor: build[%s]:  %s in %v", ing.key, ing.runID, kubecost.NewClosedWindow(s, e), time.Since(stepStart))
+		log.Infof("CloudCost[%s]: ingestor: build[%s]:  %s in %v", ing.key, ing.runID, opencost.NewClosedWindow(s, e), time.Since(stepStart))
 
 		// Shift to next QueryWindow
 		s = s.Add(-ing.config.QueryWindow)
@@ -288,7 +288,7 @@ func (ing *ingestor) run() {
 
 		// Round start time back to the nearest Resolution point in the past from the
 		// last update to the QueryWindow
-		s := kubecost.RoundBack(start.UTC(), ing.config.Resolution)
+		s := opencost.RoundBack(start.UTC(), ing.config.Resolution)
 		e := s.Add(ing.config.QueryWindow)
 
 		// Start with a window of the configured Duration and starting on the given
@@ -300,19 +300,19 @@ func (ing *ingestor) run() {
 			profStart := time.Now()
 			ing.BuildWindow(s, e)
 
-			log.Debugf("CloudCost[%s]: ingestor: Run[%s]: completed %s in %v", ing.key, ing.runID, kubecost.NewWindow(&s, &e), time.Since(profStart))
+			log.Debugf("CloudCost[%s]: ingestor: Run[%s]: completed %s in %v", ing.key, ing.runID, opencost.NewWindow(&s, &e), time.Since(profStart))
 
 			s = s.Add(ing.config.QueryWindow)
 			e = e.Add(ing.config.QueryWindow)
 			// prevent builds into the future
 			if e.After(time.Now().UTC()) {
-				e = kubecost.RoundForward(time.Now().UTC(), ing.config.Resolution)
+				e = opencost.RoundForward(time.Now().UTC(), ing.config.Resolution)
 			}
 
 		}
 		ing.lastRun = time.Now().UTC()
 
-		limit := kubecost.RoundBack(time.Now().UTC(), ing.config.Resolution).Add(-ing.config.Duration)
+		limit := opencost.RoundBack(time.Now().UTC(), ing.config.Resolution).Add(-ing.config.Duration)
 		err := ing.repo.Expire(limit)
 		if err != nil {
 			log.Errorf("CloudCost: Ingestor: failed to expire Data: %s", err)
@@ -328,7 +328,7 @@ func (ing *ingestor) run() {
 	}
 }
 
-func (ing *ingestor) expandCoverage(window kubecost.Window) {
+func (ing *ingestor) expandCoverage(window opencost.Window) {
 	if window.IsOpen() {
 		return
 	}

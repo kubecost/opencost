@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opencost/opencost/pkg/kubecost"
-	"github.com/opencost/opencost/pkg/log"
-	"github.com/opencost/opencost/pkg/util/json"
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/util/json"
 )
 
 const azureDateLayout = "2006-01-02"
@@ -19,32 +19,35 @@ var groupRegex = regexp.MustCompile("(/[^/]+)")
 
 // BillingRowValues holder for Azure Billing Values
 type BillingRowValues struct {
-	Date            time.Time
-	MeterCategory   string
-	SubscriptionID  string
-	InvoiceEntityID string
-	InstanceID      string
-	Service         string
-	Tags            map[string]string
-	AdditionalInfo  map[string]any
-	Cost            float64
-	NetCost         float64
+	Date              time.Time
+	MeterCategory     string
+	SubscriptionID    string
+	SubscriptionName  string
+	InvoiceEntityID   string
+	InvoiceEntityName string
+	Region            string
+	InstanceID        string
+	Service           string
+	Tags              map[string]string
+	AdditionalInfo    map[string]any
+	Cost              float64
+	NetCost           float64
 }
 
 func (brv *BillingRowValues) IsCompute(category string) bool {
-	if category == kubecost.ComputeCategory {
+	if category == opencost.ComputeCategory {
 		return true
 	}
 
-	if category == kubecost.StorageCategory || category == kubecost.NetworkCategory {
+	if category == opencost.StorageCategory || category == opencost.NetworkCategory {
 		if brv.Service == "Microsoft.Compute" {
 			return true
 		}
 	}
-	if category == kubecost.NetworkCategory && brv.MeterCategory == "Virtual Network" {
+	if category == opencost.NetworkCategory && brv.MeterCategory == "Virtual Network" {
 		return true
 	}
-	if category == kubecost.NetworkCategory && brv.MeterCategory == "Bandwidth" {
+	if category == opencost.NetworkCategory && brv.MeterCategory == "Bandwidth" {
 		return true
 	}
 	return false
@@ -52,17 +55,20 @@ func (brv *BillingRowValues) IsCompute(category string) bool {
 
 // BillingExportParser holds indexes of relevent fields in Azure Billing CSV in addition to the correct data format
 type BillingExportParser struct {
-	Date            int
-	MeterCategory   int
-	InvoiceEntityID int
-	SubscriptionID  int
-	InstanceID      int
-	Service         int
-	Tags            int
-	AdditionalInfo  int
-	Cost            int
-	NetCost         int
-	DateFormat      string
+	Date              int
+	MeterCategory     int
+	InvoiceEntityID   int
+	InvoiceEntityName int
+	SubscriptionID    int
+	SubscriptionName  int
+	Region            int
+	InstanceID        int
+	Service           int
+	Tags              int
+	AdditionalInfo    int
+	Cost              int
+	NetCost           int
+	DateFormat        string
 }
 
 // match "SubscriptionGuid" in "Abonnement-GUID (SubscriptionGuid)"
@@ -106,6 +112,14 @@ func NewBillingParseSchema(headers []string) (*BillingExportParser, error) {
 		return nil, fmt.Errorf("NewBillingParseSchema: failed to find Subscription ID field")
 	}
 
+	// set Subscription Name
+	if i, ok := headerIndexes["subscriptionname"]; ok {
+		abp.SubscriptionName = i
+	} else {
+		// if no subscription name column use subscriptionID column
+		abp.SubscriptionName = abp.SubscriptionID
+	}
+
 	// Set Billing ID
 	if i, ok := headerIndexes["billingaccountid"]; ok {
 		abp.InvoiceEntityID = i
@@ -114,6 +128,25 @@ func NewBillingParseSchema(headers []string) (*BillingExportParser, error) {
 	} else {
 		// if no billing ID column is present use subscription ID
 		abp.InvoiceEntityID = abp.SubscriptionID
+	}
+
+	// Set Billing Account Name
+	if i, ok := headerIndexes["billingaccountname"]; ok {
+		abp.InvoiceEntityName = i
+	} else {
+		// if no billing name column is present use billing ID index
+		abp.InvoiceEntityName = abp.InvoiceEntityID
+	}
+
+	// Set Region
+	if i, ok := headerIndexes["resourcelocation"]; ok {
+		abp.Region = i
+	} else if j, ok2 := headerIndexes["meterregion"]; ok2 {
+		abp.Region = j
+	} else if k, ok3 := headerIndexes["location"]; ok3 {
+		abp.Region = k
+	} else {
+		return nil, fmt.Errorf("NewBillingParseSchema: failed to find Region field")
 	}
 
 	// Set Instance ID
@@ -237,16 +270,19 @@ func (bep *BillingExportParser) ParseRow(start, end time.Time, record []string) 
 	}
 
 	return &BillingRowValues{
-		Date:            usageDate,
-		MeterCategory:   record[bep.MeterCategory],
-		SubscriptionID:  record[bep.SubscriptionID],
-		InvoiceEntityID: record[bep.InvoiceEntityID],
-		InstanceID:      record[bep.InstanceID],
-		Service:         record[bep.Service],
-		Tags:            tags,
-		AdditionalInfo:  additionalInfo,
-		Cost:            cost,
-		NetCost:         netCost,
+		Date:              usageDate,
+		MeterCategory:     record[bep.MeterCategory],
+		SubscriptionID:    record[bep.SubscriptionID],
+		SubscriptionName:  record[bep.SubscriptionName],
+		InvoiceEntityID:   record[bep.InvoiceEntityID],
+		InvoiceEntityName: record[bep.InvoiceEntityName],
+		Region:            record[bep.Region],
+		InstanceID:        record[bep.InstanceID],
+		Service:           record[bep.Service],
+		Tags:              tags,
+		AdditionalInfo:    additionalInfo,
+		Cost:              cost,
+		NetCost:           netCost,
 	}
 }
 
@@ -270,7 +306,7 @@ func AzureSetProviderID(abv *BillingRowValues) (providerID string, isVMSSShared 
 		return fmt.Sprintf("%v", value2), false
 	}
 
-	if category == kubecost.StorageCategory || (category == kubecost.NetworkCategory && abv.MeterCategory == "Bandwidth") {
+	if category == opencost.StorageCategory || (category == opencost.NetworkCategory && abv.MeterCategory == "Bandwidth") {
 		if value2, ok2 := abv.Tags["creationSource"]; ok2 {
 			creationSource := fmt.Sprintf("%v", value2)
 			return strings.TrimPrefix(creationSource, "aks-"), true
@@ -285,14 +321,14 @@ func AzureSetProviderID(abv *BillingRowValues) (providerID string, isVMSSShared 
 }
 
 func SelectAzureCategory(meterCategory string) string {
-	if meterCategory == "Virtual Machines" {
-		return kubecost.ComputeCategory
+	if meterCategory == "Virtual Machines" || meterCategory == "Virtual Machines Licenses" {
+		return opencost.ComputeCategory
 	} else if meterCategory == "Storage" {
-		return kubecost.StorageCategory
+		return opencost.StorageCategory
 	} else if meterCategory == "Load Balancer" || meterCategory == "Bandwidth" || meterCategory == "Virtual Network" {
-		return kubecost.NetworkCategory
+		return opencost.NetworkCategory
 	} else {
-		return kubecost.OtherCategory
+		return opencost.OtherCategory
 	}
 }
 

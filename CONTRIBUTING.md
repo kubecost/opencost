@@ -42,7 +42,7 @@ Dependencies:
 3. Set [this environment variable](https://github.com/opencost/opencost/blob/develop/kubernetes/opencost.yaml#L155) to the address of your Prometheus server
 
 ### Build the frontend
-1. `cd ui && just build-ui "<repo>/opencost-ui:<tag>"`
+1. `cd ui && just build "<repo>/opencost-ui:<tag>"`
 2. Edit the [pulled image](https://github.com/opencost/opencost/blob/develop/kubernetes/opencost.yaml#L162) in the `kubernetes/opencost.yaml` to `<repo>/opencost-ui:<tag>`
 
 ### Deploy to a cluster
@@ -89,6 +89,12 @@ An example of the full command:
 PROMETHEUS_SERVER_ENDPOINT="http://127.0.0.1:9090" go run main.go
 ```
 
+## Testing code
+
+Testing is provided by the `just test` command which runs
+- [go test](https://go.dev/doc/tutorial/add-a-test) unit tests
+- [go vet](https://pkg.go.dev/cmd/vet) code quality checks
+
 ## Running the integration tests
 
 To run these tests:
@@ -111,3 +117,34 @@ Please write a commit message with Fixes Issue # if there is an outstanding issu
 Please run `go fmt` on the project directory. Lint can be okay (for example, comments on exported functions are nice but not required on the server).
 
 Please reach us on [CNCF Slack](https://slack.cncf.io/) in the [#opencost](https://cloud-native.slack.com/archives/C03D56FPD4G) channel or attend the biweekly [OpenCost Working Group community meeting](https://bit.ly/opencost-meeting) from the [Community Calendar](https://bit.ly/opencost-calendar) to discuss OpenCost development.
+
+## Third Party Attributions
+
+The THIRD_PARTY_LICENSES.txt file should contain the up-to-date license, copyright, and notice information for dependencies used by Opencost.
+When adding, updating, or removing dependencies, please update the associate section(s) of the [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt) file. 
+
+For example, the `github.com/opencost/opencost/core` dependency contains the following third party attributions.
+The license associated with the SPDX identifier should also be included in the attributions file, if it is not already present.
+
+```
+== Dependency
+github.com/opencost/opencost/core
+
+== License Type
+SPDX:Apache-2.0
+
+== Copyright
+Copyright 2019 - 2022 Stackwatch Incorporated. All Rights Reserved.
+Copyright 2022 - 2024 Cloud Native Computing Foundation
+
+== Notices
+OpenCost
+Copyright 2022 - 2024 Cloud Native Computing Foundation
+
+This product includes software developed at
+The Cloud Native Computing Foundation (http://www.cncf.io).
+
+The Initial Developer of some parts of the specification and project is
+Kubecost (http://www.kubecost.com).
+Copyright 2019 - 2022 Stackwatch Incorporated. All Rights Reserved.
+```

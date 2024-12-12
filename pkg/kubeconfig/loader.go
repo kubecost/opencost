@@ -1,6 +1,8 @@
 package kubeconfig
 
 import (
+	"fmt"
+
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
@@ -17,7 +19,16 @@ func LoadKubeconfig(path string) (*rest.Config, error) {
 		loadingRules.ExplicitPath = path
 	}
 	loader := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, &clientcmd.ConfigOverrides{})
-	return loader.ClientConfig()
+	config, err := loader.ClientConfig()
+	if err != nil {
+		return nil, fmt.Errorf("loading kubeconfig: %w", err)
+	}
+	config.UserAgent = "opencost"
+	// use protobuf for faster serialization instead of default json
+	// https://kubernetes.io/docs/reference/using-api/api-concepts/#alternate-representations-of-resources
+	config.AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
+	config.ContentType = "application/vnd.kubernetes.protobuf"
+	return config, nil
 }
 
 // LoadKubeClient accepts a path to a kubeconfig to load and returns the clientset

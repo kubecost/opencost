@@ -5,10 +5,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/opencost"
 	"github.com/opencost/opencost/pkg/cloud"
 	"github.com/opencost/opencost/pkg/cloud/config"
-	"github.com/opencost/opencost/pkg/kubecost"
-	"github.com/opencost/opencost/pkg/log"
 )
 
 // IngestionManager is a config.Observer which creates Ingestor instances based on the signals that it receives from the
@@ -135,9 +135,9 @@ func (im *IngestionManager) Rebuild(integrationKey string) error {
 func (im *IngestionManager) RepairAll(start, end time.Time) error {
 	im.lock.Lock()
 	defer im.lock.Unlock()
-	s := kubecost.RoundForward(start, im.config.Resolution)
-	e := kubecost.RoundForward(end, im.config.Resolution)
-	windows, err := kubecost.GetWindowsForQueryWindow(s, e, im.config.QueryWindow)
+	s := opencost.RoundForward(start, im.config.Resolution)
+	e := opencost.RoundForward(end, im.config.Resolution)
+	windows, err := opencost.GetWindowsForQueryWindow(s, e, im.config.QueryWindow)
 	if err != nil {
 		return fmt.Errorf("CloudCost: IngestionManager: Repair could not retrieve windows: %s", err.Error())
 	}
@@ -156,9 +156,9 @@ func (im *IngestionManager) RepairAll(start, end time.Time) error {
 func (im *IngestionManager) Repair(integrationKey string, start, end time.Time) error {
 	im.lock.Lock()
 	defer im.lock.Unlock()
-	s := kubecost.RoundForward(start, im.config.Resolution)
-	e := kubecost.RoundForward(end, im.config.Resolution)
-	windows, err := kubecost.GetWindowsForQueryWindow(s, e, im.config.QueryWindow)
+	s := opencost.RoundForward(start, im.config.Resolution)
+	e := opencost.RoundForward(end, im.config.Resolution)
+	windows, err := opencost.GetWindowsForQueryWindow(s, e, im.config.QueryWindow)
 	if err != nil {
 		return fmt.Errorf("CloudCost: IngestionManager: Repair could not retrieve windows: %s", err.Error())
 	}

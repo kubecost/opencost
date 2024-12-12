@@ -142,7 +142,7 @@ spec:
       restartPolicy: Always
       serviceAccountName: opencost
       containers:
-        - image: quay.io/kubecost1/kubecost-cost-model:latest
+        - image: ghcr.io/opencost/opencost:latest
           name: opencost
           resources:
             requests:
@@ -153,7 +153,7 @@ spec:
               memory: "1G"
           env:
             - name: PROMETHEUS_SERVER_ENDPOINT
-              value: "http://my-prometheus-server.prometheus.svc" # The endpoint should have the form http://<service-name>.<namespace-name>.svc
+              value: "http://prometheus-server.prometheus-system.svc" # The endpoint should have the form http://<service-name>.<namespace-name>.svc
             - name: CLOUD_PROVIDER_API_KEY
               value: "AIzaSyD29bGxmHAVEOBYtgd8sYM2gM2ekfxQX4U" # The GCP Pricing API requires a key. This is supplied just for evaluation.
             - name: CLUSTER_ID
@@ -167,7 +167,7 @@ spec:
             privileged: false
             readOnlyRootFilesystem: true
             runAsUser: 1001
-        - image: quay.io/kubecost1/opencost-ui:latest
+        - image: ghcr.io/opencost/opencost-ui:latest
           name: opencost-ui
           resources:
             requests:

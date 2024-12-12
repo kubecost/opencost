@@ -3,9 +3,9 @@ package metrics
 import (
 	"strings"
 
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/util/promutil"
 	"github.com/opencost/opencost/pkg/clustercache"
-	"github.com/opencost/opencost/pkg/log"
-	"github.com/opencost/opencost/pkg/prom"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	v1 "k8s.io/api/core/v1"
@@ -62,7 +62,7 @@ func (nsac KubeNodeCollector) Collect(ch chan<- prometheus.Metric) {
 	disabledMetrics := nsac.metricsConfig.GetDisabledMetricsMap()
 
 	for _, node := range nodes {
-		nodeName := node.GetName()
+		nodeName := node.Name
 
 		// Node Capacity
 		for resourceName, quantity := range node.Status.Capacity {
@@ -120,7 +120,7 @@ func (nsac KubeNodeCollector) Collect(ch chan<- prometheus.Metric) {
 
 		// node labels
 		if _, disabled := disabledMetrics["kube_node_labels"]; !disabled {
-			labelNames, labelValues := prom.KubePrependQualifierToLabels(prom.SanitizeLabels(node.GetLabels()), "label_")
+			labelNames, labelValues := promutil.KubePrependQualifierToLabels(promutil.SanitizeLabels(node.Labels), "label_")
 			ch <- newKubeNodeLabelsMetric(nodeName, "kube_node_labels", labelNames, labelValues)
 		}
 

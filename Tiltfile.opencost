@@ -1,0 +1,169 @@
+load('ext://helm_resource', 'helm_resource', 'helm_repo')
+load('ext://restart_process', 'docker_build_with_restart')
+load('ext://secret', 'secret_create_generic')
+
+
+def get_docker_platform(arch):
+    if arch == "arm64":
+        return "linux/arm64"
+    else:
+        return "linux/amd64"
+
+
+def get_go_arch(arch):
+    if arch == "arm64":
+        return "arm64"
+    else:
+        return "amd64"
+
+
+# run_opencost is encapsulated as a function to make import easier for running alongside kubecost.
+# The `../opencost` pattern that repeats across this function is to deal with how multiple tilt
+# files work - the base directory (`.`) is always relative to the Tiltfile executed and not the
+# directory containing this file.
+def run_opencost(options):
+
+    docker_platform = get_docker_platform(options["arch"])
+    go_arch = get_go_arch(options["arch"])
+    is_cloud_integration = options["cloud_integration"] != '' and os.path.exists(options["cloud_integration"])
+    is_service_key = options["service_key"] != '' and os.path.exists(options["service_key"])
+    continue_flag = '--continue'
+    if options["delve_continue"] == False:
+        continue_flag = ''
+
+    # Build and update opencost back end binary when code changes
+    local_resource(
+        name='build-costmodel',
+        dir='.',
+        cmd='CGO_ENABLED=0 GOOS=linux GOARCH='+go_arch+' go build -o ../opencost/cmd/costmodel/costmodel-tilt ../opencost/cmd/costmodel/main.go',
+        deps=[
+            '../opencost/cmd/costmodel/main.go',
+            '../opencost/pkg',
+        ],
+        allow_parallel=True,
+    )
+
+    # Build back end docker container
+    # If the binary is updated, update the running container and restart binary in dlv
+    docker_build_with_restart(
+        ref=options["docker_repo"]+'opencost-costmodel',
+        context='../opencost',
+        # remove --continue flag to make dlv wait until debugger is attached to start
+        entrypoint='/go/bin/dlv exec --listen=:40000 --api-version=2 --headless=true --accept-multiclient --log '+continue_flag+' /app/main',
+        dockerfile='../opencost/Dockerfile.debug',
+        platform=docker_platform,
+        build_args={'binary_path': './cmd/costmodel/costmodel-tilt'},
+        only=[
+            'cmd/costmodel/costmodel-tilt',
+            'configs',
+            'THIRD_PARTY_LICENSES.txt',
+        ],
+        live_update=[
+            sync('../opencost/cmd/costmodel/costmodel-tilt', '/app/main'),
+        ],
+    )
+
+    # npm install if package.json changes
+    local_resource(
+        name='build-npm-install',
+        dir='../opencost/ui',
+        cmd='npm install',
+        deps=[
+            '../opencost/ui/package.json',
+        ],
+        allow_parallel=True,
+    )
+
+    # Build FE locally when code changes
+    local_resource(
+        name='build-ui',
+        dir='../opencost/ui',
+        cmd='npx parcel build src/index.html',
+        deps=[
+            '../opencost/ui/src',
+            '../opencost/ui/package.json',
+        ],
+        allow_parallel=True,
+        resource_deps=['build-npm-install'],
+    )
+
+    # update container when relevant files change
+    docker_build(
+        ref=options["docker_repo"]+'opencost-ui',
+        context='../opencost/ui',
+        dockerfile='../opencost/ui/Dockerfile.debug',
+        only=[
+            'dist',
+            'nginx.conf',
+            'default.nginx.conf.template',
+            'docker-entrypoint.sh',
+        ],
+        live_update=[
+            sync('../opencost/ui/dist', '/var/www'),
+        ],
+    )
+
+    values_set = [
+        'opencost.ui.image.fullImageName='+options["docker_repo"]+'opencost-ui',
+        'opencost.exporter.image.fullImageName='+options["docker_repo"]+'opencost-costmodel',
+        'opencost.prometheus.internal.namespaceName='+k8s_namespace(),
+        'opencost.exporter.debugPort=40000',
+    ]
+
+    if is_cloud_integration:
+        values_set.append('opencost.cloudIntegrationSecret=cloud-integration')
+        values_set.append('opencost.cloudCost.enabled=true')
+    else:
+        values_set.append('opencost.cloudCost.enabled=false')
+
+    if is_cloud_integration:
+        secret_create_generic(
+            name='cloud-integration',
+            namespace=k8s_namespace(),
+            from_file=options["cloud_integration"],
+            secret_type=None,
+            from_env_file=None
+        )
+
+    if is_service_key:
+        secret_create_generic(
+            name='service-key',
+            namespace=k8s_namespace(),
+            from_file=options["service_key"],
+            secret_type=None,
+            from_env_file=None
+        )
+
+    # build yaml for deployment to k8s
+    yaml = helm(
+        '../opencost-helm-chart/charts/opencost',
+        name='opencost',
+        values=[options["helm_values"]],
+        set=values_set
+    )
+    k8s_yaml(yaml)  # put resulting yaml into k8s
+
+    port_forwards = [
+        options['port_costmodel']+':9003',
+        options['port_ui']+':9090',
+        options['port_debug']+':40000',
+    ]
+    k8s_resource(workload='opencost', port_forwards=port_forwards)
+
+    helm_repo('prometheus-community', 'https://prometheus-community.github.io/helm-charts')
+    helm_resource(
+        name='prometheus',
+        chart='prometheus-community/prometheus',
+        resource_deps=['prometheus-community'])
+    k8s_resource(workload='prometheus', port_forwards=[options['port_prometheus']+':9090'])
+
+    local_resource(
+        name='costmodel-test',
+        dir='../opencost',
+        cmd='go test ./...',
+        deps=[
+            './pkg',
+        ],
+        allow_parallel=True,
+        resource_deps=['opencost'],  # run tests after build to speed up deployment
+    )

@@ -12,13 +12,13 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/opencost"
 	"github.com/opencost/opencost/pkg/filemanager"
-	"github.com/opencost/opencost/pkg/kubecost"
-	"github.com/opencost/opencost/pkg/log"
 )
 
 type AllocationModel interface {
-	ComputeAllocation(start, end time.Time, resolution time.Duration) (*kubecost.AllocationSet, error)
+	ComputeAllocation(start, end time.Time, resolution time.Duration) (*opencost.AllocationSet, error)
 	DateRange() (time.Time, time.Time, error)
 }
 
@@ -161,7 +161,7 @@ func (e *csvExporter) writeCSVToWriter(ctx context.Context, w io.Writer, dates [
 
 	type rowData struct {
 		date  time.Time
-		alloc *kubecost.Allocation
+		alloc *opencost.Allocation
 	}
 
 	type columnDef struct {
@@ -309,7 +309,6 @@ func (e *csvExporter) writeCSVToWriter(ctx context.Context, w io.Writer, dates [
 			},
 		})
 	}
-	csvDef = append(csvDef)
 
 	header := make([]string, 0, len(csvDef))
 	for _, def := range csvDef {

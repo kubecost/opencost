@@ -5,18 +5,13 @@ service:
   enabled: true
   # --  Kubernetes Service type
   type: ClusterIP
-  # -- extra ports.  Useful for sidecar pods such as oauth-proxy
-  extraPorts:
-    - name: debug
-      port: 40000
-      targetPort: 40000
 
 opencost:
   exporter:
     # -- The GCP Pricing API requires a key. This is supplied just for evaluation.
     cloudProviderApiKey: ""
     # -- Default cluster ID to use if cluster_id is not set in Prometheus metrics.
-    defaultClusterId: 'tilt-cluster'
+    defaultClusterId: "tilt-cluster"
   livenessProbe:
     # -- Whether probe is enabled
     enabled: true
@@ -36,6 +31,9 @@ opencost:
     periodSeconds: 10
     # -- Number of failures for probe to be considered failed
     failureThreshold: 3
+  # extraVolumeMounts:
+  #   - mountPath: /var/secrets
+  #     name: service-key-secret
 
   # Persistent volume claim for storing the data. eg: csv file
   persistence:
@@ -116,3 +114,7 @@ opencost:
   ui:
     # -- Enable OpenCost UI
     enabled: true
+# extraVolumes:
+#   - name: service-key-secret
+#     secret:
+#       secretName: service-key

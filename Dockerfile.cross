@@ -1,16 +1,29 @@
 FROM alpine:latest
 
+ARG version=dev
+ARG	commit=HEAD
+
+LABEL org.opencontainers.image.description="Cross-cloud cost allocation models for Kubernetes workloads"
+LABEL org.opencontainers.image.documentation=https://opencost.io/docs/
+LABEL org.opencontainers.image.licenses=Apache-2.0
+LABEL org.opencontainers.image.source=https://github.com/opencost/opencost
+LABEL org.opencontainers.image.title=kubecost-cost-model
+LABEL org.opencontainers.image.url=https://opencost.io
+
 # The prebuilt binary path. This Dockerfile assumes the binary will be built
 # outside of Docker.
 ARG binarypath
 
 RUN apk add --update --no-cache ca-certificates
 
+ADD --chmod=644 ./THIRD_PARTY_LICENSES.txt /THIRD_PARTY_LICENSES.txt
 ADD --chmod=644 ./configs/default.json /models/default.json
 ADD --chmod=644 ./configs/azure.json /models/azure.json
 ADD --chmod=644 ./configs/aws.json /models/aws.json
 ADD --chmod=644 ./configs/gcp.json /models/gcp.json
 ADD --chmod=644 ./configs/alibaba.json /models/alibaba.json
+ADD --chmod=644 ./configs/oracle.json /models/oracle.json
+ADD --chmod=644 ./configs/otc.json /models/otc.json
 
 COPY ${binarypath} /go/bin/app
 

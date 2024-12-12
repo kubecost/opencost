@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/opencost/opencost/core/pkg/log"
 	"github.com/opencost/opencost/pkg/env"
-	"github.com/opencost/opencost/pkg/log"
 	prometheus "github.com/prometheus/client_golang/api"
 )
 
@@ -54,7 +54,7 @@ const (
 	KSMAllocatableCPUCoresMetricID = "ksmAllocatableCpuCoresMetric"
 )
 
-const DocumentationBaseURL = "https://github.com/kubecost/docs/blob/master/diagnostics.md"
+const DocumentationBaseURL = "https://www.opencost.io/docs/"
 
 // diagnostic definitions mapping holds all of the diagnostic definitions that can be used for prometheus metrics diagnostics
 var diagnosticDefinitions map[string]*diagnosticDefinition = map[string]*diagnosticDefinition{
@@ -117,7 +117,7 @@ var diagnosticDefinitions map[string]*diagnosticDefinition = map[string]*diagnos
 		QueryFmt:    `absent_over_time(kubecost_container_cpu_usage_irate{%s}[5m] %s)`,
 		Label:       "Kubecost's CPU usage recording rule is set up",
 		Description: "If the 'kubecost_container_cpu_usage_irate' recording rule is not set up, Allocation pipeline build may put pressure on your Prometheus due to the use of a subquery.",
-		DocLink:     "https://docs.kubecost.com/install-and-configure/install/custom-prom",
+		DocLink:     "https://www.opencost.io/docs/installation/prometheus",
 	},
 	CAdvisorWorkingSetBytesMetricID: {
 		ID:          CAdvisorWorkingSetBytesMetricID,

@@ -3,9 +3,9 @@ package aws
 import (
 	"fmt"
 
+	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/util/json"
 	"github.com/opencost/opencost/pkg/cloud"
-	"github.com/opencost/opencost/pkg/kubecost"
-	"github.com/opencost/opencost/pkg/util/json"
 )
 
 // AthenaConfiguration
@@ -124,7 +124,7 @@ func (ac *AthenaConfiguration) Key() string {
 }
 
 func (ac *AthenaConfiguration) Provider() string {
-	return kubecost.AWSProvider
+	return opencost.AWSProvider
 }
 
 func (ac *AthenaConfiguration) UnmarshalJSON(b []byte) error {

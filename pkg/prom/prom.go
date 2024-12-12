@@ -3,6 +3,7 @@ package prom
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net"
 	"net/http"
@@ -12,15 +13,18 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/opencost/opencost/pkg/collections"
-	"github.com/opencost/opencost/pkg/log"
-	"github.com/opencost/opencost/pkg/util/fileutil"
-	"github.com/opencost/opencost/pkg/util/httputil"
-	"github.com/opencost/opencost/pkg/version"
+	"github.com/opencost/opencost/core/pkg/collections"
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/util/fileutil"
+	"github.com/opencost/opencost/core/pkg/util/httputil"
+	"github.com/opencost/opencost/core/pkg/version"
+	"github.com/opencost/opencost/pkg/env"
 
 	golog "log"
 
 	prometheus "github.com/prometheus/client_golang/api"
+	restclient "k8s.io/client-go/rest"
+	certutil "k8s.io/client-go/util/cert"
 )
 
 var UserAgent = fmt.Sprintf("Opencost/%s", version.Version)
@@ -374,6 +378,22 @@ type PrometheusClientConfig struct {
 
 // NewPrometheusClient creates a new rate limited client which limits by outbound concurrent requests.
 func NewPrometheusClient(address string, config *PrometheusClientConfig) (prometheus.Client, error) {
+
+	var tlsCaCert *x509.CertPool
+	// We will use the service account token and service-ca.crt to authenticate with the Prometheus server via kube-rbac-proxy.
+	// We need to ensure that the service account has the necessary permissions to access the Prometheus server by binding it to the appropriate role.
+	if env.IsKubeRbacProxyEnabled() {
+		restConfig, err := restclient.InClusterConfig()
+		if err != nil {
+			log.Errorf("KUBE_RBAC_PROXY_ENABLED was set to true but failed to get in-cluster config: %s", err)
+		}
+		config.Auth.BearerToken = restConfig.BearerToken
+		tlsCaCert, err = certutil.NewPool(`/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt`)
+		if err != nil {
+			log.Errorf("KUBE_RBAC_PROXY_ENABLED was set to true but failed to load service-ca.crt: %s", err)
+		}
+	}
+
 	// may be necessary for long prometheus queries
 	rt := httputil.NewUserAgentTransport(UserAgent, &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
@@ -384,6 +404,7 @@ func NewPrometheusClient(address string, config *PrometheusClientConfig) (promet
 		TLSHandshakeTimeout: config.TLSHandshakeTimeout,
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: config.TLSInsecureSkipVerify,
+			RootCAs:            tlsCaCert,
 		},
 	})
 	pc := prometheus.Config{

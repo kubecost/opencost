@@ -4,6 +4,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/opencost/opencost/core/pkg/log"
 	"github.com/pkg/errors"
 )
 
@@ -62,6 +63,8 @@ type Storage interface {
 func Validate(storage Storage) error {
 	const testPath = "tmp/test.txt"
 	const testContent = "test"
+
+	log.Debug("validating storage")
 
 	// attempt to read a path
 	_, err := storage.Exists(testPath)

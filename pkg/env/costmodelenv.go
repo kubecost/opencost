@@ -2,12 +2,11 @@ package env
 
 import (
 	"fmt"
-	"regexp"
-	"strconv"
 	"time"
 
-	"github.com/opencost/opencost/pkg/log"
-	"github.com/opencost/opencost/pkg/util/timeutil"
+	"github.com/opencost/opencost/core/pkg/env"
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/util/timeutil"
 )
 
 const (
@@ -21,10 +20,12 @@ const (
 	AlibabaAccessKeyIDEnvVar     = "ALIBABA_ACCESS_KEY_ID"
 	AlibabaAccessKeySecretEnvVar = "ALIBABA_SECRET_ACCESS_KEY"
 
-	AzureOfferIDEnvVar        = "AZURE_OFFER_ID"
-	AzureBillingAccountEnvVar = "AZURE_BILLING_ACCOUNT"
+	AzureOfferIDEnvVar                   = "AZURE_OFFER_ID"
+	AzureBillingAccountEnvVar            = "AZURE_BILLING_ACCOUNT"
+	AzureDownloadBillingDataToDiskEnvVar = "AZURE_DOWNLOAD_BILLING_DATA_TO_DISK"
 
 	KubecostNamespaceEnvVar        = "KUBECOST_NAMESPACE"
+	KubecostScrapeIntervalEnvVar   = "KUBECOST_SCRAPE_INTERVAL"
 	PodNameEnvVar                  = "POD_NAME"
 	ClusterIDEnvVar                = "CLUSTER_ID"
 	ClusterProfileEnvVar           = "CLUSTER_PROFILE"
@@ -35,6 +36,7 @@ const (
 	RemotePWEnvVar                 = "REMOTE_WRITE_PASSWORD"
 	SQLAddressEnvVar               = "SQL_ADDRESS"
 	UseCSVProviderEnvVar           = "USE_CSV_PROVIDER"
+	UseCustomProviderEnvVar        = "USE_CUSTOM_PROVIDER"
 	CSVRegionEnvVar                = "CSV_REGION"
 	CSVEndpointEnvVar              = "CSV_ENDPOINT"
 	CSVPathEnvVar                  = "CSV_PATH"
@@ -44,6 +46,7 @@ const (
 
 	EmitPodAnnotationsMetricEnvVar       = "EMIT_POD_ANNOTATIONS_METRIC"
 	EmitNamespaceAnnotationsMetricEnvVar = "EMIT_NAMESPACE_ANNOTATIONS_METRIC"
+	EmitDeprecatedMetrics                = "EMIT_DEPRECATED_METRICS"
 
 	EmitKsmV1MetricsEnvVar = "EMIT_KSM_V1_METRICS"
 	EmitKsmV1MetricsOnly   = "EMIT_KSM_V1_METRICS_ONLY"
@@ -69,6 +72,7 @@ const (
 	MultiClusterBearerToken       = "MC_BEARER_TOKEN"
 
 	InsecureSkipVerify = "INSECURE_SKIP_VERIFY"
+	KubeRbacProxyEnabled = "KUBE_RBAC_PROXY_ENABLED"
 
 	KubeConfigPathEnvVar = "KUBECONFIG_PATH"
 
@@ -105,6 +109,8 @@ const (
 	AllocationNodeLabelsEnabled     = "ALLOCATION_NODE_LABELS_ENABLED"
 	AllocationNodeLabelsIncludeList = "ALLOCATION_NODE_LABELS_INCLUDE_LIST"
 
+	AssetIncludeLocalDiskCostEnvVar = "ASSET_INCLUDE_LOCAL_DISK_COST"
+
 	regionOverrideList = "REGION_OVERRIDE_LIST"
 
 	ExportCSVFile       = "EXPORT_CSV_FILE"
@@ -112,83 +118,102 @@ const (
 	ExportCSVLabelsAll  = "EXPORT_CSV_LABELS_ALL"
 	ExportCSVMaxDays    = "EXPORT_CSV_MAX_DAYS"
 
-	DataRetentionDailyResolutionDaysEnvVar = "DATA_RETENTION_DAILY_RESOLUTION_DAYS"
+	DataRetentionDailyResolutionDaysEnvVar   = "DATA_RETENTION_DAILY_RESOLUTION_DAYS"
+	DataRetentionHourlyResolutionHoursEnvVar = "DATA_RETENTION_HOURLY_RESOLUTION_HOURS"
 
+	// We assume that Kubernetes is enabled if there is a KUBERNETES_PORT environment variable present
+	KubernetesEnabledEnvVar         = "KUBERNETES_PORT"
 	CloudCostEnabledEnvVar          = "CLOUD_COST_ENABLED"
+	CloudCostConfigPath             = "CLOUD_COST_CONFIG_PATH"
 	CloudCostMonthToDateIntervalVar = "CLOUD_COST_MONTH_TO_DATE_INTERVAL"
 	CloudCostRefreshRateHoursEnvVar = "CLOUD_COST_REFRESH_RATE_HOURS"
 	CloudCostQueryWindowDaysEnvVar  = "CLOUD_COST_QUERY_WINDOW_DAYS"
 	CloudCostRunWindowDaysEnvVar    = "CLOUD_COST_RUN_WINDOW_DAYS"
+
+	CustomCostEnabledEnvVar          = "CUSTOM_COST_ENABLED"
+	CustomCostQueryWindowDaysEnvVar  = "CUSTOM_COST_QUERY_WINDOW_DAYS"
+	CustomCostRefreshRateHoursEnvVar = "CUSTOM_COST_REFRESH_RATE_HOURS"
+
+	PluginConfigDirEnvVar     = "PLUGIN_CONFIG_DIR"
+	PluginExecutableDirEnvVar = "PLUGIN_EXECUTABLE_DIR"
+
+	OCIPricingURL = "OCI_PRICING_URL"
+
+	CarbonEstimatesEnabledEnvVar = "CARBON_ESTIMATES_ENABLED"
+
+	UseCacheV1 = "USE_CACHE_V1"
 )
 
 const DefaultConfigMountPath = "/var/configs"
 
-var offsetRegex = regexp.MustCompile(`^(\+|-)(\d\d):(\d\d)$`)
-
 func IsETLReadOnlyMode() bool {
-	return GetBool(ETLReadOnlyMode, false)
+	return env.GetBool(ETLReadOnlyMode, false)
 }
 
 func GetExportCSVFile() string {
-	return Get(ExportCSVFile, "")
+	return env.Get(ExportCSVFile, "")
 }
 
 func GetExportCSVLabelsAll() bool {
-	return GetBool(ExportCSVLabelsAll, false)
+	return env.GetBool(ExportCSVLabelsAll, false)
+}
+
+func GetKubecostScrapeInterval() time.Duration {
+	return env.GetDuration(KubecostScrapeIntervalEnvVar, 0)
 }
 
 func GetExportCSVLabelsList() []string {
-	return GetList(ExportCSVLabelsList, ",")
+	return env.GetList(ExportCSVLabelsList, ",")
 }
 
 func IsPProfEnabled() bool {
-	return GetBool(PProfEnabledEnvVar, false)
+	return env.GetBool(PProfEnabledEnvVar, false)
 }
 
 func GetExportCSVMaxDays() int {
-	return GetInt(ExportCSVMaxDays, 90)
+	return env.GetInt(ExportCSVMaxDays, 90)
 }
 
 // GetAPIPort returns the environment variable value for APIPortEnvVar which
 // is the port number the API is available on.
 func GetAPIPort() int {
-	return GetInt(APIPortEnvVar, 9003)
+	return env.GetInt(APIPortEnvVar, 9003)
 }
 
 // GetKubecostConfigBucket returns a file location for a mounted bucket configuration which is used to store
 // a subset of kubecost configurations that require sharing via remote storage.
 func GetKubecostConfigBucket() string {
-	return Get(KubecostConfigBucketEnvVar, "")
+	return env.Get(KubecostConfigBucketEnvVar, "")
 }
 
 // IsClusterInfoFileEnabled returns true if the cluster info is read from a file or pulled from the local
 // cloud provider and kubernetes.
 func IsClusterInfoFileEnabled() bool {
-	return GetBool(ClusterInfoFileEnabledEnvVar, false)
+	return env.GetBool(ClusterInfoFileEnabledEnvVar, false)
 }
 
 // IsClusterCacheFileEnabled returns true if the kubernetes cluster data is read from a file or pulled from the local
 // kubernetes API.
 func IsClusterCacheFileEnabled() bool {
-	return GetBool(ClusterCacheFileEnabledEnvVar, false)
+	return env.GetBool(ClusterCacheFileEnabledEnvVar, false)
 }
 
 // IsPrometheusRetryOnRateLimitResponse will attempt to retry if a 429 response is received OR a 400 with a body containing
 // ThrottleException (common in AWS services like AMP)
 func IsPrometheusRetryOnRateLimitResponse() bool {
-	return GetBool(PrometheusRetryOnRateLimitResponseEnvVar, true)
+	return env.GetBool(PrometheusRetryOnRateLimitResponseEnvVar, true)
 }
 
 // GetPrometheusRetryOnRateLimitMaxRetries returns the maximum number of retries that should be attempted prior to failing.
 // Only used if IsPrometheusRetryOnRateLimitResponse() is true.
 func GetPrometheusRetryOnRateLimitMaxRetries() int {
-	return GetInt(PrometheusRetryOnRateLimitMaxRetriesEnvVar, 5)
+	return env.GetInt(PrometheusRetryOnRateLimitMaxRetriesEnvVar, 5)
 }
 
 // GetPrometheusRetryOnRateLimitDefaultWait returns the default wait time for a retriable rate limit response without a
 // Retry-After header.
 func GetPrometheusRetryOnRateLimitDefaultWait() time.Duration {
-	return GetDuration(PrometheusRetryOnRateLimitDefaultWaitEnvVar, 100*time.Millisecond)
+	return env.GetDuration(PrometheusRetryOnRateLimitDefaultWaitEnvVar, 100*time.Millisecond)
 }
 
 // GetPrometheusHeaderXScopeOrgId returns the default value for X-Scope-OrgID header used for requests in Mimir/Cortex-Tenant API.
@@ -197,7 +222,7 @@ func GetPrometheusRetryOnRateLimitDefaultWait() time.Duration {
 // Then set Prometheus URL to prometheus API endpoint:
 // "PROMETHEUS_SERVER_ENDPOINT": "http://mimir-url/prometheus/"
 func GetPrometheusHeaderXScopeOrgId() string {
-	return Get(PrometheusHeaderXScopeOrgIdEnvVar, "")
+	return env.Get(PrometheusHeaderXScopeOrgIdEnvVar, "")
 }
 
 // GetPrometheusQueryOffset returns the time.Duration to offset all prometheus queries by. NOTE: This env var is applied
@@ -208,7 +233,7 @@ func GetPrometheusHeaderXScopeOrgId() string {
 // This offset is NOT the same as the GetThanosOffset() option, as that is only applied to queries made specifically targeting
 // thanos. This offset is applied globally.
 func GetPrometheusQueryOffset() time.Duration {
-	offset := Get(PrometheusQueryOffsetEnvVar, "")
+	offset := env.Get(PrometheusQueryOffsetEnvVar, "")
 	if offset == "" {
 		return 0
 	}
@@ -221,39 +246,43 @@ func GetPrometheusQueryOffset() time.Duration {
 }
 
 func GetPricingConfigmapName() string {
-	return Get(PricingConfigmapName, "pricing-configs")
+	return env.Get(PricingConfigmapName, "pricing-configs")
 }
 
 func GetMetricsConfigmapName() string {
-	return Get(MetricsConfigmapName, "metrics-config")
+	return env.Get(MetricsConfigmapName, "metrics-config")
 }
 
 // IsEmitNamespaceAnnotationsMetric returns true if cost-model is configured to emit the kube_namespace_annotations metric
 // containing the namespace annotations
 func IsEmitNamespaceAnnotationsMetric() bool {
-	return GetBool(EmitNamespaceAnnotationsMetricEnvVar, false)
+	return env.GetBool(EmitNamespaceAnnotationsMetricEnvVar, false)
 }
 
 // IsEmitPodAnnotationsMetric returns true if cost-model is configured to emit the kube_pod_annotations metric containing
 // pod annotations.
 func IsEmitPodAnnotationsMetric() bool {
-	return GetBool(EmitPodAnnotationsMetricEnvVar, false)
+	return env.GetBool(EmitPodAnnotationsMetricEnvVar, false)
 }
 
 // IsEmitKsmV1Metrics returns true if cost-model is configured to emit all necessary KSM v1
 // metrics that were removed in KSM v2
 func IsEmitKsmV1Metrics() bool {
-	return GetBool(EmitKsmV1MetricsEnvVar, true)
+	return env.GetBool(EmitKsmV1MetricsEnvVar, true)
 }
 
 func IsEmitKsmV1MetricsOnly() bool {
-	return GetBool(EmitKsmV1MetricsOnly, false)
+	return env.GetBool(EmitKsmV1MetricsOnly, false)
+}
+
+func IsEmitDeprecatedMetrics() bool {
+	return env.GetBool(EmitDeprecatedMetrics, false)
 }
 
 // GetAWSAccessKeyID returns the environment variable value for AWSAccessKeyIDEnvVar which represents
 // the AWS access key for authentication
 func GetAWSAccessKeyID() string {
-	awsAccessKeyID := Get(AWSAccessKeyIDEnvVar, "")
+	awsAccessKeyID := env.Get(AWSAccessKeyIDEnvVar, "")
 	// If the sample nil service key name is set, zero it out so that it is not
 	// misinterpreted as a real service key.
 	if awsAccessKeyID == "AKIXXX" {
@@ -265,36 +294,36 @@ func GetAWSAccessKeyID() string {
 // GetAWSAccessKeySecret returns the environment variable value for AWSAccessKeySecretEnvVar which represents
 // the AWS access key secret for authentication
 func GetAWSAccessKeySecret() string {
-	return Get(AWSAccessKeySecretEnvVar, "")
+	return env.Get(AWSAccessKeySecretEnvVar, "")
 }
 
 // GetAWSClusterID returns the environment variable value for AWSClusterIDEnvVar which represents
 // an AWS specific cluster identifier.
 func GetAWSClusterID() string {
-	return Get(AWSClusterIDEnvVar, "")
+	return env.Get(AWSClusterIDEnvVar, "")
 }
 
 // GetAWSPricingURL returns an optional alternative URL to fetch AWS pricing data from; for use in airgapped environments
 func GetAWSPricingURL() string {
-	return Get(AWSPricingURL, "")
+	return env.Get(AWSPricingURL, "")
 }
 
 // GetAlibabaAccessKeyID returns the environment variable value for AlibabaAccessKeyIDEnvVar which represents
 // the Alibaba access key for authentication
 func GetAlibabaAccessKeyID() string {
-	return Get(AlibabaAccessKeyIDEnvVar, "")
+	return env.Get(AlibabaAccessKeyIDEnvVar, "")
 }
 
 // GetAlibabaAccessKeySecret returns the environment variable value for AlibabaAccessKeySecretEnvVar which represents
 // the Alibaba access key secret for authentication
 func GetAlibabaAccessKeySecret() string {
-	return Get(AlibabaAccessKeySecretEnvVar, "")
+	return env.Get(AlibabaAccessKeySecretEnvVar, "")
 }
 
 // GetAzureOfferID returns the environment variable value for AzureOfferIDEnvVar which represents
 // the Azure offer ID for determining prices.
 func GetAzureOfferID() string {
-	return Get(AzureOfferIDEnvVar, "")
+	return env.Get(AzureOfferIDEnvVar, "")
 }
 
 // GetAzureBillingAccount returns the environment variable value for
@@ -303,37 +332,44 @@ func GetAzureOfferID() string {
 // customer-specific prices will be downloaded from the consumption
 // price sheet API.
 func GetAzureBillingAccount() string {
-	return Get(AzureBillingAccountEnvVar, "")
+	return env.Get(AzureBillingAccountEnvVar, "")
+}
+
+// IsAzureDownloadBillingDataToDisk returns the environment variable value for
+// AzureDownloadBillingDataToDiskEnvVar which indicates whether the Azure
+// Billing Data should be held in memory or written to disk.
+func IsAzureDownloadBillingDataToDisk() bool {
+	return env.GetBool(AzureDownloadBillingDataToDiskEnvVar, true)
 }
 
 // GetKubecostNamespace returns the environment variable value for KubecostNamespaceEnvVar which
 // represents the namespace the cost model exists in.
 func GetKubecostNamespace() string {
-	return Get(KubecostNamespaceEnvVar, "kubecost")
+	return env.Get(KubecostNamespaceEnvVar, "kubecost")
 }
 
 // GetPodName returns the name of the current running pod. If this environment variable is not set,
 // empty string is returned.
 func GetPodName() string {
-	return Get(PodNameEnvVar, "")
+	return env.Get(PodNameEnvVar, "")
 }
 
 // GetClusterProfile returns the environment variable value for ClusterProfileEnvVar which
 // represents the cluster profile configured for
 func GetClusterProfile() string {
-	return Get(ClusterProfileEnvVar, "development")
+	return env.Get(ClusterProfileEnvVar, "development")
 }
 
 // GetClusterID returns the environment variable value for ClusterIDEnvVar which represents the
 // configurable identifier used for multi-cluster metric emission.
 func GetClusterID() string {
-	return Get(ClusterIDEnvVar, "")
+	return env.Get(ClusterIDEnvVar, "")
 }
 
 // GetPromClusterFilter returns environment variable value CurrentClusterIdFilterEnabledVar which
 // represents additional prometheus filter for all metrics for current cluster id
 func GetPromClusterFilter() string {
-	if GetBool(CurrentClusterIdFilterEnabledVar, false) {
+	if env.GetBool(CurrentClusterIdFilterEnabledVar, false) {
 		return fmt.Sprintf("%s=\"%s\"", GetPromClusterLabel(), GetClusterID())
 	}
 	return ""
@@ -342,59 +378,69 @@ func GetPromClusterFilter() string {
 // GetPrometheusServerEndpoint returns the environment variable value for PrometheusServerEndpointEnvVar which
 // represents the prometheus server endpoint used to execute prometheus queries.
 func GetPrometheusServerEndpoint() string {
-	return Get(PrometheusServerEndpointEnvVar, "")
+	return env.Get(PrometheusServerEndpointEnvVar, "")
 }
 
 func GetInsecureSkipVerify() bool {
-	return GetBool(InsecureSkipVerify, false)
+	return env.GetBool(InsecureSkipVerify, false)
+}
+
+func IsKubeRbacProxyEnabled() bool {
+	return env.GetBool(KubeRbacProxyEnabled, false)
 }
 
 // IsAggregateCostModelCacheDisabled returns the environment variable value for DisableAggregateCostModelCache which
 // will inform the aggregator on whether to load cached data. Defaults to false
 func IsAggregateCostModelCacheDisabled() bool {
-	return GetBool(DisableAggregateCostModelCache, false)
+	return env.GetBool(DisableAggregateCostModelCache, false)
 }
 
 // IsRemoteEnabled returns the environment variable value for RemoteEnabledEnvVar which represents whether
 // or not remote write is enabled for prometheus for use with SQL backed persistent storage.
 func IsRemoteEnabled() bool {
-	return GetBool(RemoteEnabledEnvVar, false)
+	return env.GetBool(RemoteEnabledEnvVar, false)
 }
 
 // GetRemotePW returns the environment variable value for RemotePWEnvVar which represents the remote
 // persistent storage password.
 func GetRemotePW() string {
-	return Get(RemotePWEnvVar, "")
+	return env.Get(RemotePWEnvVar, "")
 }
 
 // GetSQLAddress returns the environment variable value for SQLAddressEnvVar which represents the SQL
 // database address used with remote persistent storage.
 func GetSQLAddress() string {
-	return Get(SQLAddressEnvVar, "")
+	return env.Get(SQLAddressEnvVar, "")
 }
 
 // IsUseCSVProvider returns the environment variable value for UseCSVProviderEnvVar which represents
 // whether or not the use of a CSV cost provider is enabled.
 func IsUseCSVProvider() bool {
-	return GetBool(UseCSVProviderEnvVar, false)
+	return env.GetBool(UseCSVProviderEnvVar, false)
+}
+
+// IsUseCustomProvider returns the environment variable value for UseCustomProviderEnvVar which represents
+// whether or not the use of a custom cost provider is enabled.
+func IsUseCustomProvider() bool {
+	return env.GetBool(UseCustomProviderEnvVar, false)
 }
 
 // GetCSVRegion returns the environment variable value for CSVRegionEnvVar which represents the
 // region configured for a CSV provider.
 func GetCSVRegion() string {
-	return Get(CSVRegionEnvVar, "")
+	return env.Get(CSVRegionEnvVar, "")
 }
 
 // GetCSVEndpoint returns the environment variable value for CSVEndpointEnvVar which represents the
 // endpoint configured for a S3 CSV provider another than AWS S3.
 func GetCSVEndpoint() string {
-	return Get(CSVEndpointEnvVar, "")
+	return env.Get(CSVEndpointEnvVar, "")
 }
 
 // GetCSVPath returns the environment variable value for CSVPathEnvVar which represents the key path
 // configured for a CSV provider.
 func GetCSVPath() string {
-	return Get(CSVPathEnvVar, "")
+	return env.Get(CSVPathEnvVar, "")
 }
 
 // GetCostAnalyzerVolumeMountPath is an alias of GetConfigPath, which returns the mount path for the
@@ -406,37 +452,37 @@ func GetCostAnalyzerVolumeMountPath() string {
 // GetConfigPath returns the environment variable value for ConfigPathEnvVar which represents the cost
 // model configuration path
 func GetConfigPathWithDefault(defaultValue string) string {
-	return Get(ConfigPathEnvVar, defaultValue)
+	return env.Get(ConfigPathEnvVar, defaultValue)
 }
 
 // GetCloudProviderAPI returns the environment variable value for CloudProviderAPIEnvVar which represents
 // the API key provided for the cloud provider.
 func GetCloudProviderAPIKey() string {
-	return Get(CloudProviderAPIKeyEnvVar, "")
+	return env.Get(CloudProviderAPIKeyEnvVar, "")
 }
 
 // IsThanosEnabled returns the environment variable value for ThanosEnabledEnvVar which represents whether
 // or not thanos is enabled.
 func IsThanosEnabled() bool {
-	return GetBool(ThanosEnabledEnvVar, false)
+	return env.GetBool(ThanosEnabledEnvVar, false)
 }
 
 // GetThanosQueryUrl returns the environment variable value for ThanosQueryUrlEnvVar which represents the
 // target query endpoint for hitting thanos.
 func GetThanosQueryUrl() string {
-	return Get(ThanosQueryUrlEnvVar, "")
+	return env.Get(ThanosQueryUrlEnvVar, "")
 }
 
 // GetThanosOffset returns the environment variable value for ThanosOffsetEnvVar which represents the total
 // amount of time to offset all queries made to thanos.
 func GetThanosOffset() string {
-	return Get(ThanosOffsetEnvVar, "3h")
+	return env.Get(ThanosOffsetEnvVar, "3h")
 }
 
 // GetThanosMaxSourceResolution returns the environment variable value for ThanosMaxSourceResEnvVar which represents
 // the max source resolution to use when querying thanos.
 func GetThanosMaxSourceResolution() string {
-	res := Get(ThanosMaxSourceResEnvVar, "raw")
+	res := env.Get(ThanosMaxSourceResEnvVar, "raw")
 
 	switch res {
 	case "raw":
@@ -455,115 +501,97 @@ func GetThanosMaxSourceResolution() string {
 // IsLogCollectionEnabled returns the environment variable value for LogCollectionEnabledEnvVar which represents
 // whether or not log collection has been enabled for kubecost deployments.
 func IsLogCollectionEnabled() bool {
-	return GetBool(LogCollectionEnabledEnvVar, true)
+	return env.GetBool(LogCollectionEnabledEnvVar, true)
 }
 
 // IsProductAnalyticsEnabled returns the environment variable value for ProductAnalyticsEnabledEnvVar
 func IsProductAnalyticsEnabled() bool {
-	return GetBool(ProductAnalyticsEnabledEnvVar, true)
+	return env.GetBool(ProductAnalyticsEnabledEnvVar, true)
 }
 
 // IsErrorReportingEnabled returns the environment variable value for ErrorReportingEnabledEnvVar
 func IsErrorReportingEnabled() bool {
-	return GetBool(ErrorReportingEnabledEnvVar, true)
+	return env.GetBool(ErrorReportingEnabledEnvVar, true)
 }
 
 // IsValuesReportingEnabled returns the environment variable value for ValuesReportingEnabledEnvVar
 func IsValuesReportingEnabled() bool {
-	return GetBool(ValuesReportingEnabledEnvVar, true)
+	return env.GetBool(ValuesReportingEnabledEnvVar, true)
 }
 
 // GetMaxQueryConcurrency returns the environment variable value for MaxQueryConcurrencyEnvVar
 func GetMaxQueryConcurrency() int {
-	return GetInt(MaxQueryConcurrencyEnvVar, 5)
+	return env.GetInt(MaxQueryConcurrencyEnvVar, 5)
 }
 
 // GetQueryLoggingFile returns a file location if query logging is enabled. Otherwise, empty string
 func GetQueryLoggingFile() string {
-	return Get(QueryLoggingFileEnvVar, "")
+	return env.Get(QueryLoggingFileEnvVar, "")
 }
 
 func GetDBBasicAuthUsername() string {
-	return Get(DBBasicAuthUsername, "")
+	return env.Get(DBBasicAuthUsername, "")
 }
 
 func GetDBBasicAuthUserPassword() string {
-	return Get(DBBasicAuthPassword, "")
+	return env.Get(DBBasicAuthPassword, "")
 
 }
 
 func GetDBBearerToken() string {
-	return Get(DBBearerToken, "")
+	return env.Get(DBBearerToken, "")
 }
 
 // GetMultiClusterBasicAuthUsername returns the environment variable value for MultiClusterBasicAuthUsername
 func GetMultiClusterBasicAuthUsername() string {
-	return Get(MultiClusterBasicAuthUsername, "")
+	return env.Get(MultiClusterBasicAuthUsername, "")
 }
 
 // GetMultiClusterBasicAuthPassword returns the environment variable value for MultiClusterBasicAuthPassword
 func GetMultiClusterBasicAuthPassword() string {
-	return Get(MultiClusterBasicAuthPassword, "")
+	return env.Get(MultiClusterBasicAuthPassword, "")
 }
 
 func GetMultiClusterBearerToken() string {
-	return Get(MultiClusterBearerToken, "")
+	return env.Get(MultiClusterBearerToken, "")
 }
 
 // GetKubeConfigPath returns the environment variable value for KubeConfigPathEnvVar
 func GetKubeConfigPath() string {
-	return Get(KubeConfigPathEnvVar, "")
+	return env.Get(KubeConfigPathEnvVar, "")
 }
 
 // GetUTCOffset returns the environment variable value for UTCOffset
 func GetUTCOffset() string {
-	return Get(UTCOffsetEnvVar, "")
+	return env.Get(UTCOffsetEnvVar, "")
 }
 
 // GetParsedUTCOffset returns the duration of the configured UTC offset
 func GetParsedUTCOffset() time.Duration {
-	offset := time.Duration(0)
-
-	if offsetStr := GetUTCOffset(); offsetStr != "" {
-		match := offsetRegex.FindStringSubmatch(offsetStr)
-		if match == nil {
-			log.Warnf("Illegal UTC offset: %s", offsetStr)
-			return offset
-		}
-
-		sig := 1
-		if match[1] == "-" {
-			sig = -1
-		}
-
-		hrs64, _ := strconv.ParseInt(match[2], 10, 64)
-		hrs := sig * int(hrs64)
-
-		mins64, _ := strconv.ParseInt(match[3], 10, 64)
-		mins := sig * int(mins64)
-
-		offset = time.Duration(hrs)*time.Hour + time.Duration(mins)
+	offset, err := timeutil.ParseUTCOffset(GetUTCOffset())
+	if err != nil {
+		log.Warnf("Failed to parse UTC offset: %s", err)
+		return time.Duration(0)
 	}
-
 	return offset
 }
 
 // GetKubecostJobName returns the environment variable value for KubecostJobNameEnvVar
 func GetKubecostJobName() string {
-	return Get(KubecostJobNameEnvVar, "kubecost")
+	return env.Get(KubecostJobNameEnvVar, "kubecost")
 }
 
 func IsCacheWarmingEnabled() bool {
-	return GetBool(CacheWarmingEnabledEnvVar, true)
+	return env.GetBool(CacheWarmingEnabledEnvVar, true)
 }
 
 func IsETLEnabled() bool {
-	return GetBool(ETLEnabledEnvVar, true)
+	return env.GetBool(ETLEnabledEnvVar, true)
 }
 
 func GetETLMaxPrometheusQueryDuration() time.Duration {
 	dayMins := 60 * 24
-	mins := time.Duration(GetInt64(ETLMaxPrometheusQueryDurationMinutes, int64(dayMins)))
+	mins := time.Duration(env.GetInt64(ETLMaxPrometheusQueryDurationMinutes, int64(dayMins)))
 	return mins * time.Minute
 }
 
@@ -573,27 +601,27 @@ func GetETLMaxPrometheusQueryDuration() time.Duration {
 func GetETLResolution() time.Duration {
 	// Use the configured ETL resolution, or default to
 	// 5m (i.e. 300s)
-	secs := time.Duration(GetInt64(ETLResolutionSeconds, 300))
+	secs := time.Duration(env.GetInt64(ETLResolutionSeconds, 300))
 	return secs * time.Second
 }
 
 func LegacyExternalCostsAPIDisabled() bool {
-	return GetBool(LegacyExternalAPIDisabledVar, false)
+	return env.GetBool(LegacyExternalAPIDisabledVar, false)
 }
 
 // GetPromClusterLabel returns the environment variable value for PromClusterIDLabel
 func GetPromClusterLabel() string {
-	return Get(PromClusterIDLabelEnvVar, "cluster_id")
+	return env.Get(PromClusterIDLabelEnvVar, "cluster_id")
 }
 
 // IsIngestingPodUID returns the env variable from ingestPodUID, which alters the
 // contents of podKeys in Allocation
 func IsIngestingPodUID() bool {
-	return GetBool(IngestPodUIDEnvVar, false)
+	return env.GetBool(IngestPodUIDEnvVar, false)
 }
 
 func GetAllocationNodeLabelsEnabled() bool {
-	return GetBool(AllocationNodeLabelsEnabled, true)
+	return env.GetBool(AllocationNodeLabelsEnabled, true)
 }
 
 var defaultAllocationNodeLabelsIncludeList []string = []string{
@@ -611,7 +639,7 @@ func GetAllocationNodeLabelsIncludeList() []string {
 		return []string{}
 	}
 
-	list := GetList(AllocationNodeLabelsIncludeList, ",")
+	list := env.GetList(AllocationNodeLabelsIncludeList, ",")
 
 	// If node labels are enabled, but the white list is empty, use defaults.
 	if len(list) == 0 {
@@ -621,8 +649,12 @@ func GetAllocationNodeLabelsIncludeList() []string {
 	return list
 }
 
+func GetAssetIncludeLocalDiskCost() bool {
+	return env.GetBool(AssetIncludeLocalDiskCostEnvVar, true)
+}
+
 func GetRegionOverrideList() []string {
-	regionList := GetList(regionOverrideList, ",")
+	regionList := env.GetList(regionOverrideList, ",")
 
 	if regionList == nil {
 		return []string{}
@@ -632,25 +664,75 @@ func GetRegionOverrideList() []string {
 }
 
 func GetDataRetentionDailyResolutionDays() int64 {
-	return GetInt64(DataRetentionDailyResolutionDaysEnvVar, 15)
+	return env.GetInt64(DataRetentionDailyResolutionDaysEnvVar, 30)
+}
+
+func GetDataRetentionHourlyResolutionHours() int64 {
+	return env.GetInt64(DataRetentionHourlyResolutionHoursEnvVar, 49)
+}
+
+func IsKubernetesEnabled() bool {
+	return env.Get(KubernetesEnabledEnvVar, "") != ""
 }
 
 func IsCloudCostEnabled() bool {
-	return GetBool(CloudCostEnabledEnvVar, false)
+	return env.GetBool(CloudCostEnabledEnvVar, false)
+}
+
+func IsCustomCostEnabled() bool {
+	return env.GetBool(CustomCostEnabledEnvVar, false)
+}
+
+func GetCloudCostConfigPath() string {
+	return env.Get(CloudCostConfigPath, "cloud-integration.json")
 }
 
 func GetCloudCostMonthToDateInterval() int {
-	return GetInt(CloudCostMonthToDateIntervalVar, 6)
+	return env.GetInt(CloudCostMonthToDateIntervalVar, 6)
 }
 
 func GetCloudCostRefreshRateHours() int64 {
-	return GetInt64(CloudCostRefreshRateHoursEnvVar, 6)
+	return env.GetInt64(CloudCostRefreshRateHoursEnvVar, 6)
 }
 
 func GetCloudCostQueryWindowDays() int64 {
-	return GetInt64(CloudCostQueryWindowDaysEnvVar, 7)
+	return env.GetInt64(CloudCostQueryWindowDaysEnvVar, 7)
+}
+
+func GetCustomCostQueryWindowHours() int64 {
+	return env.GetInt64(CustomCostQueryWindowDaysEnvVar, 1)
+}
+
+func GetCustomCostQueryWindowDays() int64 {
+	return env.GetInt64(CustomCostQueryWindowDaysEnvVar, 7)
 }
 
 func GetCloudCostRunWindowDays() int64 {
-	return GetInt64(CloudCostRunWindowDaysEnvVar, 3)
+	return env.GetInt64(CloudCostRunWindowDaysEnvVar, 3)
+}
+
+func GetOCIPricingURL() string {
+	return env.Get(OCIPricingURL, "https://apexapps.oracle.com/pls/apex/cetools/api/v1/products")
+}
+
+func GetPluginConfigDir() string {
+	return env.Get(PluginConfigDirEnvVar, "/opt/opencost/plugin/config")
+}
+
+func GetPluginExecutableDir() string {
+	return env.Get(PluginExecutableDirEnvVar, "/opt/opencost/plugin/bin")
+}
+
+func GetCustomCostRefreshRateHours() string {
+	return env.Get(CustomCostRefreshRateHoursEnvVar, "12h")
+}
+
+func IsCarbonEstimatesEnabled() bool {
+	return env.GetBool(CarbonEstimatesEnabledEnvVar, false)
+}
+
+// GetUseCacheV1 is a temporary flag to allow users to opt-in to using the old cache
+// Mainly for comparison purposes
+func GetUseCacheV1() bool {
+	return env.GetBool(UseCacheV1, false)
 }

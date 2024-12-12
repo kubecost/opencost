@@ -51,7 +51,7 @@ func TestSetSetCustomPricingField(t *testing.T) {
 			fieldName:  "%s",
 			fieldValue: "",
 			expValue:   defaultValue, // assert that the default value is not mutated
-			expError:   fmt.Errorf("invalid numeric value for field"),
+			expError:   nil,
 		},
 	}
 

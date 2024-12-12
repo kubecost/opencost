@@ -11,7 +11,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-const PrometheusTroubleshootingURL = "http://docs.kubecost.com/custom-prom#troubleshoot"
+const PrometheusTroubleshootingURL = "https://www.opencost.io/docs/integrations/prometheus"
 
 // ScrapeConfig is the minimalized view of a prometheus scrape configuration
 type ScrapeConfig struct {

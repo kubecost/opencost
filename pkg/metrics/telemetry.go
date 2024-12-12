@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/opencost/opencost/pkg/version"
+	"github.com/opencost/opencost/core/pkg/version"
 
 	"github.com/kubecost/events"
 	"github.com/prometheus/client_golang/prometheus"

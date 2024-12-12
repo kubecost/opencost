@@ -32,7 +32,7 @@ func validPrefix(prefix string) bool {
 }
 
 func conditionalPrefix(prefix, name string) string {
-	if len(name) > 0 {
+	if len(name) > 0 && !strings.HasPrefix(name, prefix) {
 		return withPrefix(prefix, name)
 	}
 

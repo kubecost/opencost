@@ -5,8 +5,8 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+	"github.com/opencost/opencost/core/pkg/util/json"
 	"github.com/opencost/opencost/pkg/cloud"
-	"github.com/opencost/opencost/pkg/util/json"
 )
 
 const DefaultCredentialAuthorizerType = "AzureDefaultCredential"

@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opencost/opencost/pkg/filter21/cloudcost"
-	"github.com/opencost/opencost/pkg/kubecost"
-	"github.com/opencost/opencost/pkg/util/httputil"
+	"github.com/opencost/opencost/core/pkg/filter/cloudcost"
+	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/util/httputil"
 )
 
 func TestParseCloudCostRequest(t *testing.T) {
@@ -41,7 +41,7 @@ func TestParseCloudCostRequest(t *testing.T) {
 			want: &QueryRequest{
 				Start:       start,
 				End:         end,
-				AggregateBy: []string{kubecost.CloudCostInvoiceEntityIDProp, kubecost.CloudCostAccountIDProp, kubecost.CloudCostProviderProp, kubecost.CloudCostProviderIDProp, kubecost.CloudCostCategoryProp, kubecost.CloudCostServiceProp},
+				AggregateBy: []string{opencost.CloudCostInvoiceEntityIDProp, opencost.CloudCostAccountIDProp, opencost.CloudCostProviderProp, opencost.CloudCostProviderIDProp, opencost.CloudCostCategoryProp, opencost.CloudCostServiceProp},
 				Accumulate:  "",
 				Filter:      nil,
 			},
@@ -55,7 +55,7 @@ func TestParseCloudCostRequest(t *testing.T) {
 			want: &QueryRequest{
 				Start:       start,
 				End:         end,
-				AggregateBy: []string{kubecost.CloudCostInvoiceEntityIDProp, kubecost.CloudCostAccountIDProp, "label:app"},
+				AggregateBy: []string{opencost.CloudCostInvoiceEntityIDProp, opencost.CloudCostAccountIDProp, "label:app"},
 				Accumulate:  "",
 				Filter:      nil,
 			},
@@ -77,8 +77,8 @@ func TestParseCloudCostRequest(t *testing.T) {
 			want: &QueryRequest{
 				Start:       start,
 				End:         end,
-				AggregateBy: []string{kubecost.CloudCostInvoiceEntityIDProp, kubecost.CloudCostAccountIDProp, kubecost.CloudCostProviderProp, kubecost.CloudCostProviderIDProp, kubecost.CloudCostCategoryProp, kubecost.CloudCostServiceProp},
-				Accumulate:  kubecost.AccumulateOptionWeek,
+				AggregateBy: []string{opencost.CloudCostInvoiceEntityIDProp, opencost.CloudCostAccountIDProp, opencost.CloudCostProviderProp, opencost.CloudCostProviderIDProp, opencost.CloudCostCategoryProp, opencost.CloudCostServiceProp},
+				Accumulate:  opencost.AccumulateOptionWeek,
 				Filter:      nil,
 			},
 			wantErr: false,
@@ -91,8 +91,8 @@ func TestParseCloudCostRequest(t *testing.T) {
 			want: &QueryRequest{
 				Start:       start,
 				End:         end,
-				AggregateBy: []string{kubecost.CloudCostInvoiceEntityIDProp, kubecost.CloudCostAccountIDProp, kubecost.CloudCostProviderProp, kubecost.CloudCostProviderIDProp, kubecost.CloudCostCategoryProp, kubecost.CloudCostServiceProp},
-				Accumulate:  kubecost.AccumulateOptionNone,
+				AggregateBy: []string{opencost.CloudCostInvoiceEntityIDProp, opencost.CloudCostAccountIDProp, opencost.CloudCostProviderProp, opencost.CloudCostProviderIDProp, opencost.CloudCostCategoryProp, opencost.CloudCostServiceProp},
+				Accumulate:  opencost.AccumulateOptionNone,
 				Filter:      nil,
 			},
 			wantErr: false,
@@ -105,8 +105,8 @@ func TestParseCloudCostRequest(t *testing.T) {
 			want: &QueryRequest{
 				Start:       start,
 				End:         end,
-				AggregateBy: []string{kubecost.CloudCostInvoiceEntityIDProp, kubecost.CloudCostAccountIDProp, kubecost.CloudCostProviderProp, kubecost.CloudCostProviderIDProp, kubecost.CloudCostCategoryProp, kubecost.CloudCostServiceProp},
-				Accumulate:  kubecost.AccumulateOptionNone,
+				AggregateBy: []string{opencost.CloudCostInvoiceEntityIDProp, opencost.CloudCostAccountIDProp, opencost.CloudCostProviderProp, opencost.CloudCostProviderIDProp, opencost.CloudCostCategoryProp, opencost.CloudCostServiceProp},
+				Accumulate:  opencost.AccumulateOptionNone,
 				Filter:      validFilter,
 			},
 			wantErr: false,

@@ -6,14 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opencost/opencost/pkg/kubecost"
-	"github.com/opencost/opencost/pkg/util/timeutil"
+	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/util/timeutil"
 )
 
 func TestBigQueryIntegration_GetCloudCost(t *testing.T) {
 	bigQueryConfigPath := os.Getenv("BIGQUERY_CONFIGURATION")
 	if bigQueryConfigPath == "" {
-		t.Skip("skipping integration test, set environment variable ATHENA_CONFIGURATION")
+		t.Skip("skipping integration test, set environment variable BIGQUERY_CONFIGURATION\"")
 	}
 	bigQueryConfigBin, err := os.ReadFile(bigQueryConfigPath)
 	if err != nil {
@@ -25,7 +25,7 @@ func TestBigQueryIntegration_GetCloudCost(t *testing.T) {
 		t.Fatalf("failed to unmarshal config from JSON: %s", err.Error())
 	}
 
-	today := kubecost.RoundBack(time.Now().UTC(), timeutil.Day)
+	today := opencost.RoundBack(time.Now().UTC(), timeutil.Day)
 
 	testCases := map[string]struct {
 		integration *BigQueryIntegration

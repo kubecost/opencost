@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opencost/opencost/pkg/kubecost"
+	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/util"
 	"github.com/opencost/opencost/pkg/prom"
-	"github.com/opencost/opencost/pkg/util"
 )
 
 const Ki = 1024
@@ -19,7 +19,7 @@ const hour = minute * 60.0
 
 var windowStart = time.Date(2020, 6, 16, 0, 0, 0, 0, time.UTC)
 var windowEnd = time.Date(2020, 6, 17, 0, 0, 0, 0, time.UTC)
-var window = kubecost.NewWindow(&windowStart, &windowEnd)
+var window = opencost.NewWindow(&windowStart, &windowEnd)
 
 var startFloat = float64(windowStart.Unix())
 
@@ -56,27 +56,27 @@ var podKey4 = podKey{
 var podKeyUnmounted = podKey{
 	namespaceKey: namespaceKey{
 		Cluster:   "cluster2",
-		Namespace: kubecost.UnmountedSuffix,
+		Namespace: opencost.UnmountedSuffix,
 	},
-	Pod: kubecost.UnmountedSuffix,
+	Pod: opencost.UnmountedSuffix,
 }
 
-var kcPVKey1 = kubecost.PVKey{
+var kcPVKey1 = opencost.PVKey{
 	Cluster: "cluster1",
 	Name:    "pv1",
 }
 
-var kcPVKey2 = kubecost.PVKey{
+var kcPVKey2 = opencost.PVKey{
 	Cluster: "cluster1",
 	Name:    "pv2",
 }
 
-var kcPVKey3 = kubecost.PVKey{
+var kcPVKey3 = opencost.PVKey{
 	Cluster: "cluster2",
 	Name:    "pv3",
 }
 
-var kcPVKey4 = kubecost.PVKey{
+var kcPVKey4 = opencost.PVKey{
 	Cluster: "cluster2",
 	Name:    "pv4",
 }
@@ -115,13 +115,13 @@ var podMap1 = map[podKey]*pod{
 		Start:  *window.Start(),
 		End:    *window.End(),
 		Key:    podKeyUnmounted,
-		Allocations: map[string]*kubecost.Allocation{
-			kubecost.UnmountedSuffix: {
-				Name: fmt.Sprintf("%s/%s/%s/%s", podKeyUnmounted.Cluster, podKeyUnmounted.Namespace, podKeyUnmounted.Pod, kubecost.UnmountedSuffix),
-				Properties: &kubecost.AllocationProperties{
+		Allocations: map[string]*opencost.Allocation{
+			opencost.UnmountedSuffix: {
+				Name: fmt.Sprintf("%s/%s/%s/%s", podKeyUnmounted.Cluster, podKeyUnmounted.Namespace, podKeyUnmounted.Pod, opencost.UnmountedSuffix),
+				Properties: &opencost.AllocationProperties{
 					Cluster:   podKeyUnmounted.Cluster,
 					Node:      "",
-					Container: kubecost.UnmountedSuffix,
+					Container: opencost.UnmountedSuffix,
 					Namespace: podKeyUnmounted.Namespace,
 					Pod:       podKeyUnmounted.Pod,
 					Services:  []string{"LB1"},
@@ -131,8 +131,8 @@ var podMap1 = map[podKey]*pod{
 				End:                        *window.End(),
 				LoadBalancerCost:           0.60,
 				LoadBalancerCostAdjustment: 0,
-				PVs: kubecost.PVAllocations{
-					kcPVKey2: &kubecost.PVAllocation{
+				PVs: opencost.PVAllocations{
+					kcPVKey2: &opencost.PVAllocation{
 						ByteHours: 24 * Gi,
 						Cost:      2.25,
 					},
@@ -365,7 +365,7 @@ func TestBuildPVMap(t *testing.T) {
 					t.Errorf("pv map is missing key %s", thisPVKey)
 				}
 				if !actualPV.equal(expectedPV) {
-					t.Errorf("pv does not match with key %s: %s != %s", thisPVKey, kubecost.NewClosedWindow(actualPV.Start, actualPV.End), kubecost.NewClosedWindow(expectedPV.Start, expectedPV.End))
+					t.Errorf("pv does not match with key %s: %s != %s", thisPVKey, opencost.NewClosedWindow(actualPV.Start, actualPV.End), opencost.NewClosedWindow(expectedPV.Start, expectedPV.End))
 				}
 			}
 		})
@@ -376,7 +376,7 @@ func TestBuildPVMap(t *testing.T) {
 
 func TestGetUnmountedPodForCluster(t *testing.T) {
 	testCases := map[string]struct {
-		window   kubecost.Window
+		window   opencost.Window
 		podMap   map[podKey]*pod
 		cluster  string
 		expected *pod
@@ -390,15 +390,15 @@ func TestGetUnmountedPodForCluster(t *testing.T) {
 				Start:  *window.Start(),
 				End:    *window.End(),
 				Key:    getUnmountedPodKey("cluster1"),
-				Allocations: map[string]*kubecost.Allocation{
-					kubecost.UnmountedSuffix: {
-						Name: fmt.Sprintf("%s/%s/%s/%s", "cluster1", kubecost.UnmountedSuffix, kubecost.UnmountedSuffix, kubecost.UnmountedSuffix),
-						Properties: &kubecost.AllocationProperties{
+				Allocations: map[string]*opencost.Allocation{
+					opencost.UnmountedSuffix: {
+						Name: fmt.Sprintf("%s/%s/%s/%s", "cluster1", opencost.UnmountedSuffix, opencost.UnmountedSuffix, opencost.UnmountedSuffix),
+						Properties: &opencost.AllocationProperties{
 							Cluster:   "cluster1",
 							Node:      "",
-							Container: kubecost.UnmountedSuffix,
-							Namespace: kubecost.UnmountedSuffix,
-							Pod:       kubecost.UnmountedSuffix,
+							Container: opencost.UnmountedSuffix,
+							Namespace: opencost.UnmountedSuffix,
+							Pod:       opencost.UnmountedSuffix,
 						},
 						Window: window,
 						Start:  *window.Start(),
@@ -416,15 +416,15 @@ func TestGetUnmountedPodForCluster(t *testing.T) {
 				Start:  *window.Start(),
 				End:    *window.End(),
 				Key:    getUnmountedPodKey("cluster2"),
-				Allocations: map[string]*kubecost.Allocation{
-					kubecost.UnmountedSuffix: {
-						Name: fmt.Sprintf("%s/%s/%s/%s", "cluster2", kubecost.UnmountedSuffix, kubecost.UnmountedSuffix, kubecost.UnmountedSuffix),
-						Properties: &kubecost.AllocationProperties{
+				Allocations: map[string]*opencost.Allocation{
+					opencost.UnmountedSuffix: {
+						Name: fmt.Sprintf("%s/%s/%s/%s", "cluster2", opencost.UnmountedSuffix, opencost.UnmountedSuffix, opencost.UnmountedSuffix),
+						Properties: &opencost.AllocationProperties{
 							Cluster:   "cluster2",
 							Node:      "",
-							Container: kubecost.UnmountedSuffix,
-							Namespace: kubecost.UnmountedSuffix,
-							Pod:       kubecost.UnmountedSuffix,
+							Container: opencost.UnmountedSuffix,
+							Namespace: opencost.UnmountedSuffix,
+							Pod:       opencost.UnmountedSuffix,
 							Services:  []string{"LB1"},
 						},
 						Window:                     window,
@@ -432,8 +432,8 @@ func TestGetUnmountedPodForCluster(t *testing.T) {
 						End:                        *window.End(),
 						LoadBalancerCost:           .60,
 						LoadBalancerCostAdjustment: 0,
-						PVs: kubecost.PVAllocations{
-							kcPVKey2: &kubecost.PVAllocation{
+						PVs: opencost.PVAllocations{
+							kcPVKey2: &opencost.PVAllocation{
 								ByteHours: 24 * Gi,
 								Cost:      2.25,
 							},

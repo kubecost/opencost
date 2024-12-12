@@ -6,27 +6,27 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opencost/opencost/pkg/kubecost"
-	"github.com/opencost/opencost/pkg/util/timeutil"
+	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/util/timeutil"
 )
 
 func TestMemoryRepository_Get(t *testing.T) {
 	defaultStart := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
 	defaultEnd := defaultStart.Add(timeutil.Day)
-	defaultData := map[string]map[time.Time]*kubecost.CloudCostSet{
+	defaultData := map[string]map[time.Time]*opencost.CloudCostSet{
 		"key-1": {
 			defaultStart: DefaultMockCloudCostSet(defaultStart, defaultEnd, "aws", "key-1"),
 		},
 	}
 	tests := map[string]struct {
-		data      map[string]map[time.Time]*kubecost.CloudCostSet
+		data      map[string]map[time.Time]*opencost.CloudCostSet
 		startTime time.Time
 		key       string
-		want      *kubecost.CloudCostSet
+		want      *opencost.CloudCostSet
 		wantErr   bool
 	}{
 		"No Data": {
-			data:      map[string]map[time.Time]*kubecost.CloudCostSet{},
+			data:      map[string]map[time.Time]*opencost.CloudCostSet{},
 			startTime: defaultStart,
 			key:       "key-1",
 			want:      nil,
@@ -74,20 +74,20 @@ func TestMemoryRepository_Get(t *testing.T) {
 func TestMemoryRepository_Has(t *testing.T) {
 	defaultStart := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
 	defaultEnd := defaultStart.Add(timeutil.Day)
-	defaultData := map[string]map[time.Time]*kubecost.CloudCostSet{
+	defaultData := map[string]map[time.Time]*opencost.CloudCostSet{
 		"key-1": {
 			defaultStart: DefaultMockCloudCostSet(defaultStart, defaultEnd, "aws", "key-1"),
 		},
 	}
 	tests := map[string]struct {
-		data      map[string]map[time.Time]*kubecost.CloudCostSet
+		data      map[string]map[time.Time]*opencost.CloudCostSet
 		startTime time.Time
 		key       string
 		want      bool
 		wantErr   bool
 	}{
 		"No Data": {
-			data:      map[string]map[time.Time]*kubecost.CloudCostSet{},
+			data:      map[string]map[time.Time]*opencost.CloudCostSet{},
 			startTime: defaultStart,
 			key:       "key-1",
 			want:      false,
@@ -135,24 +135,24 @@ func TestMemoryRepository_Has(t *testing.T) {
 func TestMemoryRepository_Keys(t *testing.T) {
 
 	tests := map[string]struct {
-		data    map[string]map[time.Time]*kubecost.CloudCostSet
+		data    map[string]map[time.Time]*opencost.CloudCostSet
 		want    []string
 		wantErr bool
 	}{
 		"empty": {
-			data:    map[string]map[time.Time]*kubecost.CloudCostSet{},
+			data:    map[string]map[time.Time]*opencost.CloudCostSet{},
 			want:    []string{},
 			wantErr: false,
 		},
 		"one-key": {
-			data: map[string]map[time.Time]*kubecost.CloudCostSet{
+			data: map[string]map[time.Time]*opencost.CloudCostSet{
 				"key-1": nil,
 			},
 			want:    []string{"key-1"},
 			wantErr: false,
 		},
 		"two-key": {
-			data: map[string]map[time.Time]*kubecost.CloudCostSet{
+			data: map[string]map[time.Time]*opencost.CloudCostSet{
 				"key-1": nil,
 				"key-2": {
 					time.Now():        nil,
@@ -187,42 +187,42 @@ func TestMemoryRepository_Put(t *testing.T) {
 	defaultEnd := defaultStart.Add(timeutil.Day)
 
 	tests := map[string]struct {
-		data    map[string]map[time.Time]*kubecost.CloudCostSet
-		input   *kubecost.CloudCostSet
-		want    map[string]map[time.Time]*kubecost.CloudCostSet
+		data    map[string]map[time.Time]*opencost.CloudCostSet
+		input   *opencost.CloudCostSet
+		want    map[string]map[time.Time]*opencost.CloudCostSet
 		wantErr bool
 	}{
 
 		"nil set": {
-			data:    map[string]map[time.Time]*kubecost.CloudCostSet{},
+			data:    map[string]map[time.Time]*opencost.CloudCostSet{},
 			input:   nil,
-			want:    map[string]map[time.Time]*kubecost.CloudCostSet{},
+			want:    map[string]map[time.Time]*opencost.CloudCostSet{},
 			wantErr: true,
 		},
 		"invalid window": {
-			data: map[string]map[time.Time]*kubecost.CloudCostSet{},
-			input: &kubecost.CloudCostSet{
+			data: map[string]map[time.Time]*opencost.CloudCostSet{},
+			input: &opencost.CloudCostSet{
 				CloudCosts:  nil,
-				Window:      kubecost.Window{},
+				Window:      opencost.Window{},
 				Integration: "key-1",
 			},
-			want:    map[string]map[time.Time]*kubecost.CloudCostSet{},
+			want:    map[string]map[time.Time]*opencost.CloudCostSet{},
 			wantErr: true,
 		},
 		"invalid key": {
-			data: map[string]map[time.Time]*kubecost.CloudCostSet{},
-			input: &kubecost.CloudCostSet{
+			data: map[string]map[time.Time]*opencost.CloudCostSet{},
+			input: &opencost.CloudCostSet{
 				CloudCosts:  nil,
-				Window:      kubecost.NewClosedWindow(defaultStart, defaultEnd),
+				Window:      opencost.NewClosedWindow(defaultStart, defaultEnd),
 				Integration: "",
 			},
-			want:    map[string]map[time.Time]*kubecost.CloudCostSet{},
+			want:    map[string]map[time.Time]*opencost.CloudCostSet{},
 			wantErr: true,
 		},
 		"valid input": {
-			data:  map[string]map[time.Time]*kubecost.CloudCostSet{},
+			data:  map[string]map[time.Time]*opencost.CloudCostSet{},
 			input: DefaultMockCloudCostSet(defaultStart, defaultEnd, "aws", "key-1"),
-			want: map[string]map[time.Time]*kubecost.CloudCostSet{
+			want: map[string]map[time.Time]*opencost.CloudCostSet{
 				"key-1": {
 					defaultStart: DefaultMockCloudCostSet(defaultStart, defaultEnd, "aws", "key-1"),
 				},
@@ -230,13 +230,13 @@ func TestMemoryRepository_Put(t *testing.T) {
 			wantErr: false,
 		},
 		"overwrite": {
-			data: map[string]map[time.Time]*kubecost.CloudCostSet{
+			data: map[string]map[time.Time]*opencost.CloudCostSet{
 				"key-1": {
 					defaultStart: DefaultMockCloudCostSet(defaultStart, defaultEnd, "gcp", "key-1"),
 				},
 			},
 			input: DefaultMockCloudCostSet(defaultStart, defaultEnd, "aws", "key-1"),
-			want: map[string]map[time.Time]*kubecost.CloudCostSet{
+			want: map[string]map[time.Time]*opencost.CloudCostSet{
 				"key-1": {
 					defaultStart: DefaultMockCloudCostSet(defaultStart, defaultEnd, "aws", "key-1"),
 				},
@@ -244,16 +244,16 @@ func TestMemoryRepository_Put(t *testing.T) {
 			wantErr: false,
 		},
 		"invalid overwrite": {
-			data: map[string]map[time.Time]*kubecost.CloudCostSet{
+			data: map[string]map[time.Time]*opencost.CloudCostSet{
 				"key-1": {
 					defaultStart: DefaultMockCloudCostSet(defaultStart, defaultEnd, "gcp", "key-1"),
 				},
 			},
-			input: &kubecost.CloudCostSet{
-				Window:      kubecost.NewWindow(&defaultStart, nil),
+			input: &opencost.CloudCostSet{
+				Window:      opencost.NewWindow(&defaultStart, nil),
 				Integration: "key-1",
 			},
-			want: map[string]map[time.Time]*kubecost.CloudCostSet{
+			want: map[string]map[time.Time]*opencost.CloudCostSet{
 				"key-1": {
 					defaultStart: DefaultMockCloudCostSet(defaultStart, defaultEnd, "gcp", "key-1"),
 				},
@@ -281,19 +281,19 @@ func TestMemoryRepository_Expire(t *testing.T) {
 	dayTwo := time.Date(2023, 1, 2, 0, 0, 0, 0, time.UTC)
 	dayThree := time.Date(2023, 1, 3, 0, 0, 0, 0, time.UTC)
 	tests := map[string]struct {
-		data    map[string]map[time.Time]*kubecost.CloudCostSet
+		data    map[string]map[time.Time]*opencost.CloudCostSet
 		limit   time.Time
-		want    map[string]map[time.Time]*kubecost.CloudCostSet
+		want    map[string]map[time.Time]*opencost.CloudCostSet
 		wantErr bool
 	}{
 		"no expire": {
-			data: map[string]map[time.Time]*kubecost.CloudCostSet{
+			data: map[string]map[time.Time]*opencost.CloudCostSet{
 				"key-1": {
 					dayTwo: nil,
 				},
 			},
 			limit: dayOne,
-			want: map[string]map[time.Time]*kubecost.CloudCostSet{
+			want: map[string]map[time.Time]*opencost.CloudCostSet{
 				"key-1": {
 					dayTwo: nil,
 				},
@@ -301,13 +301,13 @@ func TestMemoryRepository_Expire(t *testing.T) {
 			wantErr: false,
 		},
 		"limit match": {
-			data: map[string]map[time.Time]*kubecost.CloudCostSet{
+			data: map[string]map[time.Time]*opencost.CloudCostSet{
 				"key-1": {
 					dayTwo: nil,
 				},
 			},
 			limit: dayTwo,
-			want: map[string]map[time.Time]*kubecost.CloudCostSet{
+			want: map[string]map[time.Time]*opencost.CloudCostSet{
 				"key-1": {
 					dayTwo: nil,
 				},
@@ -315,17 +315,17 @@ func TestMemoryRepository_Expire(t *testing.T) {
 			wantErr: false,
 		},
 		"single expire": {
-			data: map[string]map[time.Time]*kubecost.CloudCostSet{
+			data: map[string]map[time.Time]*opencost.CloudCostSet{
 				"key-1": {
 					dayTwo: nil,
 				},
 			},
 			limit:   dayThree,
-			want:    map[string]map[time.Time]*kubecost.CloudCostSet{},
+			want:    map[string]map[time.Time]*opencost.CloudCostSet{},
 			wantErr: false,
 		},
 		"one key expire": {
-			data: map[string]map[time.Time]*kubecost.CloudCostSet{
+			data: map[string]map[time.Time]*opencost.CloudCostSet{
 				"key-1": {
 					dayOne: nil,
 					dayTwo: nil,
@@ -335,7 +335,7 @@ func TestMemoryRepository_Expire(t *testing.T) {
 				},
 			},
 			limit: dayTwo,
-			want: map[string]map[time.Time]*kubecost.CloudCostSet{
+			want: map[string]map[time.Time]*opencost.CloudCostSet{
 				"key-1": {
 					dayTwo: nil,
 				},

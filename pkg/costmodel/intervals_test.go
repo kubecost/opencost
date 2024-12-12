@@ -6,43 +6,43 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opencost/opencost/pkg/kubecost"
+	"github.com/opencost/opencost/core/pkg/opencost"
 )
 
 func TestGetIntervalPointsFromWindows(t *testing.T) {
 	cases := []struct {
 		name           string
-		pvcIntervalMap map[podKey]kubecost.Window
+		pvcIntervalMap map[podKey]opencost.Window
 		expected       []IntervalPoint
 	}{
 		{
 			name: "four pods w/ various overlaps",
-			pvcIntervalMap: map[podKey]kubecost.Window{
+			pvcIntervalMap: map[podKey]opencost.Window{
 				// Pod running from 8 am to 9 am
 				{
 					Pod: "Pod1",
-				}: kubecost.Window(kubecost.NewClosedWindow(
+				}: opencost.Window(opencost.NewClosedWindow(
 					time.Date(2021, 2, 19, 8, 0, 0, 0, time.UTC),
 					time.Date(2021, 2, 19, 9, 0, 0, 0, time.UTC),
 				)),
 				// Pod running from 8:30 am to 9 am
 				{
 					Pod: "Pod2",
-				}: kubecost.Window(kubecost.NewClosedWindow(
+				}: opencost.Window(opencost.NewClosedWindow(
 					time.Date(2021, 2, 19, 8, 30, 0, 0, time.UTC),
 					time.Date(2021, 2, 19, 9, 0, 0, 0, time.UTC),
 				)),
 				// Pod running from 8:45 am to 9 am
 				{
 					Pod: "Pod3",
-				}: kubecost.Window(kubecost.NewClosedWindow(
+				}: opencost.Window(opencost.NewClosedWindow(
 					time.Date(2021, 2, 19, 8, 45, 0, 0, time.UTC),
 					time.Date(2021, 2, 19, 9, 0, 0, 0, time.UTC),
 				)),
 				// Pod running from 8 am to 8:15 am
 				{
 					Pod: "Pod4",
-				}: kubecost.Window(kubecost.NewClosedWindow(
+				}: opencost.Window(opencost.NewClosedWindow(
 					time.Date(2021, 2, 19, 8, 0, 0, 0, time.UTC),
 					time.Date(2021, 2, 19, 8, 15, 0, 0, time.UTC),
 				)),
@@ -60,18 +60,18 @@ func TestGetIntervalPointsFromWindows(t *testing.T) {
 		},
 		{
 			name: "two pods no overlap",
-			pvcIntervalMap: map[podKey]kubecost.Window{
+			pvcIntervalMap: map[podKey]opencost.Window{
 				// Pod running from 8 am to 8:30 am
 				{
 					Pod: "Pod1",
-				}: kubecost.Window(kubecost.NewClosedWindow(
+				}: opencost.Window(opencost.NewClosedWindow(
 					time.Date(2021, 2, 19, 8, 0, 0, 0, time.UTC),
 					time.Date(2021, 2, 19, 8, 30, 0, 0, time.UTC),
 				)),
 				// Pod running from 8:30 am to 9 am
 				{
 					Pod: "Pod2",
-				}: kubecost.Window(kubecost.NewClosedWindow(
+				}: opencost.Window(opencost.NewClosedWindow(
 					time.Date(2021, 2, 19, 8, 30, 0, 0, time.UTC),
 					time.Date(2021, 2, 19, 9, 0, 0, 0, time.UTC),
 				)),
@@ -85,18 +85,18 @@ func TestGetIntervalPointsFromWindows(t *testing.T) {
 		},
 		{
 			name: "two pods total overlap",
-			pvcIntervalMap: map[podKey]kubecost.Window{
+			pvcIntervalMap: map[podKey]opencost.Window{
 				// Pod running from 8:30 am to 9 am
 				{
 					Pod: "Pod1",
-				}: kubecost.Window(kubecost.NewClosedWindow(
+				}: opencost.Window(opencost.NewClosedWindow(
 					time.Date(2021, 2, 19, 8, 30, 0, 0, time.UTC),
 					time.Date(2021, 2, 19, 9, 0, 0, 0, time.UTC),
 				)),
 				// Pod running from 8:30 am to 9 am
 				{
 					Pod: "Pod2",
-				}: kubecost.Window(kubecost.NewClosedWindow(
+				}: opencost.Window(opencost.NewClosedWindow(
 					time.Date(2021, 2, 19, 8, 30, 0, 0, time.UTC),
 					time.Date(2021, 2, 19, 9, 0, 0, 0, time.UTC),
 				)),
@@ -110,11 +110,11 @@ func TestGetIntervalPointsFromWindows(t *testing.T) {
 		},
 		{
 			name: "one pod",
-			pvcIntervalMap: map[podKey]kubecost.Window{
+			pvcIntervalMap: map[podKey]opencost.Window{
 				// Pod running from 8 am to 9 am
 				{
 					Pod: "Pod1",
-				}: kubecost.Window(kubecost.NewClosedWindow(
+				}: opencost.Window(opencost.NewClosedWindow(
 					time.Date(2021, 2, 19, 8, 0, 0, 0, time.UTC),
 					time.Date(2021, 2, 19, 9, 0, 0, 0, time.UTC),
 				)),
@@ -155,7 +155,7 @@ func TestGetPVCCostCoefficients(t *testing.T) {
 	pod2Key := newPodKey("cluster1", "namespace1", "pod2")
 	pod3Key := newPodKey("cluster1", "namespace1", "pod3")
 	pod4Key := newPodKey("cluster1", "namespace1", "pod4")
-	ummountedPodKey := newPodKey("cluster1", kubecost.UnmountedSuffix, kubecost.UnmountedSuffix)
+	ummountedPodKey := newPodKey("cluster1", opencost.UnmountedSuffix, opencost.UnmountedSuffix)
 
 	pvc1 := &pvc{
 		Bytes:     100 * 1024 * 1024 * 1024,
@@ -187,7 +187,7 @@ func TestGetPVCCostCoefficients(t *testing.T) {
 	cases := []struct {
 		name           string
 		pvc            *pvc
-		pvcIntervalMap map[podKey]kubecost.Window
+		pvcIntervalMap map[podKey]opencost.Window
 		intervals      []IntervalPoint
 		resolution     time.Duration
 		expected       map[podKey][]CoefficientComponent

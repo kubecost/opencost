@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/opencost/opencost/pkg/kubecost"
+	"github.com/opencost/opencost/core/pkg/opencost"
 	"golang.org/x/exp/maps"
 )
 
@@ -13,12 +13,12 @@ import (
 // RWMutex to make it threadsafe
 type MemoryRepository struct {
 	rwLock sync.RWMutex
-	data   map[string]map[time.Time]*kubecost.CloudCostSet
+	data   map[string]map[time.Time]*opencost.CloudCostSet
 }
 
 func NewMemoryRepository() *MemoryRepository {
 	return &MemoryRepository{
-		data: make(map[string]map[time.Time]*kubecost.CloudCostSet),
+		data: make(map[string]map[time.Time]*opencost.CloudCostSet),
 	}
 }
 
@@ -35,7 +35,7 @@ func (m *MemoryRepository) Has(startTime time.Time, billingIntegration string) (
 	return ook, nil
 }
 
-func (m *MemoryRepository) Get(startTime time.Time, billingIntegration string) (*kubecost.CloudCostSet, error) {
+func (m *MemoryRepository) Get(startTime time.Time, billingIntegration string) (*opencost.CloudCostSet, error) {
 	m.rwLock.RLock()
 	defer m.rwLock.RUnlock()
 
@@ -59,7 +59,7 @@ func (m *MemoryRepository) Keys() ([]string, error) {
 	return keys, nil
 }
 
-func (m *MemoryRepository) Put(ccs *kubecost.CloudCostSet) error {
+func (m *MemoryRepository) Put(ccs *opencost.CloudCostSet) error {
 	m.rwLock.Lock()
 	defer m.rwLock.Unlock()
 
@@ -76,7 +76,7 @@ func (m *MemoryRepository) Put(ccs *kubecost.CloudCostSet) error {
 	}
 
 	if _, ok := m.data[ccs.Integration]; !ok {
-		m.data[ccs.Integration] = make(map[time.Time]*kubecost.CloudCostSet)
+		m.data[ccs.Integration] = make(map[time.Time]*opencost.CloudCostSet)
 	}
 
 	m.data[ccs.Integration][ccs.Window.Start().UTC()] = ccs

@@ -7,16 +7,18 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/util/json"
 	"github.com/opencost/opencost/pkg/cloud/alibaba"
 	"github.com/opencost/opencost/pkg/cloud/aws"
 	"github.com/opencost/opencost/pkg/cloud/azure"
 	"github.com/opencost/opencost/pkg/cloud/gcp"
 	"github.com/opencost/opencost/pkg/cloud/models"
+	"github.com/opencost/opencost/pkg/cloud/oracle"
+	"github.com/opencost/opencost/pkg/cloud/otc"
 	"github.com/opencost/opencost/pkg/cloud/utils"
 	"github.com/opencost/opencost/pkg/config"
 	"github.com/opencost/opencost/pkg/env"
-	"github.com/opencost/opencost/pkg/log"
-	"github.com/opencost/opencost/pkg/util/json"
 )
 
 const closedSourceConfigMount = "models/"
@@ -316,6 +318,10 @@ func ExtractConfigFromProviders(prov models.Provider) models.ProviderConfig {
 	case *azure.Azure:
 		return p.Config
 	case *alibaba.Alibaba:
+		return p.Config
+	case *oracle.Oracle:
+		return p.Config
+	case *otc.OTC:
 		return p.Config
 	default:
 		log.Errorf("failed to extract config from provider")

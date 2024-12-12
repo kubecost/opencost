@@ -12,8 +12,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3Types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/opencost/opencost/core/pkg/util/stringutil"
 	"github.com/opencost/opencost/pkg/cloud"
-	"github.com/opencost/opencost/pkg/util/stringutil"
 )
 
 type S3SelectQuerier struct {
@@ -43,6 +43,18 @@ func (s3sq *S3SelectQuerier) Query(query string, queryKeys []string, cli *s3.Cli
 	}
 
 	return nil
+}
+
+func (s3sq *S3SelectQuerier) GetHeaders(queryKey string, cli *s3.Client) ([]string, error) {
+	reader, err := s3sq.fetchCSVReader("SELECT * FROM S3Object LIMIT 1", queryKey, cli, s3Types.FileHeaderInfoNone)
+	if err != nil {
+		return nil, err
+	}
+	record, err := reader.Read()
+	if err != nil {
+		return nil, err
+	}
+	return record, nil
 }
 
 // GetQueryKeys returns a list of s3 object names, where the there are 1 object for each month within the range between

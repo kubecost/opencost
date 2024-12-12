@@ -4,7 +4,7 @@
 package costmodel
 
 import (
-	"github.com/opencost/opencost/pkg/kubecost"
+	"github.com/opencost/opencost/core/pkg/opencost"
 	"sync"
 	"time"
 )
@@ -19,7 +19,7 @@ var _ AllocationModel = &AllocationModelMock{}
 //
 //		// make and configure a mocked AllocationModel
 //		mockedAllocationModel := &AllocationModelMock{
-//			ComputeAllocationFunc: func(start time.Time, end time.Time, resolution time.Duration) (*kubecost.AllocationSet, error) {
+//			ComputeAllocationFunc: func(start time.Time, end time.Time, resolution time.Duration) (*opencost.AllocationSet, error) {
 //				panic("mock out the ComputeAllocation method")
 //			},
 //			DateRangeFunc: func() (time.Time, time.Time, error) {
@@ -33,7 +33,7 @@ var _ AllocationModel = &AllocationModelMock{}
 //	}
 type AllocationModelMock struct {
 	// ComputeAllocationFunc mocks the ComputeAllocation method.
-	ComputeAllocationFunc func(start time.Time, end time.Time, resolution time.Duration) (*kubecost.AllocationSet, error)
+	ComputeAllocationFunc func(start time.Time, end time.Time, resolution time.Duration) (*opencost.AllocationSet, error)
 
 	// DateRangeFunc mocks the DateRange method.
 	DateRangeFunc func() (time.Time, time.Time, error)
@@ -58,7 +58,7 @@ type AllocationModelMock struct {
 }
 
 // ComputeAllocation calls ComputeAllocationFunc.
-func (mock *AllocationModelMock) ComputeAllocation(start time.Time, end time.Time, resolution time.Duration) (*kubecost.AllocationSet, error) {
+func (mock *AllocationModelMock) ComputeAllocation(start time.Time, end time.Time, resolution time.Duration) (*opencost.AllocationSet, error) {
 	if mock.ComputeAllocationFunc == nil {
 		panic("AllocationModelMock.ComputeAllocationFunc: method is nil but AllocationModel.ComputeAllocation was just called")
 	}

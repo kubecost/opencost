@@ -8,12 +8,14 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/athena/types"
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/opencost"
 	"github.com/opencost/opencost/pkg/cloud"
-	"github.com/opencost/opencost/pkg/kubecost"
-	"github.com/opencost/opencost/pkg/log"
 )
 
 const LabelColumnPrefix = "resource_tags_user_"
+const AWSLabelColumnPrefix = "resource_tags_aws_"
+const AthenaResourceTagPrefix = "resource_tags_"
 
 // athenaDateLayout is the default AWS date format
 const AthenaDateLayout = "2006-01-02 15:04:05.000"
@@ -52,6 +54,7 @@ type AthenaQueryIndexes struct {
 	Query                  string
 	ColumnIndexes          map[string]int
 	TagColumns             []string
+	AWSTagColumns          []string
 	ListCostColumn         string
 	NetCostColumn          string
 	AmortizedNetCostColumn string
@@ -64,8 +67,8 @@ type AthenaIntegration struct {
 }
 
 // Query Athena for CUR data and build a new CloudCostSetRange containing the info
-func (ai *AthenaIntegration) GetCloudCost(start, end time.Time) (*kubecost.CloudCostSetRange, error) {
-	log.Infof("AthenaIntegration[%s]: GetCloudCost: %s", ai.Key(), kubecost.NewWindow(&start, &end).String())
+func (ai *AthenaIntegration) GetCloudCost(start, end time.Time) (*opencost.CloudCostSetRange, error) {
+	log.Infof("AthenaIntegration[%s]: GetCloudCost: %s", ai.Key(), opencost.NewWindow(&start, &end).String())
 	// Query for all column names
 	allColumns, err := ai.GetColumns()
 	if err != nil {
@@ -80,6 +83,8 @@ func (ai *AthenaIntegration) GetCloudCost(start, end time.Time) (*kubecost.Cloud
 		"line_item_usage_account_id",
 		"line_item_product_code",
 		"line_item_usage_type",
+		"product_region_code",
+		"line_item_availability_zone",
 	}
 
 	// Create query indices
@@ -94,8 +99,13 @@ func (ai *AthenaIntegration) GetCloudCost(start, end time.Time) (*kubecost.Cloud
 	// of columns to query.
 	for column := range allColumns {
 		if strings.HasPrefix(column, LabelColumnPrefix) {
+			quotedTag := fmt.Sprintf(`"%s"`, column)
+			groupByColumns = append(groupByColumns, quotedTag)
+			aqi.TagColumns = append(aqi.TagColumns, quotedTag)
+		}
+		if strings.HasPrefix(column, AWSLabelColumnPrefix) {
 			groupByColumns = append(groupByColumns, column)
-			aqi.TagColumns = append(aqi.TagColumns, column)
+			aqi.AWSTagColumns = append(aqi.AWSTagColumns, column)
 		}
 	}
 	var selectColumns []string
@@ -153,17 +163,19 @@ func (ai *AthenaIntegration) GetCloudCost(start, end time.Time) (*kubecost.Cloud
 	`
 	aqi.Query = fmt.Sprintf(queryStr, columnStr, ai.Table, whereClause, groupByStr)
 
-	ccsr, err := kubecost.NewCloudCostSetRange(start, end, kubecost.AccumulateOptionDay, ai.Key())
+	ccsr, err := opencost.NewCloudCostSetRange(start, end, opencost.AccumulateOptionDay, ai.Key())
 	if err != nil {
 		return nil, err
 	}
 
 	// Generate row handling function.
 	rowHandler := func(row types.Row) {
-		err2 := ai.RowToCloudCost(row, aqi, ccsr)
+		cc, err2 := athenaRowToCloudCost(row, aqi)
 		if err2 != nil {
 			log.Errorf("AthenaIntegration: GetCloudCost: error while parsing row: %s", err2.Error())
+			return
 		}
+		ccsr.LoadCloudCost(cc)
 	}
 	log.Debugf("AthenaIntegration[%s]: GetCloudCost: querying: %s", ai.Key(), aqi.Query)
 	// Query CUR data and fill out CCSR
@@ -324,21 +336,32 @@ func (ai *AthenaIntegration) GetPartitionWhere(start, end time.Time) string {
 	return str
 }
 
-func (ai *AthenaIntegration) RowToCloudCost(row types.Row, aqi AthenaQueryIndexes, ccsr *kubecost.CloudCostSetRange) error {
+func athenaRowToCloudCost(row types.Row, aqi AthenaQueryIndexes) (*opencost.CloudCost, error) {
 	if len(row.Data) < len(aqi.ColumnIndexes) {
-		return fmt.Errorf("rowToCloudCost: row with fewer than %d columns (has only %d)", len(aqi.ColumnIndexes), len(row.Data))
+		return nil, fmt.Errorf("rowToCloudCost: row with fewer than %d columns (has only %d)", len(aqi.ColumnIndexes), len(row.Data))
 	}
 
 	// Iterate through the slice of tag columns, assigning
 	// values to the column names, minus the tag prefix.
-	labels := kubecost.CloudCostLabels{}
-	labelValues := []string{}
+	labels := opencost.CloudCostLabels{}
 	for _, tagColumnName := range aqi.TagColumns {
-		labelName := strings.TrimPrefix(tagColumnName, LabelColumnPrefix)
+		// remove quotes
+		labelName := strings.TrimPrefix(tagColumnName, `"`)
+		labelName = strings.TrimSuffix(labelName, `"`)
+		// remove prefix
+		labelName = strings.TrimPrefix(labelName, LabelColumnPrefix)
 		value := GetAthenaRowValue(row, aqi.ColumnIndexes, tagColumnName)
 		if value != "" {
 			labels[labelName] = value
-			labelValues = append(labelValues, value)
+		}
+	}
+
+	for _, awsColumnName := range aqi.AWSTagColumns {
+		// partially remove prefix leaving "aws_"
+		labelName := strings.TrimPrefix(awsColumnName, AthenaResourceTagPrefix)
+		value := GetAthenaRowValue(row, aqi.ColumnIndexes, awsColumnName)
+		if value != "" {
+			labels[labelName] = value
 		}
 	}
 
@@ -348,6 +371,8 @@ func (ai *AthenaIntegration) RowToCloudCost(row types.Row, aqi AthenaQueryIndexe
 	providerID := GetAthenaRowValue(row, aqi.ColumnIndexes, "line_item_resource_id")
 	productCode := GetAthenaRowValue(row, aqi.ColumnIndexes, "line_item_product_code")
 	usageType := GetAthenaRowValue(row, aqi.ColumnIndexes, "line_item_usage_type")
+	regionCode := GetAthenaRowValue(row, aqi.ColumnIndexes, "product_region_code")
+	availabilityZone := GetAthenaRowValue(row, aqi.ColumnIndexes, "line_item_availability_zone")
 	isK8s, _ := strconv.ParseBool(GetAthenaRowValue(row, aqi.ColumnIndexes, aqi.IsK8sColumn))
 	k8sPct := 0.0
 	if isK8s {
@@ -356,22 +381,22 @@ func (ai *AthenaIntegration) RowToCloudCost(row types.Row, aqi AthenaQueryIndexe
 
 	listCost, err := GetAthenaRowValueFloat(row, aqi.ColumnIndexes, aqi.ListCostColumn)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	netCost, err := GetAthenaRowValueFloat(row, aqi.ColumnIndexes, aqi.NetCostColumn)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	amortizedNetCost, err := GetAthenaRowValueFloat(row, aqi.ColumnIndexes, aqi.AmortizedNetCostColumn)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	amortizedCost, err := GetAthenaRowValueFloat(row, aqi.ColumnIndexes, aqi.AmortizedCostColumn)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Identify resource category in the CUR
@@ -382,7 +407,7 @@ func (ai *AthenaIntegration) RowToCloudCost(row types.Row, aqi AthenaQueryIndexe
 		providerID = ParseARN(providerID)
 	}
 
-	if productCode == "AmazonEKS" && category == kubecost.ComputeCategory {
+	if productCode == "AmazonEKS" && category == opencost.ComputeCategory {
 		if strings.Contains(usageType, "CPU") {
 			providerID = fmt.Sprintf("%s/CPU", providerID)
 		} else if strings.Contains(usageType, "GB") {
@@ -390,49 +415,52 @@ func (ai *AthenaIntegration) RowToCloudCost(row types.Row, aqi AthenaQueryIndexe
 		}
 	}
 
-	properties := kubecost.CloudCostProperties{
-		ProviderID:      providerID,
-		Provider:        kubecost.AWSProvider,
-		AccountID:       accountID,
-		InvoiceEntityID: invoiceEntityID,
-		Service:         productCode,
-		Category:        category,
-		Labels:          labels,
+	properties := opencost.CloudCostProperties{
+		ProviderID:        providerID,
+		Provider:          opencost.AWSProvider,
+		AccountID:         accountID,
+		AccountName:       accountID,
+		InvoiceEntityID:   invoiceEntityID,
+		InvoiceEntityName: invoiceEntityID,
+		RegionID:          regionCode,
+		AvailabilityZone:  availabilityZone,
+		Service:           productCode,
+		Category:          category,
+		Labels:            labels,
 	}
 
 	start, err := time.Parse(AthenaDateLayout, startStr)
 	if err != nil {
-		return fmt.Errorf("unable to parse %s: '%s'", AthenaDateTruncColumn, err.Error())
+		return nil, fmt.Errorf("unable to parse %s: '%s'", AthenaDateTruncColumn, err.Error())
 	}
 	end := start.AddDate(0, 0, 1)
 
-	cc := &kubecost.CloudCost{
+	cc := &opencost.CloudCost{
 		Properties: &properties,
-		Window:     kubecost.NewWindow(&start, &end),
-		ListCost: kubecost.CostMetric{
+		Window:     opencost.NewWindow(&start, &end),
+		ListCost: opencost.CostMetric{
 			Cost:              listCost,
 			KubernetesPercent: k8sPct,
 		},
-		NetCost: kubecost.CostMetric{
+		NetCost: opencost.CostMetric{
 			Cost:              netCost,
 			KubernetesPercent: k8sPct,
 		},
-		AmortizedNetCost: kubecost.CostMetric{
+		AmortizedNetCost: opencost.CostMetric{
 			Cost:              amortizedNetCost,
 			KubernetesPercent: k8sPct,
 		},
-		AmortizedCost: kubecost.CostMetric{
+		AmortizedCost: opencost.CostMetric{
 			Cost:              amortizedCost,
 			KubernetesPercent: k8sPct,
 		},
-		InvoicedCost: kubecost.CostMetric{
+		InvoicedCost: opencost.CostMetric{
 			Cost:              netCost, // We are using Net Cost for Invoiced Cost for now as it is the closest approximation
 			KubernetesPercent: k8sPct,
 		},
 	}
 
-	ccsr.LoadCloudCost(cc)
-	return nil
+	return cc, nil
 }
 
 func (ai *AthenaIntegration) GetConnectionStatusFromResult(result cloud.EmptyChecker, currentStatus cloud.ConnectionStatus) cloud.ConnectionStatus {

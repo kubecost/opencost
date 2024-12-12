@@ -3,8 +3,8 @@ package config
 import (
 	"fmt"
 
+	"github.com/opencost/opencost/core/pkg/opencost"
 	"github.com/opencost/opencost/pkg/cloud"
-	"github.com/opencost/opencost/pkg/kubecost"
 )
 
 type MockConfig struct {
@@ -83,7 +83,7 @@ func (mkc *MockKeyedConfig) Key() string {
 }
 
 func (mkc *MockKeyedConfig) Provider() string {
-	return kubecost.CustomProvider
+	return opencost.CustomProvider
 }
 
 type MockKeyedConfigWatcher struct {

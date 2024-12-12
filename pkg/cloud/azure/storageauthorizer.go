@@ -116,7 +116,7 @@ func (ah *AuthorizerHolder) GetBlobClient(serviceURL string) (*azblob.Client, er
 	// Create a default request pipeline using your storage account name and account key.
 	cred, err := ah.GetCredential()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error retrieving credentials: %w", err)
 	}
 
 	client, err := azblob.NewClient(serviceURL, cred, nil)

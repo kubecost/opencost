@@ -6,14 +6,14 @@ import (
 	"time"
 
 	"cloud.google.com/go/bigquery"
-	"github.com/opencost/opencost/pkg/kubecost"
-	"github.com/opencost/opencost/pkg/log"
-	"github.com/opencost/opencost/pkg/util/json"
-	"github.com/opencost/opencost/pkg/util/timeutil"
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/util/json"
+	"github.com/opencost/opencost/core/pkg/util/timeutil"
 )
 
 type CloudCostLoader struct {
-	CloudCost        *kubecost.CloudCost
+	CloudCost        *opencost.CloudCost
 	FlexibleCUDRates map[time.Time]FlexibleCUDRates
 }
 
@@ -21,10 +21,10 @@ type CloudCostLoader struct {
 func (ccl *CloudCostLoader) Load(values []bigquery.Value, schema bigquery.Schema) error {
 
 	// Create Cloud Cost Properties
-	properties := kubecost.CloudCostProperties{
-		Provider: kubecost.GCPProvider,
+	properties := opencost.CloudCostProperties{
+		Provider: opencost.GCPProvider,
 	}
-	var window kubecost.Window
+	var window opencost.Window
 	var description string
 	var cost float64
 	var listCost float64
@@ -53,7 +53,7 @@ func (ccl *CloudCostLoader) Load(values []bigquery.Value, schema bigquery.Schema
 			// start and end will be the day that the usage occurred on
 			s := usageDate
 			e := s.Add(timeutil.Day)
-			window = kubecost.NewClosedWindow(s, e)
+			window = opencost.NewClosedWindow(s, e)
 		case BillingAccountIDColumnName:
 			invoiceEntityID, ok := values[i].(string)
 			if !ok {
@@ -61,6 +61,8 @@ func (ccl *CloudCostLoader) Load(values []bigquery.Value, schema bigquery.Schema
 				invoiceEntityID = ""
 			}
 			properties.InvoiceEntityID = invoiceEntityID
+			// Use InvoiceEntityID as InvoiceEntityName
+			properties.InvoiceEntityName = invoiceEntityID
 		case ProjectIDColumnName:
 			accountID, ok := values[i].(string)
 			if !ok {
@@ -68,6 +70,27 @@ func (ccl *CloudCostLoader) Load(values []bigquery.Value, schema bigquery.Schema
 				accountID = ""
 			}
 			properties.AccountID = accountID
+		case ProjectNameColumnName:
+			accountName, ok := values[i].(string)
+			if !ok {
+				log.DedupedErrorf(5, "error parsing GCP CloudCost %s: %v", ProjectNameColumnName, values[i])
+				accountName = ""
+			}
+			properties.AccountName = accountName
+		case RegionColumnName:
+			regionID, ok := values[i].(string)
+			if !ok {
+				log.DedupedErrorf(5, "error parsing GCP CloudCost %s: %v", RegionColumnName, values[i])
+				regionID = ""
+			}
+			properties.RegionID = regionID
+		case ZoneColumnName:
+			zone, ok := values[i].(string)
+			if !ok {
+				log.DedupedErrorf(5, "error parsing GCP CloudCost %s: %v", ZoneColumnName, values[i])
+				zone = ""
+			}
+			properties.AvailabilityZone = zone
 		case ServiceDescriptionColumnName:
 			service, ok := values[i].(string)
 			if !ok {
@@ -113,6 +136,26 @@ func (ccl *CloudCostLoader) Load(values []bigquery.Value, schema bigquery.Schema
 			}
 
 			properties.ProviderID = ParseProviderID(resource)
+		case ResourceGlobalNameColumnName:
+			// skip if we already got ProviderID from resource.name, as resource.global_name is a fallback for when
+			// resource.name is null
+			if len(properties.ProviderID) > 0 {
+				continue
+			}
+
+			resourceGlobalNameValue := values[i]
+			if resourceGlobalNameValue == nil {
+				properties.ProviderID = ""
+				continue
+			}
+			resourceGlobalName, ok := resourceGlobalNameValue.(string)
+			if !ok {
+				log.DedupedErrorf(5, "error parsing GCP CloudCost %s: %v", ResourceGlobalNameColumnName, values[i])
+				properties.ProviderID = ""
+				continue
+			}
+
+			properties.ProviderID = ParseProviderID(resourceGlobalName)
 		case CostColumnName:
 			costValue, ok := values[i].(float64)
 			if !ok {
@@ -217,26 +260,26 @@ func (ccl *CloudCostLoader) Load(values []bigquery.Value, schema bigquery.Schema
 		k8sPercent = 1.0
 	}
 
-	ccl.CloudCost = &kubecost.CloudCost{
+	ccl.CloudCost = &opencost.CloudCost{
 		Properties: &properties,
 		Window:     window,
-		ListCost: kubecost.CostMetric{
+		ListCost: opencost.CostMetric{
 			Cost:              listCost,
 			KubernetesPercent: k8sPercent,
 		},
-		AmortizedCost: kubecost.CostMetric{
+		AmortizedCost: opencost.CostMetric{
 			Cost:              amortizedCost,
 			KubernetesPercent: k8sPercent,
 		},
-		AmortizedNetCost: kubecost.CostMetric{
+		AmortizedNetCost: opencost.CostMetric{
 			Cost:              amortizedNetCost,
 			KubernetesPercent: k8sPercent,
 		},
-		InvoicedCost: kubecost.CostMetric{
+		InvoicedCost: opencost.CostMetric{
 			Cost:              invoicedCost,
 			KubernetesPercent: k8sPercent,
 		},
-		NetCost: kubecost.CostMetric{
+		NetCost: opencost.CostMetric{
 			Cost:              netCost,
 			KubernetesPercent: k8sPercent,
 		},

@@ -11,9 +11,3 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-
-  # Dependencies listed in ui/package.json
-  - package-ecosystem: "npm"
-    directory: "/ui"
-    schedule:
-      interval: "weekly"

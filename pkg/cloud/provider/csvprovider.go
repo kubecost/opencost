@@ -11,17 +11,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opencost/opencost/core/pkg/util"
 	"github.com/opencost/opencost/pkg/cloud/models"
+	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/opencost/opencost/pkg/env"
-	"github.com/opencost/opencost/pkg/util"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/opencost/opencost/pkg/log"
-	v1 "k8s.io/api/core/v1"
-
 	"github.com/jszwec/csvutil"
+	"github.com/opencost/opencost/core/pkg/log"
 )
 
 const refreshMinutes = 60
@@ -228,63 +227,68 @@ func (k *csvKey) ID() string {
 	return k.ProviderID
 }
 
-func (c *CSVProvider) NodePricing(key models.Key) (*models.Node, models.PricingMetadata, error) {
-	c.DownloadPricingDataLock.RLock()
-	defer c.DownloadPricingDataLock.RUnlock()
-	meta := models.PricingMetadata{}
-	var node *models.Node
+func (c *CSVProvider) nodePricing(key models.Key) *models.Node {
 	if p, ok := c.Pricing[key.ID()]; ok {
-		node = &models.Node{
+		return &models.Node{
 			Cost:        p.MarketPriceHourly,
 			PricingType: models.CsvExact,
 		}
 	}
+
 	s := strings.Split(key.ID(), ",") // Try without a region to be sure
 	if len(s) == 2 {
 		if p, ok := c.Pricing[s[1]]; ok {
-			node = &models.Node{
+			return &models.Node{
 				Cost:        p.MarketPriceHourly,
 				PricingType: models.CsvExact,
 			}
 		}
 	}
+
 	classKey := key.Features() // Use node attributes to try and do a class match
 	if cost, ok := c.NodeClassPricing[classKey]; ok {
 		log.Infof("Unable to find provider ID `%s`, using features:`%s`", key.ID(), key.Features())
-		node = &models.Node{
+		return &models.Node{
 			Cost:        fmt.Sprintf("%f", cost),
 			PricingType: models.CsvClass,
 		}
 	}
 
-	if node != nil {
-		if t := key.GPUType(); t != "" {
-			t = strings.ToLower(t)
-			count := key.GPUCount()
-			node.GPU = strconv.Itoa(count)
-			hourly := 0.0
-			if p, ok := c.GPUClassPricing[t]; ok {
-				var err error
-				hourly, err = strconv.ParseFloat(p.MarketPriceHourly, 64)
-				if err != nil {
-					log.Errorf("Unable to parse %s as float", p.MarketPriceHourly)
-				}
-			}
-			totalCost := hourly * float64(count)
-			node.GPUCost = fmt.Sprintf("%f", totalCost)
-			nc, err := strconv.ParseFloat(node.Cost, 64)
-			if err != nil {
-				log.Errorf("Unable to parse %s as float", node.Cost)
-			}
-			node.Cost = fmt.Sprintf("%f", nc+totalCost)
-		}
-		return node, meta, nil
-	} else {
-		return nil, meta, fmt.Errorf("Unable to find Node matching `%s`:`%s`", key.ID(), key.Features())
-	}
+	return nil
 }
 
-func NodeValueFromMapField(m string, n *v1.Node, useRegion bool) string {
+func (c *CSVProvider) NodePricing(key models.Key) (*models.Node, models.PricingMetadata, error) {
+	c.DownloadPricingDataLock.RLock()
+	defer c.DownloadPricingDataLock.RUnlock()
+
+	node := c.nodePricing(key)
+	if node == nil {
+		return nil, models.PricingMetadata{}, fmt.Errorf("Unable to find Node matching `%s`:`%s`", key.ID(), key.Features())
+	}
+	if t := key.GPUType(); t != "" {
+		t = strings.ToLower(t)
+		count := key.GPUCount()
+		node.GPU = strconv.Itoa(count)
+		hourly := 0.0
+		if p, ok := c.GPUClassPricing[t]; ok {
+			var err error
+			hourly, err = strconv.ParseFloat(p.MarketPriceHourly, 64)
+			if err != nil {
+				log.Errorf("Unable to parse %s as float", p.MarketPriceHourly)
+			}
+		}
+		totalCost := hourly * float64(count)
+		node.GPUCost = fmt.Sprintf("%f", hourly)
+		nc, err := strconv.ParseFloat(node.Cost, 64)
+		if err != nil {
+			log.Errorf("Unable to parse %s as float", node.Cost)
+		}
+		node.Cost = fmt.Sprintf("%f", nc+totalCost)
+	}
+	return node, models.PricingMetadata{}, nil
+}
+
+func NodeValueFromMapField(m string, n *clustercache.Node, useRegion bool) string {
 	mf := strings.Split(m, ".")
 	toReturn := ""
 	if useRegion {
@@ -295,16 +299,16 @@ func NodeValueFromMapField(m string, n *v1.Node, useRegion bool) string {
 		}
 	}
 	if len(mf) == 2 && mf[0] == "spec" && mf[1] == "providerID" {
-		for matchNum, group := range provIdRx.FindStringSubmatch(n.Spec.ProviderID) {
+		for matchNum, group := range provIdRx.FindStringSubmatch(n.SpecProviderID) {
 			if matchNum == 2 {
 				return toReturn + group
 			}
 		}
-		if strings.HasPrefix(n.Spec.ProviderID, "azure://") {
-			vmOrScaleSet := strings.ToLower(strings.TrimPrefix(n.Spec.ProviderID, "azure://"))
+		if strings.HasPrefix(n.SpecProviderID, "azure://") {
+			vmOrScaleSet := strings.ToLower(strings.TrimPrefix(n.SpecProviderID, "azure://"))
 			return toReturn + vmOrScaleSet
 		}
-		return toReturn + n.Spec.ProviderID
+		return toReturn + n.SpecProviderID
 	} else if len(mf) > 1 && mf[0] == "metadata" {
 		if mf[1] == "name" {
 			return toReturn + n.Name
@@ -315,16 +319,16 @@ func NodeValueFromMapField(m string, n *v1.Node, useRegion bool) string {
 			akey := strings.Join(mf[2:len(mf)], ".")
 			return toReturn + n.Annotations[akey]
 		} else {
-			log.Errorf("Unsupported InstanceIDField %s in CSV For Node", m)
+			log.DedupedInfof(10, "Unsupported InstanceIDField %s in CSV For Node", m)
 			return ""
 		}
 	} else {
-		log.Errorf("Unsupported InstanceIDField %s in CSV For Node", m)
+		log.DedupedInfof(10, "Unsupported InstanceIDField %s in CSV For Node", m)
 		return ""
 	}
 }
 
-func PVValueFromMapField(m string, n *v1.PersistentVolume) string {
+func PVValueFromMapField(m string, n *clustercache.PersistentVolume) string {
 	mf := strings.Split(m, ".")
 	if len(mf) > 1 && mf[0] == "metadata" {
 		if mf[1] == "name" {
@@ -360,7 +364,7 @@ func PVValueFromMapField(m string, n *v1.PersistentVolume) string {
 	}
 }
 
-func (c *CSVProvider) GetKey(l map[string]string, n *v1.Node) models.Key {
+func (c *CSVProvider) GetKey(l map[string]string, n *clustercache.Node) models.Key {
 	id := NodeValueFromMapField(c.NodeMapField, n, c.UsesRegion)
 	var gpuCount int64
 	gpuCount = 0
@@ -368,7 +372,7 @@ func (c *CSVProvider) GetKey(l map[string]string, n *v1.Node) models.Key {
 		gpuCount = gpuc.Value()
 	}
 	return &csvKey{
-		ProviderID: id,
+		ProviderID: strings.ToLower(id),
 		Labels:     l,
 		GPULabel:   c.GPUMapFields,
 		GPU:        gpuCount,
@@ -396,7 +400,7 @@ func (key *csvPVKey) Features() string {
 	return key.ProviderID
 }
 
-func (c *CSVProvider) GetPVKey(pv *v1.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
+func (c *CSVProvider) GetPVKey(pv *clustercache.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
 	id := PVValueFromMapField(c.PVMapField, pv)
 	return &csvPVKey{
 		Labels:                 pv.Labels,
@@ -413,7 +417,7 @@ func (c *CSVProvider) PVPricing(pvk models.PVKey) (*models.PV, error) {
 	defer c.DownloadPricingDataLock.RUnlock()
 	pricing, ok := c.PricingPV[pvk.Features()]
 	if !ok {
-		log.Infof("Persistent Volume pricing not found for %s: %s", pvk.GetStorageClass(), pvk.Features())
+		log.Debugf("Persistent Volume pricing not found for %s: %s", pvk.GetStorageClass(), pvk.Features())
 		return &models.PV{}, nil
 	}
 	return &models.PV{

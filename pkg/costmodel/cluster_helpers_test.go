@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/util"
 	"github.com/opencost/opencost/pkg/cloud/provider"
 	"github.com/opencost/opencost/pkg/config"
-	"github.com/opencost/opencost/pkg/kubecost"
 	"github.com/opencost/opencost/pkg/prom"
-	"github.com/opencost/opencost/pkg/util"
 
 	"github.com/davecgh/go-spew/spew"
 )
@@ -895,7 +895,7 @@ func TestAssetCustompricing(t *testing.T) {
 
 	windowStart := time.Date(2020, time.April, 13, 0, 0, 0, 0, time.UTC)
 	windowEnd := windowStart.Add(time.Hour)
-	window := kubecost.NewClosedWindow(windowStart, windowEnd)
+	window := opencost.NewClosedWindow(windowStart, windowEnd)
 
 	startTimestamp := float64(windowStart.Unix())
 

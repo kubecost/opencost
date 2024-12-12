@@ -11,16 +11,14 @@ import (
 
 	"github.com/opencost/opencost/pkg/cloud/models"
 	"github.com/opencost/opencost/pkg/cloud/utils"
-	"github.com/opencost/opencost/pkg/kubecost"
 
+	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/util"
+	"github.com/opencost/opencost/core/pkg/util/json"
 	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/opencost/opencost/pkg/env"
-	"github.com/opencost/opencost/pkg/util"
-	"github.com/opencost/opencost/pkg/util/json"
 
-	"github.com/opencost/opencost/pkg/log"
-	v1 "k8s.io/api/core/v1"
-
+	"github.com/opencost/opencost/core/pkg/log"
 	"github.com/scaleway/scaleway-sdk-go/api/instance/v1"
 	"github.com/scaleway/scaleway-sdk-go/scw"
 )
@@ -68,7 +66,10 @@ func (c *Scaleway) DownloadPricingData() error {
 		"fr-par-3": 0.00032,
 		"nl-ams-1": 0.00008,
 		"nl-ams-2": 0.00008,
+		"nl-ams-3": 0.00008,
 		"pl-waw-1": 0.00011,
+		"pl-waw-2": 0.00011,
+		"pl-waw-3": 0.00011,
 	}
 
 	c.Pricing = make(map[string]*ScalewayPricing)
@@ -178,7 +179,7 @@ func (c *Scaleway) NetworkPricing() (*models.Network, error) {
 	}, nil
 }
 
-func (c *Scaleway) GetKey(l map[string]string, n *v1.Node) models.Key {
+func (c *Scaleway) GetKey(l map[string]string, n *clustercache.Node) models.Key {
 	return &scalewayKey{
 		Labels: l,
 	}
@@ -205,7 +206,7 @@ func (key *scalewayPVKey) Features() string {
 	return key.Zone
 }
 
-func (c *Scaleway) GetPVKey(pv *v1.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
+func (c *Scaleway) GetPVKey(pv *clustercache.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
 	// the csi volume handle is the form <az>/<volume-id>
 	zone := ""
 	if pv.Spec.CSI != nil {
@@ -229,7 +230,7 @@ func (c *Scaleway) PVPricing(pvk models.PVKey) (*models.PV, error) {
 
 	pricing, ok := c.Pricing[pvk.Features()]
 	if !ok {
-		log.Infof("Persistent Volume pricing not found for %s: %s", pvk.GetStorageClass(), pvk.Features())
+		log.Debugf("Persistent Volume pricing not found for %s: %s", pvk.GetStorageClass(), pvk.Features())
 		return &models.PV{}, nil
 	}
 	return &models.PV{
@@ -295,7 +296,7 @@ func (scw *Scaleway) ClusterInfo() (map[string]string, error) {
 	if c.ClusterName != "" {
 		m["name"] = c.ClusterName
 	}
-	m["provider"] = kubecost.ScalewayProvider
+	m["provider"] = opencost.ScalewayProvider
 	m["region"] = scw.ClusterRegion
 	m["account"] = scw.ClusterAccountID
 	m["remoteReadEnabled"] = strconv.FormatBool(remoteEnabled)

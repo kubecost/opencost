@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/opencost/opencost/core/pkg/opencost"
 	"github.com/opencost/opencost/pkg/filemanager"
-	"github.com/opencost/opencost/pkg/kubecost"
 )
 
 //go:generate moq -out moq_cloud_storage_test.go . CloudStorage:CloudStorageMock
@@ -22,9 +22,9 @@ func Test_UpdateCSV(t *testing.T) {
 			DateRangeFunc: func() (time.Time, time.Time, error) {
 				return time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2021, 1, 2, 0, 0, 0, 0, time.UTC), nil
 			},
-			ComputeAllocationFunc: func(start time.Time, end time.Time, resolution time.Duration) (*kubecost.AllocationSet, error) {
-				return &kubecost.AllocationSet{
-					Allocations: map[string]*kubecost.Allocation{
+			ComputeAllocationFunc: func(start time.Time, end time.Time, resolution time.Duration) (*opencost.AllocationSet, error) {
+				return &opencost.AllocationSet{
+					Allocations: map[string]*opencost.Allocation{
 						"test": {
 							Start:                  time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC), // required for GPU metrics
 							End:                    time.Date(2021, 1, 2, 0, 0, 0, 0, time.UTC),
@@ -39,7 +39,7 @@ func Test_UpdateCSV(t *testing.T) {
 							NetworkCost:            0.9,
 							NetworkTransferBytes:   10,
 							NetworkReceiveBytes:    11,
-							PVs: map[kubecost.PVKey]*kubecost.PVAllocation{
+							PVs: map[opencost.PVKey]*opencost.PVAllocation{
 								{
 									Cluster: "test-cluster",
 									Name:    "test-pv",
@@ -48,7 +48,7 @@ func Test_UpdateCSV(t *testing.T) {
 									Cost:      2.0,
 								},
 							}, // 2 PVBytes, 2 PVCost
-							Properties: &kubecost.AllocationProperties{
+							Properties: &opencost.AllocationProperties{
 								Namespace:      "test-namespace",
 								Controller:     "test-controller-name",
 								ControllerKind: "test-controller-kind",
@@ -77,11 +77,11 @@ func Test_UpdateCSV(t *testing.T) {
 			DateRangeFunc: func() (time.Time, time.Time, error) {
 				return time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2021, 1, 2, 0, 0, 0, 0, time.UTC), nil
 			},
-			ComputeAllocationFunc: func(start time.Time, end time.Time, resolution time.Duration) (*kubecost.AllocationSet, error) {
-				return &kubecost.AllocationSet{
-					Allocations: map[string]*kubecost.Allocation{
+			ComputeAllocationFunc: func(start time.Time, end time.Time, resolution time.Duration) (*opencost.AllocationSet, error) {
+				return &opencost.AllocationSet{
+					Allocations: map[string]*opencost.Allocation{
 						"test": {
-							Properties: &kubecost.AllocationProperties{
+							Properties: &opencost.AllocationProperties{
 								Namespace:      "test-namespace",
 								Controller:     "test-controller-name",
 								ControllerKind: "test-controller-kind",
@@ -116,11 +116,11 @@ func Test_UpdateCSV(t *testing.T) {
 			DateRangeFunc: func() (time.Time, time.Time, error) {
 				return time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2021, 1, 3, 0, 0, 0, 0, time.UTC), nil
 			},
-			ComputeAllocationFunc: func(start time.Time, end time.Time, resolution time.Duration) (*kubecost.AllocationSet, error) {
-				return &kubecost.AllocationSet{
-					Allocations: map[string]*kubecost.Allocation{
+			ComputeAllocationFunc: func(start time.Time, end time.Time, resolution time.Duration) (*opencost.AllocationSet, error) {
+				return &opencost.AllocationSet{
+					Allocations: map[string]*opencost.Allocation{
 						"test": {
-							Properties: &kubecost.AllocationProperties{
+							Properties: &opencost.AllocationProperties{
 								Namespace: "test-namespace",
 							},
 							CPUCost: 1,
@@ -163,8 +163,8 @@ func Test_UpdateCSV(t *testing.T) {
 
 	t.Run("allocation data is empty", func(t *testing.T) {
 		model := &AllocationModelMock{
-			ComputeAllocationFunc: func(start time.Time, end time.Time, resolution time.Duration) (*kubecost.AllocationSet, error) {
-				return &kubecost.AllocationSet{
+			ComputeAllocationFunc: func(start time.Time, end time.Time, resolution time.Duration) (*opencost.AllocationSet, error) {
+				return &opencost.AllocationSet{
 					Allocations: nil,
 				}, nil
 			},

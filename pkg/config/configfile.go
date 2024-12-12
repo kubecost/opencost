@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/opencost/opencost/pkg/log"
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/util/atomic"
 	"github.com/opencost/opencost/pkg/storage"
-	"github.com/opencost/opencost/pkg/util/atomic"
 )
 
 // HandlerID is a unique identifier assigned to a provided ConfigChangedHandler. This is used to remove a handler

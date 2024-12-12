@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/opencost/opencost/pkg/kubecost"
+	"github.com/opencost/opencost/core/pkg/opencost"
 )
 
 func IsK8s(labels map[string]string) bool {
@@ -39,62 +39,62 @@ func SelectCategory(service, description string) string {
 
 	// Network descriptions
 	if strings.Contains(d, "download") {
-		return kubecost.NetworkCategory
+		return opencost.NetworkCategory
 	}
 	if strings.Contains(d, "network") {
-		return kubecost.NetworkCategory
+		return opencost.NetworkCategory
 	}
 	if strings.Contains(d, "ingress") {
-		return kubecost.NetworkCategory
+		return opencost.NetworkCategory
 	}
 	if strings.Contains(d, "egress") {
-		return kubecost.NetworkCategory
+		return opencost.NetworkCategory
 	}
 	if strings.Contains(d, "static ip") {
-		return kubecost.NetworkCategory
+		return opencost.NetworkCategory
 	}
 	if strings.Contains(d, "external ip") {
-		return kubecost.NetworkCategory
+		return opencost.NetworkCategory
 	}
 	if strings.Contains(d, "load balanced") {
-		return kubecost.NetworkCategory
+		return opencost.NetworkCategory
 	}
 	if strings.Contains(d, "licensing fee") {
-		return kubecost.OtherCategory
+		return opencost.OtherCategory
 	}
 
 	// Storage Descriptions
 	if strings.Contains(d, "storage") {
-		return kubecost.StorageCategory
+		return opencost.StorageCategory
 	}
 	if strings.Contains(d, "pd capacity") {
-		return kubecost.StorageCategory
+		return opencost.StorageCategory
 	}
 	if strings.Contains(d, "pd iops") {
-		return kubecost.StorageCategory
+		return opencost.StorageCategory
 	}
 	if strings.Contains(d, "pd snapshot") {
-		return kubecost.StorageCategory
+		return opencost.StorageCategory
 	}
 
 	// Service Defaults
 	if strings.Contains(s, "storage") {
-		return kubecost.StorageCategory
+		return opencost.StorageCategory
 	}
 	if strings.Contains(s, "compute") {
-		return kubecost.ComputeCategory
+		return opencost.ComputeCategory
 	}
 	if strings.Contains(s, "sql") {
-		return kubecost.StorageCategory
+		return opencost.StorageCategory
 	}
 	if strings.Contains(s, "bigquery") {
-		return kubecost.StorageCategory
+		return opencost.StorageCategory
 	}
 	if strings.Contains(s, "kubernetes") {
-		return kubecost.ManagementCategory
+		return opencost.ManagementCategory
 	} else if strings.Contains(s, "pub/sub") {
-		return kubecost.NetworkCategory
+		return opencost.NetworkCategory
 	}
 
-	return kubecost.OtherCategory
+	return opencost.OtherCategory
 }

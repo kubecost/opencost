@@ -3,8 +3,8 @@ package costmodel
 import (
 	"testing"
 
-	"github.com/opencost/opencost/pkg/kubecost"
-	"github.com/opencost/opencost/pkg/util"
+	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/util"
 )
 
 func TestScaleHourlyCostData(t *testing.T) {
@@ -198,11 +198,11 @@ func TestScaleHourlyCostData(t *testing.T) {
 func TestParseAggregationProperties_Default(t *testing.T) {
 	got, err := ParseAggregationProperties([]string{})
 	expected := []string{
-		kubecost.AllocationClusterProp,
-		kubecost.AllocationNodeProp,
-		kubecost.AllocationNamespaceProp,
-		kubecost.AllocationPodProp,
-		kubecost.AllocationContainerProp,
+		opencost.AllocationClusterProp,
+		opencost.AllocationNodeProp,
+		opencost.AllocationNamespaceProp,
+		opencost.AllocationPodProp,
+		opencost.AllocationContainerProp,
 	}
 
 	if err != nil {

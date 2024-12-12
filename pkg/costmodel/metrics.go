@@ -7,16 +7,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opencost/opencost/core/pkg/clusters"
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/util"
+	"github.com/opencost/opencost/core/pkg/util/atomic"
+	"github.com/opencost/opencost/core/pkg/util/promutil"
 	"github.com/opencost/opencost/pkg/cloud/models"
 	"github.com/opencost/opencost/pkg/clustercache"
-	"github.com/opencost/opencost/pkg/costmodel/clusters"
 	"github.com/opencost/opencost/pkg/env"
 	"github.com/opencost/opencost/pkg/errors"
-	"github.com/opencost/opencost/pkg/log"
 	"github.com/opencost/opencost/pkg/metrics"
 	"github.com/opencost/opencost/pkg/prom"
-	"github.com/opencost/opencost/pkg/util"
-	"github.com/opencost/opencost/pkg/util/atomic"
 
 	promclient "github.com/prometheus/client_golang/api"
 	"github.com/prometheus/client_golang/prometheus"
@@ -54,7 +55,7 @@ func (cic ClusterInfoCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	clusterInfo := cic.ClusterInfo.GetClusterInfo()
-	labels := prom.MapToLabels(clusterInfo)
+	labels := promutil.MapToLabels(clusterInfo)
 
 	m := newClusterInfoMetric("kubecost_cluster_info", labels)
 	ch <- m
@@ -85,7 +86,7 @@ func newClusterInfoMetric(fqName string, labels map[string]string) ClusterInfoMe
 // returns the same descriptor throughout the lifetime of the Metric.
 func (cim ClusterInfoMetric) Desc() *prometheus.Desc {
 	l := prometheus.Labels{}
-	return prometheus.NewDesc(cim.fqName, cim.help, prom.LabelNamesFrom(cim.labels), l)
+	return prometheus.NewDesc(cim.fqName, cim.help, promutil.LabelNamesFrom(cim.labels), l)
 }
 
 // Write encodes the Metric into a "Metric" Protocol Buffer data
@@ -344,6 +345,7 @@ func NewCostModelMetricsEmitter(promClient promclient.Client, clusterCache clust
 		EmitPodAnnotations:            env.IsEmitPodAnnotationsMetric(),
 		EmitKubeStateMetrics:          env.IsEmitKsmV1Metrics(),
 		EmitKubeStateMetricsV1Only:    env.IsEmitKsmV1MetricsOnly(),
+		EmitDeprecatedMetrics:         env.IsEmitDeprecatedMetrics(),
 	})
 
 	metrics.InitOpencostTelemetry(metricsConfig)
@@ -617,7 +619,24 @@ func (cmme *CostModelMetricsEmitter) Start() bool {
 				}
 				if len(costs.GPUReq) > 0 {
 					// allocation here is set to the request because shared GPU usage not yet supported.
-					cmme.GPUAllocationRecorder.WithLabelValues(namespace, podName, containerName, nodeName, nodeName).Set(costs.GPUReq[0].Value)
+					// if VPGUs, request x (actual/virtual)
+					vgpu := 0.0
+					gpu := 0.0
+					var err, verr error
+					if matchedNode, found := nodes[nodeName]; found {
+						vgpu, verr = strconv.ParseFloat(matchedNode.VGPU, 64)
+						gpu, err = strconv.ParseFloat(matchedNode.GPU, 64)
+					} else {
+						log.Tracef("cost data for node %s had GPUReq, but there was no cost data available for the node", nodeName)
+						log.Trace("defaulting GPU to 0 cost")
+					}
+
+					gpualloc := costs.GPUReq[0].Value
+					if verr != nil && err != nil && vgpu != 0 {
+						gpualloc = gpualloc * (gpu / vgpu)
+					}
+
+					cmme.GPUAllocationRecorder.WithLabelValues(namespace, podName, containerName, nodeName, nodeName).Set(gpualloc)
 				}
 				labelKey := getKeyFromLabelStrings(namespace, podName, containerName, nodeName, nodeName)
 				if podStatus[podName] == v1.PodRunning { // Only report data for current pods
@@ -631,8 +650,8 @@ func (cmme *CostModelMetricsEmitter) Start() bool {
 			storageClassMap := make(map[string]map[string]string)
 			for _, storageClass := range storageClasses {
 				params := storageClass.Parameters
-				storageClassMap[storageClass.ObjectMeta.Name] = params
-				if storageClass.GetAnnotations()["storageclass.kubernetes.io/is-default-class"] == "true" || storageClass.GetAnnotations()["storageclass.beta.kubernetes.io/is-default-class"] == "true" {
+				storageClassMap[storageClass.Name] = params
+				if storageClass.Annotations["storageclass.kubernetes.io/is-default-class"] == "true" || storageClass.Annotations["storageclass.beta.kubernetes.io/is-default-class"] == "true" {
 					storageClassMap["default"] = params
 					storageClassMap[""] = params
 				}

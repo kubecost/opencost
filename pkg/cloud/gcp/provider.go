@@ -17,22 +17,21 @@ import (
 	"github.com/opencost/opencost/pkg/cloud/aws"
 	"github.com/opencost/opencost/pkg/cloud/models"
 	"github.com/opencost/opencost/pkg/cloud/utils"
-	"github.com/opencost/opencost/pkg/kubecost"
 
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/util"
+	"github.com/opencost/opencost/core/pkg/util/fileutil"
+	"github.com/opencost/opencost/core/pkg/util/json"
+	"github.com/opencost/opencost/core/pkg/util/timeutil"
 	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/opencost/opencost/pkg/env"
-	"github.com/opencost/opencost/pkg/log"
-	"github.com/opencost/opencost/pkg/util"
-	"github.com/opencost/opencost/pkg/util/fileutil"
-	"github.com/opencost/opencost/pkg/util/json"
-	"github.com/opencost/opencost/pkg/util/timeutil"
 	"github.com/rs/zerolog"
 
 	"cloud.google.com/go/bigquery"
 	"cloud.google.com/go/compute/metadata"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/compute/v1"
-	v1 "k8s.io/api/core/v1"
 )
 
 const GKE_GPU_TAG = "cloud.google.com/gke-accelerator"
@@ -67,18 +66,28 @@ var gcpRegions = []string{
 	"australia-southeast2",
 	"europe-central2",
 	"europe-north1",
+	"europe-southwest1",
 	"europe-west1",
+	"europe-west10",
+	"europe-west12",
 	"europe-west2",
 	"europe-west3",
 	"europe-west4",
 	"europe-west6",
+	"europe-west8",
 	"europe-west9",
+	"me-central1",
+	"me-central2",
+	"me-west1",
 	"northamerica-northeast1",
 	"northamerica-northeast2",
 	"southamerica-east1",
+	"southamerica-west1",
 	"us-central1",
 	"us-east1",
 	"us-east4",
+	"us-east5",
+	"us-south1",
 	"us-west1",
 	"us-west2",
 	"us-west3",
@@ -340,7 +349,7 @@ func (gcp *GCP) ClusterInfo() (map[string]string, error) {
 
 	m := make(map[string]string)
 	m["name"] = attribute
-	m["provider"] = kubecost.GCPProvider
+	m["provider"] = opencost.GCPProvider
 	m["region"] = gcp.ClusterRegion
 	m["account"] = gcp.ClusterAccountID
 	m["project"] = gcp.ClusterProjectID
@@ -485,7 +494,8 @@ func (gcp *GCP) GetOrphanedResources() ([]models.OrphanedResource, error) {
 				desc := map[string]string{}
 				if disk.Description != "" {
 					if err := json.Unmarshal([]byte(disk.Description), &desc); err != nil {
-						return nil, fmt.Errorf("error converting string to map: %s", err)
+						log.Errorf("ignoring orphaned disk %s, failed to convert disk description to map: %s", disk.Name, err)
+						continue
 					}
 				}
 
@@ -632,6 +642,16 @@ func (gcp *GCP) parsePage(r io.Reader, inputKeys map[string]models.Key, pvKeys m
 			break
 		} else if err != nil {
 			return nil, "", fmt.Errorf("error parsing GCP pricing page: %s", err)
+		}
+		if t == "error" {
+			errReader := dec.Buffered()
+			buf := new(strings.Builder)
+			_, err = io.Copy(buf, errReader)
+			if err != nil {
+				return nil, "", fmt.Errorf("error respnse: could not be read %s", err)
+			}
+
+			return nil, "", fmt.Errorf("error respnse: %s", buf.String())
 		}
 		if t == "skus" {
 			_, err := dec.Token() // consumes [
@@ -1078,7 +1098,7 @@ func (gcp *GCP) DownloadPricingData() error {
 
 	defaultRegion := "" // Sometimes, PVs may be missing the region label. In that case assume that they are in the same region as the nodes
 	for _, n := range nodeList {
-		labels := n.GetObjectMeta().GetLabels()
+		labels := n.Labels
 		if _, ok := labels["cloud.google.com/gke-nodepool"]; ok { // The node is part of a GKE nodepool, so you're paying a cluster management cost
 			gcp.clusterManagementPrice = 0.10
 			gcp.clusterProvisioner = "GKE"
@@ -1096,8 +1116,8 @@ func (gcp *GCP) DownloadPricingData() error {
 	storageClassMap := make(map[string]map[string]string)
 	for _, storageClass := range storageClasses {
 		params := storageClass.Parameters
-		storageClassMap[storageClass.ObjectMeta.Name] = params
-		if storageClass.GetAnnotations()["storageclass.kubernetes.io/is-default-class"] == "true" || storageClass.GetAnnotations()["storageclass.beta.kubernetes.io/is-default-class"] == "true" {
+		storageClassMap[storageClass.Name] = params
+		if storageClass.Annotations["storageclass.kubernetes.io/is-default-class"] == "true" || storageClass.Annotations["storageclass.beta.kubernetes.io/is-default-class"] == "true" {
 			storageClassMap["default"] = params
 			storageClassMap[""] = params
 		}
@@ -1142,7 +1162,7 @@ func (gcp *GCP) PVPricing(pvk models.PVKey) (*models.PV, error) {
 	defer gcp.DownloadPricingDataLock.RUnlock()
 	pricing, ok := gcp.Pricing[pvk.Features()]
 	if !ok {
-		log.Infof("Persistent Volume pricing not found for %s: %s", pvk.GetStorageClass(), pvk.Features())
+		log.Debugf("Persistent Volume pricing not found for %s: %s", pvk.GetStorageClass(), pvk.Features())
 		return &models.PV{}, nil
 	}
 	return pricing.PV, nil
@@ -1275,12 +1295,12 @@ func (gcp *GCP) ApplyReservedInstancePricing(nodes map[string]*models.Node) {
 		}
 	}
 
-	gcpNodes := make(map[string]*v1.Node)
+	gcpNodes := make(map[string]*clustercache.Node)
 	currentNodes := gcp.Clientset.GetAllNodes()
 
 	// Create a node name -> node map
 	for _, gcpNode := range currentNodes {
-		gcpNodes[gcpNode.GetName()] = gcpNode
+		gcpNodes[gcpNode.Name] = gcpNode
 	}
 
 	// go through all provider nodes using k8s nodes for region
@@ -1432,7 +1452,7 @@ func (key *pvKey) GetStorageClass() string {
 	return key.StorageClass
 }
 
-func (gcp *GCP) GetPVKey(pv *v1.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
+func (gcp *GCP) GetPVKey(pv *clustercache.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
 	providerID := ""
 	if pv.Spec.GCEPersistentDisk != nil {
 		providerID = pv.Spec.GCEPersistentDisk.PDName
@@ -1471,7 +1491,7 @@ type gcpKey struct {
 	Labels map[string]string
 }
 
-func (gcp *GCP) GetKey(labels map[string]string, n *v1.Node) models.Key {
+func (gcp *GCP) GetKey(labels map[string]string, n *clustercache.Node) models.Key {
 	return &gcpKey{
 		Labels: labels,
 	}

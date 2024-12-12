@@ -7,23 +7,24 @@ import (
 	"path"
 	"time"
 
+	"github.com/opencost/opencost/core/pkg/clusters"
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/pkg/util/watcher"
+
+	"github.com/opencost/opencost/core/pkg/version"
 	"github.com/opencost/opencost/pkg/cloud/provider"
 	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/opencost/opencost/pkg/config"
 	"github.com/opencost/opencost/pkg/costmodel"
-	"github.com/opencost/opencost/pkg/costmodel/clusters"
+	clustermap "github.com/opencost/opencost/pkg/costmodel/clusters"
 	"github.com/opencost/opencost/pkg/env"
 	"github.com/opencost/opencost/pkg/kubeconfig"
-	"github.com/opencost/opencost/pkg/log"
 	"github.com/opencost/opencost/pkg/metrics"
 	"github.com/opencost/opencost/pkg/prom"
-	"github.com/opencost/opencost/pkg/util/watcher"
-	"github.com/opencost/opencost/pkg/version"
 
 	prometheus "github.com/prometheus/client_golang/api"
 	prometheusAPI "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/rs/cors"
 	"k8s.io/client-go/kubernetes"
@@ -115,7 +116,7 @@ func newPrometheusClient() (prometheus.Client, error) {
 	}
 
 	api := prometheusAPI.NewAPI(promCli)
-	_, err = api.Config(context.Background())
+	_, err = api.Buildinfo(context.Background())
 	if err != nil {
 		log.Infof("No valid prometheus config file at %s. Error: %s . Troubleshooting help available at: %s. Ignore if using cortex/mimir/thanos here.", address, err.Error(), prom.PrometheusTroubleshootingURL)
 	} else {
@@ -127,19 +128,19 @@ func newPrometheusClient() (prometheus.Client, error) {
 
 func Execute(opts *AgentOpts) error {
 	log.Infof("Starting Kubecost Agent version %s", version.FriendlyVersion())
-
-	configWatchers := watcher.NewConfigMapWatchers()
-
-	scrapeInterval := time.Minute
+	scrapeInterval := env.GetKubecostScrapeInterval()
 	promCli, err := newPrometheusClient()
 	if err != nil {
 		panic(err.Error())
 	}
 
-	// Lookup scrape interval for kubecost job, update if found
-	si, err := prom.ScrapeIntervalFor(promCli, env.GetKubecostJobName())
-	if err == nil {
-		scrapeInterval = si
+	if scrapeInterval == 0 {
+		scrapeInterval = time.Minute
+		// Lookup scrape interval for kubecost job, update if found
+		si, err := prom.ScrapeIntervalFor(promCli, env.GetKubecostJobName())
+		if err == nil {
+			scrapeInterval = si
+		}
 	}
 
 	log.Infof("Using scrape interval of %f", scrapeInterval.Seconds())
@@ -163,23 +164,10 @@ func Execute(opts *AgentOpts) error {
 	}
 
 	// Append the pricing config watcher
-	configWatchers.AddWatcher(provider.ConfigWatcherFor(cloudProvider))
-	watchConfigFunc := configWatchers.ToWatchFunc()
-	watchedConfigs := configWatchers.GetWatchedConfigs()
-
 	kubecostNamespace := env.GetKubecostNamespace()
-
-	// We need an initial invocation because the init of the cache has happened before we had access to the provider.
-	for _, cw := range watchedConfigs {
-		configs, err := k8sClient.CoreV1().ConfigMaps(kubecostNamespace).Get(context.Background(), cw, metav1.GetOptions{})
-		if err != nil {
-			log.Infof("No %s configmap found at install time, using existing configs: %s", cw, err.Error())
-		} else {
-			watchConfigFunc(configs)
-		}
-	}
-
-	clusterCache.SetConfigMapUpdateFunc(watchConfigFunc)
+	configWatchers := watcher.NewConfigMapWatchers(k8sClient, kubecostNamespace)
+	configWatchers.AddWatcher(provider.ConfigWatcherFor(cloudProvider))
+	configWatchers.Watch()
 
 	configPrefix := env.GetConfigPathWithDefault(env.DefaultConfigMountPath)
 
@@ -202,7 +190,7 @@ func Execute(opts *AgentOpts) error {
 	}
 
 	// Initialize ClusterMap for maintaining ClusterInfo by ClusterID
-	clusterMap := clusters.NewClusterMap(promCli, clusterInfoProvider, 5*time.Minute)
+	clusterMap := clustermap.NewClusterMap(promCli, clusterInfoProvider, 5*time.Minute)
 
 	costModel := costmodel.NewCostModel(promCli, cloudProvider, clusterCache, clusterMap, scrapeInterval)
 

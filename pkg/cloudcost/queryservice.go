@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/julienschmidt/httprouter"
-	"github.com/opencost/opencost/pkg/kubecost"
-	"github.com/opencost/opencost/pkg/util/httputil"
+	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/util/httputil"
 	"go.opentelemetry.io/otel"
 )
 
@@ -55,7 +55,7 @@ func (s *QueryService) GetCloudCostHandler() func(w http.ResponseWriter, r *http
 			return
 		}
 
-		resp, err := s.Querier.Query(*request, ctx)
+		resp, err := s.Querier.Query(ctx, *request)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Internal server error: %s", err), http.StatusInternalServerError)
 			return
@@ -87,13 +87,13 @@ func (s *QueryService) GetCloudCostViewGraphHandler() func(w http.ResponseWriter
 		}
 
 		qp := httputil.NewQueryParams(r.URL.Query())
-		request, err := parseCloudCostViewRequest(qp)
+		request, err := ParseCloudCostViewRequest(qp)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		resp, err := s.ViewQuerier.QueryViewGraph(*request, ctx)
+		resp, err := s.ViewQuerier.QueryViewGraph(ctx, *request)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Internal server error: %s", err), http.StatusInternalServerError)
 			return
@@ -125,13 +125,13 @@ func (s *QueryService) GetCloudCostViewTotalsHandler() func(w http.ResponseWrite
 		}
 
 		qp := httputil.NewQueryParams(r.URL.Query())
-		request, err := parseCloudCostViewRequest(qp)
+		request, err := ParseCloudCostViewRequest(qp)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		resp, err := s.ViewQuerier.QueryViewTotals(*request, ctx)
+		resp, err := s.ViewQuerier.QueryViewTotals(ctx, *request)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Internal server error: %s", err), http.StatusInternalServerError)
 			return
@@ -163,7 +163,7 @@ func (s *QueryService) GetCloudCostViewTableHandler() func(w http.ResponseWriter
 		}
 
 		qp := httputil.NewQueryParams(r.URL.Query())
-		request, err := parseCloudCostViewRequest(qp)
+		request, err := ParseCloudCostViewRequest(qp)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -178,7 +178,7 @@ func (s *QueryService) GetCloudCostViewTableHandler() func(w http.ResponseWriter
 			w.Header().Set("Content-Type", "application/json")
 		}
 
-		resp, err := s.ViewQuerier.QueryViewTable(*request, ctx)
+		resp, err := s.ViewQuerier.QueryViewTable(ctx, *request)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Internal server error: %s", err), http.StatusInternalServerError)
 			return
@@ -187,7 +187,7 @@ func (s *QueryService) GetCloudCostViewTableHandler() func(w http.ResponseWriter
 		_, spanResp := tracer.Start(ctx, "write response")
 		defer spanResp.End()
 		if format == csvFormat {
-			window := kubecost.NewClosedWindow(request.Start, request.End)
+			window := opencost.NewClosedWindow(request.Start, request.End)
 			writeCloudCostViewTableRowsAsCSV(w, resp, window.String())
 			return
 		}

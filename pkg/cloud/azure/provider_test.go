@@ -8,8 +8,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/preview/commerce/mgmt/2015-06-01-preview/commerce"
 	"github.com/stretchr/testify/require"
 
+	"github.com/opencost/opencost/core/pkg/util/mathutil"
 	"github.com/opencost/opencost/pkg/cloud/models"
-	"github.com/opencost/opencost/pkg/util/mathutil"
 )
 
 func TestParseAzureSubscriptionID(t *testing.T) {

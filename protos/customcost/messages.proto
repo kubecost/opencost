@@ -1,0 +1,154 @@
+syntax = "proto3";
+
+package customcost.messages;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+// Sets the golang package for the protobuf generated code
+option go_package = "github.com/opencost/opencost/core/pkg/model/pb";
+
+// see design at https://link.excalidraw.com/l/ABLQ24dkKai/CBEQtjH6Mr
+// for additional details on how these objects work in the context of
+// opencost's plugin system
+
+message CustomCostRequest {
+  // the window of the returned objects
+  google.protobuf.Timestamp start = 1;
+  google.protobuf.Timestamp end = 2;
+
+  // resolution of steps to return
+  google.protobuf.Duration resolution = 3;
+
+}
+
+message CustomCostResponseSet {
+  repeated CustomCostResponse resps = 1;
+}
+
+message CustomCostResponse {
+  // provides metadata on the Custom CostResponse
+  // deliberately left unstructured
+  map<string, string>  metadata = 1;
+  // declared by plugin
+  // eg snowflake == "data management",
+  // datadog == "observability" etc
+  // intended for top level agg
+  string cost_source = 2;
+  // the name of the custom cost source
+  // e.g., "datadog"
+  string domain = 3;
+  // the version of the Custom Cost response
+  // is set by the plugin, will vary between
+  // different plugins
+  string version = 4;
+  // FOCUS billing currency
+  string currency = 5;
+  // the window of the returned objects
+  google.protobuf.Timestamp start = 6;
+  google.protobuf.Timestamp end = 7;
+
+  // array of CustomCosts
+  repeated CustomCost costs = 8;
+  // any errors in processing
+  repeated string errors = 9;
+}
+
+message CustomCost {
+  // provides metadata on the Custom CostResponse
+  // deliberately left unstructured
+  map<string, string>  metadata = 1;
+  // the region that the resource was incurred
+  // corresponds to 'availability zone' of FOCUS
+  string zone = 2;
+  // FOCUS billing account name
+  string account_name = 3;
+  // FOCUS charge category
+  string charge_category = 4;
+  // FOCUS charge description
+  string description = 5;
+  // FOCUS Resource Name
+  string resource_name = 6;
+  // FOCUS Resource type
+  // if not set, assumed to be domain
+  string resource_type = 7;
+  // ID of the individual cost. should be globally
+  // unique. Assigned by plugin on read
+  string id = 8;
+  // the provider's ID for the cost, if
+  // available
+  // FOCUS resource ID
+  string provider_id = 9;
+
+  // FOCUS billed Cost
+  float billed_cost = 10;
+  // FOCUS List Cost
+  float list_cost = 11;
+  // FOCUS List Unit Price
+  float list_unit_price = 12;
+  // FOCUS usage quantity
+  float usage_quantity = 13;
+  // FOCUS usage Unit
+  string usage_unit = 14;
+  // Returns key/value sets of labels
+  // equivalent to Tags in focus spec
+  map<string, string> labels = 15;
+  // Optional struct to implement other focus
+  // spec attributes
+  optional CustomCostExtendedAttributes extended_attributes = 16;
+
+}
+
+message CustomCostExtendedAttributes {
+  // FOCUS billing period start
+  optional google.protobuf.Timestamp billing_period_start = 1;
+  // FOCUS billing period end
+  optional google.protobuf.Timestamp billing_period_end = 2;
+  // FOCUS Billing Account ID
+  optional string account_id = 3;
+  // FOCUS Charge Frequency
+  optional string charge_frequency = 4;
+  // FOCUS Charge Subcategory
+  optional string subcategory = 5;
+  // FOCUS Commitment Discount Category
+  optional string commitment_discount_category = 6;
+  // FOCUS Commitment Discount ID
+  optional string commitment_discount_id = 7;
+  // FOCUS Commitment Discount Name
+  optional string commitment_discount_name = 8;
+  // FOCUS Commitment Discount Type
+  optional string commitment_discount_type = 9;
+  // FOCUS Effective Cost
+  optional float effective_cost = 10;
+  // FOCUS Invoice Issuer
+  optional string invoice_issuer = 11;
+  // FOCUS Provider
+  // if unset, assumed to be domain
+  optional string provider = 12;
+  // FOCUS Publisher
+  // if unset, assumed to be domain
+  optional string publisher = 13;
+  // FOCUS Service Category
+  // if unset, assumed to be cost source
+  optional string service_category = 14;
+  // FOCUS Service Name
+  // if unset, assumed to be cost source
+  optional string service_name = 15;
+  // FOCUS SKU ID
+  optional string sku_id = 16;
+  // FOCUS SKU Price ID
+  optional string sku_price_id = 17;
+  // FOCUS Sub Account ID
+  optional string sub_account_id = 18;
+  // FOCUS Sub Account Name
+  optional string sub_account_name = 19;
+  // FOCUS Pricing Quantity
+  optional float pricing_quantity = 20;
+  // FOCUS Pricing Unit
+  optional string pricing_unit = 21;
+  // FOCUS Pricing Category
+  optional string pricing_category = 22;
+}
+
+service CustomCostsSource {
+    rpc GetCustomCosts(CustomCostRequest) returns (CustomCostResponseSet);
+}

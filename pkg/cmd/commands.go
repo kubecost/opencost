@@ -5,9 +5,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/opencost/opencost/core/pkg/log"
 	"github.com/opencost/opencost/pkg/cmd/agent"
 	"github.com/opencost/opencost/pkg/cmd/costmodel"
-	"github.com/opencost/opencost/pkg/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

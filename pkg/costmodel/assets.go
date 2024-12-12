@@ -4,27 +4,27 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/opencost/opencost/pkg/kubecost"
-	"github.com/opencost/opencost/pkg/log"
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/opencost"
 )
 
-func (cm *CostModel) ComputeAssets(start, end time.Time) (*kubecost.AssetSet, error) {
-	assetSet := kubecost.NewAssetSet(start, end)
+func (cm *CostModel) ComputeAssets(start, end time.Time) (*opencost.AssetSet, error) {
+	assetSet := opencost.NewAssetSet(start, end)
 
 	nodeMap, err := cm.ClusterNodes(start, end)
 	if err != nil {
-		return nil, fmt.Errorf("error computing node assets for %s: %w", kubecost.NewClosedWindow(start, end), err)
+		return nil, fmt.Errorf("error computing node assets for %s: %w", opencost.NewClosedWindow(start, end), err)
 
 	}
 
 	lbMap, err := cm.ClusterLoadBalancers(start, end)
 	if err != nil {
-		return nil, fmt.Errorf("error computing load balancer assets for %s: %w", kubecost.NewClosedWindow(start, end), err)
+		return nil, fmt.Errorf("error computing load balancer assets for %s: %w", opencost.NewClosedWindow(start, end), err)
 	}
 
 	diskMap, err := cm.ClusterDisks(start, end)
 	if err != nil {
-		return nil, fmt.Errorf("error computing disk assets for %s: %w", kubecost.NewClosedWindow(start, end), err)
+		return nil, fmt.Errorf("error computing disk assets for %s: %w", opencost.NewClosedWindow(start, end), err)
 	}
 
 	for _, d := range diskMap {
@@ -42,7 +42,7 @@ func (cm *CostModel) ComputeAssets(start, end time.Time) (*kubecost.AssetSet, er
 
 		hours := e.Sub(s).Hours()
 
-		disk := kubecost.NewDisk(d.Name, d.Cluster, d.ProviderID, s, e, kubecost.NewWindow(&start, &end))
+		disk := opencost.NewDisk(d.Name, d.Cluster, d.ProviderID, s, e, opencost.NewWindow(&start, &end))
 		cm.PropertiesFromCluster(disk.Properties)
 		disk.Cost = d.Cost
 		disk.ByteHours = d.Bytes * hours
@@ -58,7 +58,7 @@ func (cm *CostModel) ComputeAssets(start, end time.Time) (*kubecost.AssetSet, er
 		if d.Local {
 			disk.Local = 1.0
 		}
-		disk.Breakdown = &kubecost.Breakdown{
+		disk.Breakdown = &opencost.Breakdown{
 			Idle:   d.Breakdown.Idle,
 			System: d.Breakdown.System,
 			User:   d.Breakdown.User,
@@ -84,7 +84,7 @@ func (cm *CostModel) ComputeAssets(start, end time.Time) (*kubecost.AssetSet, er
 			e = end
 		}
 
-		loadBalancer := kubecost.NewLoadBalancer(lb.Name, lb.Cluster, lb.ProviderID, s, e, kubecost.NewWindow(&start, &end), lb.Private, lb.Ip)
+		loadBalancer := opencost.NewLoadBalancer(lb.Name, lb.Cluster, lb.ProviderID, s, e, opencost.NewWindow(&start, &end), lb.Private, lb.Ip)
 		cm.PropertiesFromCluster(loadBalancer.Properties)
 		loadBalancer.Cost = lb.Cost
 		assetSet.Insert(loadBalancer, nil)
@@ -111,19 +111,19 @@ func (cm *CostModel) ComputeAssets(start, end time.Time) (*kubecost.AssetSet, er
 
 		hours := e.Sub(s).Hours()
 
-		node := kubecost.NewNode(n.Name, n.Cluster, n.ProviderID, s, e, kubecost.NewWindow(&start, &end))
+		node := opencost.NewNode(n.Name, n.Cluster, n.ProviderID, s, e, opencost.NewWindow(&start, &end))
 		cm.PropertiesFromCluster(node.Properties)
 		node.NodeType = n.NodeType
 		node.CPUCoreHours = n.CPUCores * hours
 		node.RAMByteHours = n.RAMBytes * hours
 		node.GPUHours = n.GPUCount * hours
-		node.CPUBreakdown = &kubecost.Breakdown{
+		node.CPUBreakdown = &opencost.Breakdown{
 			Idle:   n.CPUBreakdown.Idle,
 			System: n.CPUBreakdown.System,
 			User:   n.CPUBreakdown.User,
 			Other:  n.CPUBreakdown.Other,
 		}
-		node.RAMBreakdown = &kubecost.Breakdown{
+		node.RAMBreakdown = &opencost.Breakdown{
 			Idle:   n.RAMBreakdown.Idle,
 			System: n.RAMBreakdown.System,
 			User:   n.RAMBreakdown.User,
@@ -135,20 +135,20 @@ func (cm *CostModel) ComputeAssets(start, end time.Time) (*kubecost.AssetSet, er
 		node.RAMCost = n.RAMCost
 
 		if n.Overhead != nil {
-			node.Overhead = &kubecost.NodeOverhead{
+			node.Overhead = &opencost.NodeOverhead{
 				RamOverheadFraction: n.Overhead.RamOverheadFraction,
 				CpuOverheadFraction: n.Overhead.CpuOverheadFraction,
 				OverheadCostFraction: ((n.Overhead.CpuOverheadFraction * n.CPUCost) +
 					(n.Overhead.RamOverheadFraction * n.RAMCost)) / node.TotalCost(),
 			}
 		} else {
-			node.Overhead = &kubecost.NodeOverhead{}
+			node.Overhead = &opencost.NodeOverhead{}
 		}
 		node.Discount = n.Discount
 		if n.Preemptible {
 			node.Preemptible = 1.0
 		}
-		node.SetLabels(kubecost.AssetLabels(n.Labels))
+		node.SetLabels(opencost.AssetLabels(n.Labels))
 		assetSet.Insert(node, nil)
 	}
 
@@ -168,7 +168,7 @@ func (cm *CostModel) ClusterNodes(start, end time.Time) (map[NodeIdentifier]*Nod
 }
 
 // propertiesFromCluster populates static cluster properties to individual asset properties
-func (cm *CostModel) PropertiesFromCluster(props *kubecost.AssetProperties) {
+func (cm *CostModel) PropertiesFromCluster(props *opencost.AssetProperties) {
 	// If properties does not have cluster value, do nothing
 	if props.Cluster == "" {
 		return

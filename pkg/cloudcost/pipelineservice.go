@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
+	"github.com/opencost/opencost/core/pkg/opencost"
+	proto "github.com/opencost/opencost/core/pkg/protocol"
 	cloudconfig "github.com/opencost/opencost/pkg/cloud"
 	"github.com/opencost/opencost/pkg/cloud/config"
 	"github.com/opencost/opencost/pkg/env"
-	"github.com/opencost/opencost/pkg/kubecost"
-	"github.com/opencost/opencost/pkg/proto"
 )
 
 var protocol = proto.HTTP()
@@ -35,9 +35,11 @@ func NewPipelineService(repo Repository, ic *config.Controller, ingConf Ingestor
 // Status merges status values from the config.Controller and the IngestionManager to give a combined view of that state
 // of configs and their ingestion status
 func (dp *PipelineService) Status() []Status {
-	var statuses []Status
 	// Pull config status from the config controller
 	confStatuses := dp.configController.GetStatus()
+
+	statuses := make([]Status, 0, len(confStatuses))
+
 	refreshRate := time.Hour * time.Duration(env.GetCloudCostRefreshRateHours())
 	for _, confStat := range confStatuses {
 		var conf cloudconfig.Config
@@ -138,9 +140,9 @@ func (s *PipelineService) GetCloudCostRepairHandler() func(w http.ResponseWriter
 
 		windowStr := r.URL.Query().Get("window")
 
-		var window kubecost.Window
+		var window opencost.Window
 		if windowStr != "" {
-			win, err := kubecost.ParseWindowWithOffset(windowStr, env.GetParsedUTCOffset())
+			win, err := opencost.ParseWindowWithOffset(windowStr, env.GetParsedUTCOffset())
 			if err != nil {
 				http.Error(w, fmt.Sprintf("Invalid parameter: %s", err), http.StatusBadRequest)
 				return

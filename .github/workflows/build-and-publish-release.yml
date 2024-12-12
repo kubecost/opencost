@@ -1,0 +1,124 @@
+name: Build and Publish Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Version of the release"
+        required: true
+
+concurrency:
+  group: build-opencost
+  cancel-in-progress: true
+
+env:
+  # Use docker.io for Docker Hub if empty
+  REGISTRY: ghcr.io
+  # github.repository as <account>/<repo>
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-publish-opencost:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Get Version From Tag
+        id: tag
+        if: ${{ github.event_name }} == 'push'
+        run: |
+          echo "TRIGGERED_TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+
+      - name: Determine Version Number
+        id: version_number
+        run: |
+          if [ -z "${TRIGGERED_TAG}" ];
+          then
+            version=${{ inputs.release_version }}
+          else
+            version=$TRIGGERED_TAG
+          fi
+          if [[ ${version:0:1} == "v" ]];
+          then
+            echo "RELEASE_VERSION=${version:1}" >> $GITHUB_OUTPUT
+          else
+            echo "RELEASE_VERSION=$version" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Show Input Values
+        run: |
+          echo "release version: ${{ inputs.release_version }}"
+
+      - name: Make Branch Name
+        id: branch
+        run: |
+          VERSION_NUMBER=${{ steps.version_number.outputs.RELEASE_VERSION }}
+          echo "BRANCH_NAME=v${VERSION_NUMBER%.*}" >> $GITHUB_OUTPUT
+
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+        with:
+          ref: '${{ steps.branch.outputs.BRANCH_NAME }}'
+          path: ./opencost
+
+      - name: Set SHA
+        id: sha
+        run: |
+          pushd ./opencost
+          echo "OC_SHORTHASH=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          popd
+
+      # Login against a Docker registry except on PR
+      # https://github.com/docker/login-action
+      - name: Log into registry ${{ env.REGISTRY }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set OpenCost Image Tags
+        id: tags
+        run: |
+          echo "IMAGE_TAG=ghcr.io/${{ github.repository_owner }}/opencost:${{ steps.sha.outputs.OC_SHORTHASH }}" >> $GITHUB_OUTPUT
+          echo "IMAGE_TAG_LATEST=ghcr.io/${{ github.repository_owner }}/opencost:latest" >> $GITHUB_OUTPUT
+          echo "IMAGE_TAG_VERSION=ghcr.io/${{ github.repository_owner }}/opencost:${{ steps.version_number.outputs.RELEASE_VERSION }}" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          buildkitd-flags: --debug
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
+      - name: Set up just
+        uses: extractions/setup-just@v2
+
+      - name: Install crane
+        uses: imjasonh/setup-crane@v0.4
+
+      ## Install manifest-tool, which is required to combine multi-arch images
+      ## https://github.com/estesp/manifest-tool
+      - name: Install manifest-tool
+        run: |
+          mkdir -p manifest-tool
+          pushd manifest-tool
+          wget -q https://github.com/estesp/manifest-tool/releases/download/v2.0.8/binaries-manifest-tool-2.0.8.tar.gz
+          tar -xzf binaries-manifest-tool-2.0.8.tar.gz
+          cp manifest-tool-linux-amd64 manifest-tool
+          echo "$(pwd)" >> $GITHUB_PATH
+
+      - name: Build and push (multiarch) OpenCost
+        working-directory: ./opencost
+        run: |
+          just build '${{ steps.tags.outputs.IMAGE_TAG }}' '${{ steps.version_number.outputs.RELEASE_VERSION }}'
+          crane copy '${{ steps.tags.outputs.IMAGE_TAG }}' '${{ steps.tags.outputs.IMAGE_TAG_LATEST }}'
+          crane copy '${{ steps.tags.outputs.IMAGE_TAG }}' '${{ steps.tags.outputs.IMAGE_TAG_VERSION }}'
+

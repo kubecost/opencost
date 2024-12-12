@@ -15,17 +15,18 @@ import (
 	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/auth/credentials"
 	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/auth/signers"
 	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/requests"
+	"github.com/opencost/opencost/core/pkg/env"
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/util/fileutil"
+	"github.com/opencost/opencost/core/pkg/util/json"
+	"github.com/opencost/opencost/core/pkg/util/stringutil"
 	"github.com/opencost/opencost/pkg/cloud/models"
 	"github.com/opencost/opencost/pkg/cloud/utils"
 	"github.com/opencost/opencost/pkg/clustercache"
-	"github.com/opencost/opencost/pkg/env"
-	"github.com/opencost/opencost/pkg/kubecost"
-	"github.com/opencost/opencost/pkg/log"
-	"github.com/opencost/opencost/pkg/util/fileutil"
-	"github.com/opencost/opencost/pkg/util/json"
-	"github.com/opencost/opencost/pkg/util/stringutil"
+
+	ocenv "github.com/opencost/opencost/pkg/env"
 	"golang.org/x/exp/slices"
-	v1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -65,9 +66,8 @@ var (
 )
 
 // Variable to keep track of instance families that fail in DescribePrice API due improper defaulting of systemDisk if the information is not available
-var alibabaDefaultToCloudEssd = []string{"g6e", "r6e", "r7", "g7", "g7a", "r7a"}
+var alibabaDefaultToCloudEssd = []string{"g6e", "r6e"}
 
-// Why predefined and dependency on code? Can be converted to API call - https://www.alibabacloud.com/help/en/elastic-compute-service/latest/regions-describeregions
 var alibabaRegions = []string{
 	"cn-qingdao",
 	"cn-beijing",
@@ -77,48 +77,28 @@ var alibabaRegions = []string{
 	"cn-hangzhou",
 	"cn-shanghai",
 	"cn-nanjing",
-	"cn-fuzhou",
 	"cn-shenzhen",
+	"cn-heyuan",
 	"cn-guangzhou",
+	"cn-fuzhou",
+	"cn-wuhan-lr",
 	"cn-chengdu",
 	"cn-hongkong",
+	"ap-northeast-1",
+	"ap-northeast-2",
 	"ap-southeast-1",
 	"ap-southeast-2",
 	"ap-southeast-3",
-	"ap-southeast-5",
 	"ap-southeast-6",
-	"ap-southeast-7",
+	"ap-southeast-5",
 	"ap-south-1",
-	"ap-northeast-1",
-	"ap-northeast-2",
-	"us-west-1",
+	"ap-southeast-7",
 	"us-east-1",
-	"eu-central-1",
+	"us-west-1",
+	"eu-west-1",
 	"me-east-1",
-}
-
-// To-Do: Convert to API call - https://www.alibabacloud.com/help/en/elastic-compute-service/latest/describeinstancetypefamilies
-// Also first pass only completely tested pricing API for General pupose instances families & memory optimized instance families
-var alibabaInstanceFamilies = []string{
-	"g7",
-	"g7a",
-	"g6e",
-	"g6",
-	"g5",
-	"sn2",
-	"sn2ne",
-	"r7",
-	"r7a",
-	"r6e",
-	"r6a",
-	"r6",
-	"r5",
-	"se1",
-	"se1ne",
-	"re6",
-	"re6p",
-	"re4",
-	"se1",
+	"me-central-1",
+	"eu-central-1",
 }
 
 // AlibabaInfo contains configuration for Alibaba's CUR integration
@@ -350,10 +330,10 @@ func (alibaba *Alibaba) GetAlibabaAccessKey() (*credentials.AccessKeyCredential,
 	}
 
 	if config.AlibabaServiceKeyName == "" {
-		config.AlibabaServiceKeyName = env.GetAlibabaAccessKeyID()
+		config.AlibabaServiceKeyName = ocenv.GetAlibabaAccessKeyID()
 	}
 	if config.AlibabaServiceKeySecret == "" {
-		config.AlibabaServiceKeySecret = env.GetAlibabaAccessKeySecret()
+		config.AlibabaServiceKeySecret = ocenv.GetAlibabaAccessKeySecret()
 	}
 
 	if config.AlibabaServiceKeyName == "" && config.AlibabaServiceKeySecret == "" {
@@ -362,8 +342,8 @@ func (alibaba *Alibaba) GetAlibabaAccessKey() (*credentials.AccessKeyCredential,
 		if err != nil {
 			return nil, fmt.Errorf("unable to set the Alibaba Cloud key/secret from config file %w", err)
 		}
-		config.AlibabaServiceKeyName = env.GetAlibabaAccessKeyID()
-		config.AlibabaServiceKeySecret = env.GetAlibabaAccessKeySecret()
+		config.AlibabaServiceKeyName = ocenv.GetAlibabaAccessKeyID()
+		config.AlibabaServiceKeySecret = ocenv.GetAlibabaAccessKeySecret()
 	}
 
 	if config.AlibabaServiceKeyName == "" && config.AlibabaServiceKeySecret == "" {
@@ -428,7 +408,6 @@ func (alibaba *Alibaba) DownloadPricingData() error {
 	var lookupKey string
 	alibaba.clients = make(map[string]*sdk.Client)
 	alibaba.Pricing = make(map[string]*AlibabaPricing)
-
 	for _, node := range nodeList {
 		pricingObj := &AlibabaPricing{}
 		slimK8sNode := generateSlimK8sNodeFromV1Node(node)
@@ -532,8 +511,17 @@ func (alibaba *Alibaba) NodePricing(key models.Key) (*models.Node, models.Pricin
 
 	pricing, ok := alibaba.Pricing[keyFeature]
 	if !ok {
-		log.Errorf("Node pricing information not found for node with feature: %s", keyFeature)
-		return nil, meta, fmt.Errorf("Node pricing information not found for node with feature: %s letting it use default values", keyFeature)
+		keys := make([]string, 0, len(alibaba.Pricing))
+		for k := range alibaba.Pricing {
+			keys = append(keys, k)
+		}
+		kf := key.(*AlibabaNodeKey)
+		// Try to look up pricing with no disk attached
+		pricing, ok = alibaba.Pricing[kf.FeaturesWithOtherDisk("")]
+		if !ok {
+			log.Errorf("Node pricing information not found for node with feature: %s . Existing keys are: %+v", keyFeature, keys)
+			return nil, meta, fmt.Errorf("Node pricing information not found for node with feature: %s letting it use default values", keyFeature)
+		}
 	}
 
 	log.Debugf("returning the node price for the node with feature: %s", keyFeature)
@@ -552,7 +540,7 @@ func (alibaba *Alibaba) PVPricing(pvk models.PVKey) (*models.PV, error) {
 	pricing, ok := alibaba.Pricing[keyFeature]
 
 	if !ok {
-		log.Errorf("Persistent Volume pricing not found for PV with feature: %s", keyFeature)
+		log.Debugf("Persistent Volume pricing not found for PV with feature: %s", keyFeature)
 		return nil, fmt.Errorf("Persistent Volume pricing not found for PV with feature: %s letting it use default values", keyFeature)
 	}
 
@@ -645,13 +633,13 @@ func (alibaba *Alibaba) loadAlibabaAuthSecretAndSetEnv(force bool) error {
 		return fmt.Errorf("failed to unmarshall access key id and access key secret with err: %w", err)
 	}
 
-	err = env.Set(env.AlibabaAccessKeyIDEnvVar, ak.AccessKeyID)
+	err = env.Set(ocenv.AlibabaAccessKeyIDEnvVar, ak.AccessKeyID)
 	if err != nil {
-		return fmt.Errorf("failed to set environment variable: %s with err: %w", env.AlibabaAccessKeyIDEnvVar, err)
+		return fmt.Errorf("failed to set environment variable: %s with err: %w", ocenv.AlibabaAccessKeyIDEnvVar, err)
 	}
-	err = env.Set(env.AlibabaAccessKeySecretEnvVar, ak.SecretAccessKey)
+	err = env.Set(ocenv.AlibabaAccessKeySecretEnvVar, ak.SecretAccessKey)
 	if err != nil {
-		return fmt.Errorf("failed to set environment variable: %s with err: %w", env.AlibabaAccessKeySecretEnvVar, err)
+		return fmt.Errorf("failed to set environment variable: %s with err: %w", ocenv.AlibabaAccessKeySecretEnvVar, err)
 	}
 
 	alibaba.accessKey = &credentials.AccessKeyCredential{
@@ -664,7 +652,7 @@ func (alibaba *Alibaba) loadAlibabaAuthSecretAndSetEnv(force bool) error {
 // Regions returns a current supported list of Alibaba regions
 func (alibaba *Alibaba) Regions() []string {
 
-	regionOverrides := env.GetRegionOverrideList()
+	regionOverrides := ocenv.GetRegionOverrideList()
 
 	if len(regionOverrides) > 0 {
 		log.Debugf("Overriding Alibaba regions with configured region list: %+v", regionOverrides)
@@ -689,15 +677,15 @@ func (alibaba *Alibaba) ClusterInfo() (map[string]string, error) {
 
 	// Set it to environment clusterID if not set at this point
 	if clusterName == "" {
-		clusterName = env.GetClusterID()
+		clusterName = ocenv.GetClusterID()
 	}
 
 	m := make(map[string]string)
 	m["name"] = clusterName
-	m["provider"] = kubecost.AlibabaProvider
+	m["provider"] = opencost.AlibabaProvider
 	m["project"] = alibaba.ClusterAccountId
 	m["region"] = alibaba.ClusterRegion
-	m["id"] = env.GetClusterID()
+	m["id"] = ocenv.GetClusterID()
 	return m, nil
 }
 
@@ -740,8 +728,8 @@ func (alibaba *Alibaba) UpdateConfig(r io.Reader, updateType string) (*models.Cu
 			}
 		}
 
-		if env.IsRemoteEnabled() {
-			err := utils.UpdateClusterMeta(env.GetClusterID(), c.ClusterName)
+		if ocenv.IsRemoteEnabled() {
+			err := utils.UpdateClusterMeta(ocenv.GetClusterID(), c.ClusterName)
 			if err != nil {
 				return err
 			}
@@ -843,6 +831,12 @@ func (alibabaNodeKey *AlibabaNodeKey) Features() string {
 	return strings.Join(keyLookup, "::")
 }
 
+func (alibabaNodeKey *AlibabaNodeKey) FeaturesWithOtherDisk(overrideDiskCategory string) string {
+	keyLookup := stringutil.DeleteEmptyStringsFromArray([]string{alibabaNodeKey.RegionID, alibabaNodeKey.InstanceType, alibabaNodeKey.OSType,
+		alibabaNodeKey.OptimizedKeyword, overrideDiskCategory, alibabaNodeKey.SystemDiskSizeInGiB, alibabaNodeKey.SystemDiskPerformanceLevel})
+	return strings.Join(keyLookup, "::")
+}
+
 func (alibabaNodeKey *AlibabaNodeKey) GPUType() string {
 	return ""
 }
@@ -852,7 +846,7 @@ func (alibabaNodeKey *AlibabaNodeKey) GPUCount() int {
 }
 
 // Get's the key for the k8s node input
-func (alibaba *Alibaba) GetKey(mapValue map[string]string, node *v1.Node) models.Key {
+func (alibaba *Alibaba) GetKey(mapValue map[string]string, node *clustercache.Node) models.Key {
 	slimK8sNode := generateSlimK8sNodeFromV1Node(node)
 
 	var aak *credentials.AccessKeyCredential
@@ -918,7 +912,7 @@ type AlibabaPVKey struct {
 	SizeInGiB         string
 }
 
-func (alibaba *Alibaba) GetPVKey(pv *v1.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
+func (alibaba *Alibaba) GetPVKey(pv *clustercache.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
 	regionID := defaultRegion
 	// If default Region is not passed default it to cluster region ID.
 	if defaultRegion == "" {
@@ -985,9 +979,9 @@ func createDescribePriceACSRequest(i interface{}) (*requests.CommonRequest, erro
 				request.QueryParams["SystemDisk.PerformanceLevel"] = node.SystemDisk.PerformanceLevel
 			}
 		} else {
-			// When System Disk information is not available for instance family g6e, r7 and r6e the defaults in
-			// DescribePrice dont default rightly to cloud_essd for these instances.
-			if slices.Contains(alibabaDefaultToCloudEssd, node.InstanceTypeFamily) {
+			// When the system disk information is not available, and the instance family is g6e or r6e,
+			// or the instance generation is 6 or above, the default disk category in DescribePrice should be cloud_essd.
+			if slices.Contains(alibabaDefaultToCloudEssd, node.InstanceTypeFamily) || getInstanceFamilyGenerationFromType(node.InstanceType) > 6 {
 				request.QueryParams["SystemDisk.Category"] = ALIBABA_DISK_CLOUD_ESSD_CATEGORY
 			}
 		}
@@ -1094,7 +1088,7 @@ func processDescribePriceAndCreateAlibabaPricing(client *sdk.Client, i interface
 		resp, err := client.ProcessCommonRequestWithSigner(req, signer)
 		pricing.NodeAttributes = NewAlibabaNodeAttributes(node)
 		if err != nil || resp.GetHttpStatus() != 200 {
-			// Can be defaulted to some value here?
+			// Try again but default the disk to something else
 			return nil, fmt.Errorf("unable to fetch information for node with InstanceType: %v", node.InstanceType)
 		} else {
 			// This is where population of Pricing happens
@@ -1150,11 +1144,27 @@ func getInstanceFamilyFromType(instanceType string) string {
 		log.Warnf("unable to find the family of the instance type %s, returning its family type unknown", instanceType)
 		return ALIBABA_UNKNOWN_INSTANCE_FAMILY_TYPE
 	}
-	if !slices.Contains(alibabaInstanceFamilies, splitinstanceType[1]) {
-		log.Warnf("currently the instance family type %s is not valid or not tested completely for pricing API", instanceType)
-		return ALIBABA_NOT_SUPPORTED_INSTANCE_FAMILY_TYPE
-	}
 	return splitinstanceType[1]
+}
+
+// This function is used to obtain the generation of the instance family from the InstanceType,
+// because when the generation is higher than or equal to 7, the instance disk type will not support cloud_efficiency.
+// In such cases, when calling the DescribePrice interface, the system disk type will default to cloud_essd.
+func getInstanceFamilyGenerationFromType(instanceType string) int {
+	// FamilyName format: g7ne or g7 or r7 or r6e,
+	familyName := getInstanceFamilyFromType(instanceType)
+	re := regexp.MustCompile(`(\d+)`)
+	match := re.FindString(familyName)
+	if match != "" {
+		generation, err := strconv.Atoi(match)
+		if err != nil {
+			log.Errorf("unable to convert the generation of the instance type %s to integer", instanceType)
+		} else {
+			return generation
+		}
+	}
+	log.Warnf("unable to find the generation of the instance type %s,", instanceType)
+	return -1
 }
 
 // getInstanceIDFromProviderID returns the instance ID associated with the Node. A *v1.Node providerID in Alibaba cloud
@@ -1242,7 +1252,7 @@ func getSystemDiskInfoOfANode(instanceID, regionID string, client *sdk.Client, s
 }
 
 // generateSlimK8sNodeFromV1Node generates SlimK8sNode struct from v1.Node to fetch pricing information and call alibaba API.
-func generateSlimK8sNodeFromV1Node(node *v1.Node) *SlimK8sNode {
+func generateSlimK8sNodeFromV1Node(node *clustercache.Node) *SlimK8sNode {
 	var regionID, osType, instanceType, providerID, priceUnit, instanceFamily string
 	var memorySizeInKiB string // TO-DO: try to convert it into float
 	var ok, IsIoOptimized bool
@@ -1261,7 +1271,7 @@ func generateSlimK8sNodeFromV1Node(node *v1.Node) *SlimK8sNode {
 
 	instanceFamily = getInstanceFamilyFromType(instanceType)
 	memorySizeInKiB = fmt.Sprintf("%s", node.Status.Capacity.Memory())
-	providerID = node.Spec.ProviderID // Alibaba Cloud provider doesnt follow convention of prefix with cloud provider name
+	providerID = node.SpecProviderID // Alibaba Cloud provider doesnt follow convention of prefix with cloud provider name
 
 	// Looking at current Instance offering , all of the Instances seem to be I/O optimized - https://www.alibabacloud.com/help/en/elastic-compute-service/latest/instance-family
 	// Basic price Json has it as part of the key so defaulting to true.
@@ -1292,7 +1302,7 @@ func getNumericalValueFromResourceQuantity(quantity string) (value string) {
 
 // generateSlimK8sDiskFromV1PV function generates SlimK8sDisk from v1.PersistentVolume
 // to generate slim disk type that can be used to fetch pricing information for Data disk type.
-func generateSlimK8sDiskFromV1PV(pv *v1.PersistentVolume, regionID string) *SlimK8sDisk {
+func generateSlimK8sDiskFromV1PV(pv *clustercache.PersistentVolume, regionID string) *SlimK8sDisk {
 
 	// All PVs are data disks while local disk are categorized as system disk
 	diskType := ALIBABA_DATA_DISK_CATEGORY
@@ -1338,7 +1348,7 @@ func generateSlimK8sDiskFromV1PV(pv *v1.PersistentVolume, regionID string) *Slim
 // if topology.diskplugin.csi.alibabacloud.com/zone label/annotation is passed during PV creation determine the region based on this pv label.
 // if neither of the above label/annotation is present check node affinity for the zone affinity and determine the region based on this zone.
 // if nether of the above yields a region , return empty string to default it to cluster region.
-func determinePVRegion(pv *v1.PersistentVolume) string {
+func determinePVRegion(pv *clustercache.PersistentVolume) string {
 	// if "topology.diskplugin.csi.alibabacloud.com/region" is present as a label or annotation return that as the PV region
 	if val, ok := pv.Labels[ALIBABA_DISK_TOPOLOGY_REGION_LABEL]; ok {
 		log.Debugf("determinePVRegion returned a region value of: %s through label: %s for PV name: %s", val, ALIBABA_DISK_TOPOLOGY_REGION_LABEL, pv.Name)
@@ -1383,7 +1393,7 @@ func determinePVRegion(pv *v1.PersistentVolume) string {
 		}
 	}
 
-	regionOverrides := env.GetRegionOverrideList()
+	regionOverrides := ocenv.GetRegionOverrideList()
 	regions := alibabaRegions
 
 	if len(regionOverrides) > 0 {

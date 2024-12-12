@@ -19,16 +19,17 @@ import (
 	"github.com/aws/smithy-go"
 	"github.com/opencost/opencost/pkg/cloud/models"
 	"github.com/opencost/opencost/pkg/cloud/utils"
-	"github.com/opencost/opencost/pkg/kubecost"
 
+	"github.com/opencost/opencost/core/pkg/env"
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/util"
+	"github.com/opencost/opencost/core/pkg/util/fileutil"
+	"github.com/opencost/opencost/core/pkg/util/json"
+	"github.com/opencost/opencost/core/pkg/util/timeutil"
 	"github.com/opencost/opencost/pkg/clustercache"
-	"github.com/opencost/opencost/pkg/env"
+	ocenv "github.com/opencost/opencost/pkg/env"
 	errs "github.com/opencost/opencost/pkg/errors"
-	"github.com/opencost/opencost/pkg/log"
-	"github.com/opencost/opencost/pkg/util"
-	"github.com/opencost/opencost/pkg/util/fileutil"
-	"github.com/opencost/opencost/pkg/util/json"
-	"github.com/opencost/opencost/pkg/util/timeutil"
 
 	awsSDK "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -42,8 +43,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 
 	"github.com/jszwec/csvutil"
-
-	v1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -155,6 +154,7 @@ var awsRegions = []string{
 	"af-south-1",
 	"us-gov-east-1",
 	"us-gov-west-1",
+	"me-central-1",
 }
 
 // AWS represents an Amazon Provider
@@ -247,6 +247,8 @@ type AWSProduct struct {
 // AWSProductAttributes represents metadata about the product used to map to a node.
 type AWSProductAttributes struct {
 	Location        string `json:"location"`
+	RegionCode      string `json:"regionCode"`
+	Operation       string `json:"operation"`
 	InstanceType    string `json:"instanceType"`
 	Memory          string `json:"memory"`
 	Storage         string `json:"storage"`
@@ -257,6 +259,7 @@ type AWSProductAttributes struct {
 	InstanceFamily  string `json:"instanceFamily"`
 	CapacityStatus  string `json:"capacitystatus"`
 	GPU             string `json:"gpu"` // GPU represents the number of GPU on the instance
+	MarketOption    string `json:"marketOption"`
 }
 
 // AWSPricingTerms are how you pay for the node: OnDemand, Reserved, or (TODO) Spot
@@ -298,14 +301,15 @@ type AWSCurrencyCode struct {
 
 // AWSProductTerms represents the full terms of the product
 type AWSProductTerms struct {
-	Sku      string        `json:"sku"`
-	OnDemand *AWSOfferTerm `json:"OnDemand"`
-	Reserved *AWSOfferTerm `json:"Reserved"`
-	Memory   string        `json:"memory"`
-	Storage  string        `json:"storage"`
-	VCpu     string        `json:"vcpu"`
-	GPU      string        `json:"gpu"` // GPU represents the number of GPU on the instance
-	PV       *models.PV    `json:"pv"`
+	Sku          string               `json:"sku"`
+	OnDemand     *AWSOfferTerm        `json:"OnDemand"`
+	Reserved     *AWSOfferTerm        `json:"Reserved"`
+	Memory       string               `json:"memory"`
+	Storage      string               `json:"storage"`
+	VCpu         string               `json:"vcpu"`
+	GPU          string               `json:"gpu"` // GPU represents the number of GPU on the instance
+	PV           *models.PV           `json:"pv"`
+	LoadBalancer *models.LoadBalancer `json:"load_balancer"`
 }
 
 // ClusterIdEnvVar is the environment variable in which one can manually set the ClusterId
@@ -345,36 +349,6 @@ var volTypes = map[string]string{
 	"st1":                    "EBS:VolumeUsage.st1",
 }
 
-// locationToRegion maps AWS region names (As they come from Billing)
-// to actual region identifiers
-var locationToRegion = map[string]string{
-	"US East (Ohio)":            "us-east-2",
-	"US East (N. Virginia)":     "us-east-1",
-	"US West (N. California)":   "us-west-1",
-	"US West (Oregon)":          "us-west-2",
-	"Asia Pacific (Hong Kong)":  "ap-east-1",
-	"Asia Pacific (Mumbai)":     "ap-south-1",
-	"Asia Pacific (Osaka)":      "ap-northeast-3",
-	"Asia Pacific (Seoul)":      "ap-northeast-2",
-	"Asia Pacific (Singapore)":  "ap-southeast-1",
-	"Asia Pacific (Sydney)":     "ap-southeast-2",
-	"Asia Pacific (Tokyo)":      "ap-northeast-1",
-	"Asia Pacific (Jakarta)":    "ap-southeast-3",
-	"Canada (Central)":          "ca-central-1",
-	"China (Beijing)":           "cn-north-1",
-	"China (Ningxia)":           "cn-northwest-1",
-	"EU (Frankfurt)":            "eu-central-1",
-	"EU (Ireland)":              "eu-west-1",
-	"EU (London)":               "eu-west-2",
-	"EU (Paris)":                "eu-west-3",
-	"EU (Stockholm)":            "eu-north-1",
-	"EU (Milan)":                "eu-south-1",
-	"South America (Sao Paulo)": "sa-east-1",
-	"Africa (Cape Town)":        "af-south-1",
-	"AWS GovCloud (US-East)":    "us-gov-east-1",
-	"AWS GovCloud (US-West)":    "us-gov-west-1",
-}
-
 var loadedAWSSecret bool = false
 var awsSecret *AWSAccessKey = nil
 
@@ -382,11 +356,10 @@ func (aws *AWS) GetLocalStorageQuery(window, offset time.Duration, rate bool, us
 	return ""
 }
 
-// KubeAttrConversion maps the k8s labels for region to an aws region
-func (aws *AWS) KubeAttrConversion(location, instanceType, operatingSystem string) string {
+// KubeAttrConversion maps the k8s labels for region to an AWS key
+func (aws *AWS) KubeAttrConversion(region, instanceType, operatingSystem string) string {
 	operatingSystem = strings.ToLower(operatingSystem)
 
-	region := locationToRegion[location]
 	return region + "," + instanceType + "," + operatingSystem
 }
 
@@ -494,10 +467,10 @@ func (aws *AWS) GetAWSAccessKey() (*AWSAccessKey, error) {
 	}
 	//Look for service key values in env if not present in config
 	if config.ServiceKeyName == "" {
-		config.ServiceKeyName = env.GetAWSAccessKeyID()
+		config.ServiceKeyName = ocenv.GetAWSAccessKeyID()
 	}
 	if config.ServiceKeySecret == "" {
-		config.ServiceKeySecret = env.GetAWSAccessKeySecret()
+		config.ServiceKeySecret = ocenv.GetAWSAccessKeySecret()
 	}
 
 	if config.ServiceKeyName == "" && config.ServiceKeySecret == "" {
@@ -610,8 +583,8 @@ func (aws *AWS) UpdateConfig(r io.Reader, updateType string) (*models.CustomPric
 			}
 		}
 
-		if env.IsRemoteEnabled() {
-			err := utils.UpdateClusterMeta(env.GetClusterID(), c.ClusterName)
+		if ocenv.IsRemoteEnabled() {
+			err := utils.UpdateClusterMeta(ocenv.GetClusterID(), c.ClusterName)
 			if err != nil {
 				return err
 			}
@@ -704,7 +677,7 @@ type awsPVKey struct {
 	ProviderID             string
 }
 
-func (aws *AWS) GetPVKey(pv *v1.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
+func (aws *AWS) GetPVKey(pv *clustercache.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
 	providerID := ""
 	if pv.Spec.AWSElasticBlockStore != nil {
 		providerID = pv.Spec.AWSElasticBlockStore.VolumeID
@@ -770,7 +743,7 @@ func getStorageClassTypeFrom(provisioner string) string {
 }
 
 // GetKey maps node labels to information needed to retrieve pricing data
-func (aws *AWS) GetKey(labels map[string]string, n *v1.Node) models.Key {
+func (aws *AWS) GetKey(labels map[string]string, n *clustercache.Node) models.Key {
 	return &awsKey{
 		SpotLabelName:  aws.SpotLabelName,
 		SpotLabelValue: aws.SpotLabelValue,
@@ -792,13 +765,13 @@ func (aws *AWS) ClusterManagementPricing() (string, float64, error) {
 }
 
 // Use the pricing data from the current region. Fall back to using all region data if needed.
-func (aws *AWS) getRegionPricing(nodeList []*v1.Node) (*http.Response, string, error) {
+func (aws *AWS) getRegionPricing(nodeList []*clustercache.Node) (*http.Response, string, error) {
 
 	pricingURL := "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/"
 	region := ""
 	multiregion := false
 	for _, n := range nodeList {
-		labels := n.GetLabels()
+		labels := n.Labels
 		currentNodeRegion := ""
 		if r, ok := util.GetRegion(labels); ok {
 			currentNodeRegion = r
@@ -825,8 +798,8 @@ func (aws *AWS) getRegionPricing(nodeList []*v1.Node) (*http.Response, string, e
 
 	pricingURL += "index.json"
 
-	if env.GetAWSPricingURL() != "" { // Allow override of pricing URL
-		pricingURL = env.GetAWSPricingURL()
+	if ocenv.GetAWSPricingURL() != "" { // Allow override of pricing URL
+		pricingURL = ocenv.GetAWSPricingURL()
 	}
 
 	log.Infof("starting download of \"%s\", which is quite large ...", pricingURL)
@@ -882,7 +855,7 @@ func (aws *AWS) DownloadPricingData() error {
 			aws.clusterProvisioner = "KOPS"
 		}
 
-		labels := n.GetObjectMeta().GetLabels()
+		labels := n.Labels
 		key := aws.GetKey(labels, n)
 		inputkeys[key.Features()] = true
 	}
@@ -896,8 +869,8 @@ func (aws *AWS) DownloadPricingData() error {
 		if params != nil {
 			params["provisioner"] = storageClass.Provisioner
 		}
-		storageClassMap[storageClass.ObjectMeta.Name] = params
-		if storageClass.GetAnnotations()["storageclass.kubernetes.io/is-default-class"] == "true" || storageClass.GetAnnotations()["storageclass.beta.kubernetes.io/is-default-class"] == "true" {
+		storageClassMap[storageClass.Name] = params
+		if storageClass.Annotations["storageclass.kubernetes.io/is-default-class"] == "true" || storageClass.Annotations["storageclass.beta.kubernetes.io/is-default-class"] == "true" {
 			storageClassMap["default"] = params
 			storageClassMap[""] = params
 		}
@@ -1028,8 +1001,9 @@ func (aws *AWS) populatePricing(resp *http.Response, inputkeys map[string]bool) 
 
 				if product.Attributes.PreInstalledSw == "NA" &&
 					(strings.HasPrefix(product.Attributes.UsageType, "BoxUsage") || strings.Contains(product.Attributes.UsageType, "-BoxUsage")) &&
-					product.Attributes.CapacityStatus == "Used" {
-					key := aws.KubeAttrConversion(product.Attributes.Location, product.Attributes.InstanceType, product.Attributes.OperatingSystem)
+					product.Attributes.CapacityStatus == "Used" &&
+					product.Attributes.MarketOption == "OnDemand" {
+					key := aws.KubeAttrConversion(product.Attributes.RegionCode, product.Attributes.InstanceType, product.Attributes.OperatingSystem)
 					spotKey := key + ",preemptible"
 					if inputkeys[key] || inputkeys[spotKey] { // Just grab the sku even if spot, and change the price later.
 						productTerms := &AWSProductTerms{
@@ -1050,11 +1024,11 @@ func (aws *AWS) populatePricing(resp *http.Response, inputkeys map[string]bool) 
 					// volTypes to keep lookups generic
 					usageTypeMatch := usageTypeRegx.FindStringSubmatch(product.Attributes.UsageType)
 					usageTypeNoRegion := usageTypeMatch[len(usageTypeMatch)-1]
-					key := locationToRegion[product.Attributes.Location] + "," + usageTypeNoRegion
+					key := product.Attributes.RegionCode + "," + usageTypeNoRegion
 					spotKey := key + ",preemptible"
 					pv := &models.PV{
 						Class:  volTypes[usageTypeNoRegion],
-						Region: locationToRegion[product.Attributes.Location],
+						Region: product.Attributes.RegionCode,
 					}
 					productTerms := &AWSProductTerms{
 						Sku: product.Sku,
@@ -1065,6 +1039,19 @@ func (aws *AWS) populatePricing(resp *http.Response, inputkeys map[string]bool) 
 					skusToKeys[product.Sku] = key
 					aws.ValidPricingKeys[key] = true
 					aws.ValidPricingKeys[spotKey] = true
+				} else if strings.Contains(product.Attributes.UsageType, "LoadBalancerUsage") && product.Attributes.Operation == "LoadBalancing:Network" {
+					// since the costmodel is only using services of type LoadBalancer
+					// (and not ingresses controlled by AWS load balancer controller)
+					// we can safely filter for Network load balancers only
+					productTerms := &AWSProductTerms{
+						Sku:          product.Sku,
+						LoadBalancer: &models.LoadBalancer{},
+					}
+					// there is no spot pricing for load balancers
+					key := product.Attributes.RegionCode + ",LoadBalancerUsage"
+					aws.Pricing[key] = productTerms
+					skusToKeys[product.Sku] = key
+					aws.ValidPricingKeys[key] = true
 				}
 			}
 		}
@@ -1106,7 +1093,9 @@ func (aws *AWS) populatePricing(resp *http.Response, inputkeys map[string]bool) 
 					spotKey := key + ",preemptible"
 					if ok {
 						aws.Pricing[key].OnDemand = offerTerm
-						aws.Pricing[spotKey].OnDemand = offerTerm
+						if _, ok := aws.Pricing[spotKey]; ok {
+							aws.Pricing[spotKey].OnDemand = offerTerm
+						}
 						var cost string
 						if _, isMatch := OnDemandRateCodes[offerTerm.OfferTermCode]; isMatch {
 							priceDimensionKey := strings.Join([]string{sku.(string), offerTerm.OfferTermCode, HourlyRateCode}, ".")
@@ -1161,6 +1150,13 @@ func (aws *AWS) populatePricing(resp *http.Response, inputkeys map[string]bool) 
 							hourlyPrice := costFloat / 730
 
 							aws.Pricing[key].PV.Cost = strconv.FormatFloat(hourlyPrice, 'f', -1, 64)
+						} else if strings.Contains(key, "LoadBalancerUsage") {
+							costFloat, err := strconv.ParseFloat(cost, 64)
+							if err != nil {
+								return err
+							}
+
+							aws.Pricing[key].LoadBalancer.Cost = costFloat
 						}
 					}
 
@@ -1231,21 +1227,20 @@ func (aws *AWS) NetworkPricing() (*models.Network, error) {
 }
 
 func (aws *AWS) LoadBalancerPricing() (*models.LoadBalancer, error) {
-	fffrc := 0.025
-	afrc := 0.010
-	lbidc := 0.008
+	// TODO: determine key based on function arguments
+	// this is something that should be changed in the Provider interface
 
-	numForwardingRules := 1.0
-	dataIngressGB := 0.0
+	key := aws.ClusterRegion + ",LoadBalancerUsage"
 
-	var totalCost float64
-	if numForwardingRules < 5 {
-		totalCost = fffrc*numForwardingRules + lbidc*dataIngressGB
-	} else {
-		totalCost = fffrc*5 + afrc*(numForwardingRules-5) + lbidc*dataIngressGB
+	// set default price
+	hourlyCost := 0.025
+	// use price index when available
+	if terms, ok := aws.Pricing[key]; ok {
+		hourlyCost = terms.LoadBalancer.Cost
 	}
+
 	return &models.LoadBalancer{
-		Cost: totalCost,
+		Cost: hourlyCost,
 	}, nil
 }
 
@@ -1284,6 +1279,20 @@ func (aws *AWS) createNode(terms *AWSProductTerms, usageType string, k models.Ke
 	key := k.Features()
 
 	meta := models.PricingMetadata{}
+	var cost string
+	publicPricingFound := true
+	c, ok := terms.OnDemand.PriceDimensions[strings.Join([]string{terms.Sku, terms.OnDemand.OfferTermCode, HourlyRateCode}, ".")]
+	if ok {
+		cost = c.PricePerUnit.USD
+	} else {
+		// Check for Chinese pricing
+		c, ok = terms.OnDemand.PriceDimensions[strings.Join([]string{terms.Sku, terms.OnDemand.OfferTermCode, HourlyRateCodeCn}, ".")]
+		if ok {
+			cost = c.PricePerUnit.CNY
+		} else {
+			publicPricingFound = false
+		}
+	}
 
 	if spotInfo, ok := aws.spotPricing(k.ID()); ok {
 		var spotcost string
@@ -1307,17 +1316,35 @@ func (aws *AWS) createNode(terms *AWSProductTerms, usageType string, k models.Ke
 		}, meta, nil
 	} else if aws.isPreemptible(key) { // Preemptible but we don't have any data in the pricing report.
 		log.DedupedWarningf(5, "Node %s marked preemptible but we have no data in spot feed", k.ID())
-		return &models.Node{
-			VCPU:         terms.VCpu,
-			VCPUCost:     aws.BaseSpotCPUPrice,
-			RAM:          terms.Memory,
-			GPU:          terms.GPU,
-			Storage:      terms.Storage,
-			BaseCPUPrice: aws.BaseCPUPrice,
-			BaseRAMPrice: aws.BaseRAMPrice,
-			BaseGPUPrice: aws.BaseGPUPrice,
-			UsageType:    PreemptibleType,
-		}, meta, nil
+		if publicPricingFound {
+			// return public price if found
+			return &models.Node{
+				Cost:         cost,
+				VCPU:         terms.VCpu,
+				RAM:          terms.Memory,
+				GPU:          terms.GPU,
+				Storage:      terms.Storage,
+				BaseCPUPrice: aws.BaseCPUPrice,
+				BaseRAMPrice: aws.BaseRAMPrice,
+				BaseGPUPrice: aws.BaseGPUPrice,
+				UsageType:    PreemptibleType,
+			}, meta, nil
+		} else {
+			// return defaults if public pricing not found
+			log.DedupedWarningf(5, "Could not find Node %s's public pricing info, using default configured spot prices instead", k.ID())
+			return &models.Node{
+				VCPU:         terms.VCpu,
+				VCPUCost:     aws.BaseSpotCPUPrice,
+				RAMCost:      aws.BaseSpotRAMPrice,
+				RAM:          terms.Memory,
+				GPU:          terms.GPU,
+				Storage:      terms.Storage,
+				BaseCPUPrice: aws.BaseCPUPrice,
+				BaseRAMPrice: aws.BaseRAMPrice,
+				BaseGPUPrice: aws.BaseGPUPrice,
+				UsageType:    PreemptibleType,
+			}, meta, nil
+		}
 	} else if sp, ok := aws.savingsPlanPricing(k.ID()); ok {
 		strCost := fmt.Sprintf("%f", sp.EffectiveCost)
 		return &models.Node{
@@ -1347,18 +1374,9 @@ func (aws *AWS) createNode(terms *AWSProductTerms, usageType string, k models.Ke
 		}, meta, nil
 
 	}
-	var cost string
-	c, ok := terms.OnDemand.PriceDimensions[strings.Join([]string{terms.Sku, terms.OnDemand.OfferTermCode, HourlyRateCode}, ".")]
-	if ok {
-		cost = c.PricePerUnit.USD
-	} else {
-		// Check for Chinese pricing before throwing error
-		c, ok = terms.OnDemand.PriceDimensions[strings.Join([]string{terms.Sku, terms.OnDemand.OfferTermCode, HourlyRateCodeCn}, ".")]
-		if ok {
-			cost = c.PricePerUnit.CNY
-		} else {
-			return nil, meta, fmt.Errorf("Could not fetch data for \"%s\"", k.ID())
-		}
+	// Throw error if public price is not found
+	if !publicPricingFound {
+		return nil, meta, fmt.Errorf("for node \"%s\", cannot find the following key in OnDemand pricing data \"%s\"", k.ID(), k.Features())
 	}
 
 	return &models.Node{
@@ -1388,6 +1406,9 @@ func (aws *AWS) NodePricing(k models.Key) (*models.Node, models.PricingMetadata,
 	meta := models.PricingMetadata{}
 
 	terms, ok := aws.Pricing[key]
+	if termsStr, err := json.Marshal(terms); err == nil {
+		log.Debugf("NodePricing: for key \"%s\" found the following OnDemand data: %s", key, string(termsStr))
+	}
 	if ok {
 		return aws.createNode(terms, usageType, k)
 	} else if _, ok := aws.ValidPricingKeys[key]; ok {
@@ -1434,19 +1455,18 @@ func (awsProvider *AWS) ClusterInfo() (map[string]string, error) {
 	// Determine cluster name
 	clusterName := c.ClusterName
 	if clusterName == "" {
-		awsClusterID := env.GetAWSClusterID()
+		awsClusterID := ocenv.GetAWSClusterID()
 		if awsClusterID != "" {
 			log.Infof("Returning \"%s\" as ClusterName", awsClusterID)
 			clusterName = awsClusterID
-			log.Warnf("Warning - %s will be deprecated in a future release. Use %s instead", env.AWSClusterIDEnvVar, env.ClusterIDEnvVar)
-		} else if clusterName = env.GetClusterID(); clusterName != "" {
-			log.Infof("Setting cluster name to %s from %s ", clusterName, env.ClusterIDEnvVar)
+			log.Warnf("Warning - %s will be deprecated in a future release. Use %s instead", ocenv.AWSClusterIDEnvVar, ocenv.ClusterIDEnvVar)
+		} else if clusterName = ocenv.GetClusterID(); clusterName != "" {
+			log.DedupedInfof(5, "Setting cluster name to %s from %s ", clusterName, ocenv.ClusterIDEnvVar)
 		} else {
 			clusterName = defaultClusterName
-			log.Warnf("Unable to detect cluster name - using default of %s", defaultClusterName)
-			log.Warnf("Please set cluster name through configmap or via %s env var", env.ClusterIDEnvVar)
+			log.DedupedWarningf(5, "Unable to detect cluster name - using default of %s", defaultClusterName)
+			log.DedupedWarningf(5, "Please set cluster name through configmap or via %s env var", ocenv.ClusterIDEnvVar)
 		}
-
 	}
 
 	// this value requires configuration but is unavailable else where
@@ -1458,11 +1478,11 @@ func (awsProvider *AWS) ClusterInfo() (map[string]string, error) {
 
 	m := make(map[string]string)
 	m["name"] = clusterName
-	m["provider"] = kubecost.AWSProvider
+	m["provider"] = opencost.AWSProvider
 	m["account"] = clusterAccountID
 	m["region"] = awsProvider.ClusterRegion
-	m["id"] = env.GetClusterID()
-	m["remoteReadEnabled"] = strconv.FormatBool(env.IsRemoteEnabled())
+	m["id"] = ocenv.GetClusterID()
+	m["remoteReadEnabled"] = strconv.FormatBool(ocenv.IsRemoteEnabled())
 	m["provisioner"] = awsProvider.clusterProvisioner
 	return m, nil
 }
@@ -1480,11 +1500,11 @@ func (aws *AWS) ConfigureAuth() error {
 func (aws *AWS) ConfigureAuthWith(config *models.CustomPricing) error {
 	accessKeyID, accessKeySecret := aws.getAWSAuth(false, config)
 	if accessKeyID != "" && accessKeySecret != "" { // credentials may exist on the actual AWS node-- if so, use those. If not, override with the service key
-		err := env.Set(env.AWSAccessKeyIDEnvVar, accessKeyID)
+		err := env.Set(ocenv.AWSAccessKeyIDEnvVar, accessKeyID)
 		if err != nil {
 			return err
 		}
-		err = env.Set(env.AWSAccessKeySecretEnvVar, accessKeySecret)
+		err = env.Set(ocenv.AWSAccessKeySecretEnvVar, accessKeySecret)
 		if err != nil {
 			return err
 		}
@@ -1514,7 +1534,7 @@ func (aws *AWS) getAWSAuth(forceReload bool, cp *models.CustomPricing) (string, 
 	}
 
 	// 3. Fall back to env vars
-	if env.GetAWSAccessKeyID() == "" || env.GetAWSAccessKeySecret() == "" {
+	if ocenv.GetAWSAccessKeyID() == "" || ocenv.GetAWSAccessKeySecret() == "" {
 		aws.ServiceAccountChecks.Set("hasKey", &models.ServiceAccountCheck{
 			Message: "AWS ServiceKey exists",
 			Status:  false,
@@ -1525,7 +1545,7 @@ func (aws *AWS) getAWSAuth(forceReload bool, cp *models.CustomPricing) (string, 
 			Status:  true,
 		})
 	}
-	return env.GetAWSAccessKeyID(), env.GetAWSAccessKeySecret()
+	return ocenv.GetAWSAccessKeyID(), ocenv.GetAWSAccessKeySecret()
 }
 
 // Load once and cache the result (even on failure). This is an install time secret, so
@@ -1590,9 +1610,10 @@ func (aws *AWS) getAllAddresses() ([]*ec2Types.Address, error) {
 
 	// Get volumes from each AWS region
 	for _, r := range regions {
+		region := r // make a copy of r to avoid capturing loop variable
 		// Fetch IP address response and send results and errors to their
 		// respective channels
-		go func(region string) {
+		go func() {
 			defer wg.Done()
 			defer errs.HandlePanic()
 
@@ -1603,7 +1624,7 @@ func (aws *AWS) getAllAddresses() ([]*ec2Types.Address, error) {
 				if errors.As(err, &awsErr) {
 					switch awsErr.ErrorCode() {
 					case "AuthFailure", "InvalidClientTokenId", "UnauthorizedOperation":
-						log.DedupedInfof(5, "Unable to get addresses for region %s due to AWS permissions, error message: %s", r, awsErr.ErrorMessage())
+						log.DedupedInfof(5, "Unable to get addresses for region %s due to AWS permissions, error message: %s", region, awsErr.ErrorMessage())
 						return
 					default:
 						errorCh <- err
@@ -1615,7 +1636,7 @@ func (aws *AWS) getAllAddresses() ([]*ec2Types.Address, error) {
 				}
 			}
 			addressCh <- resp
-		}(r)
+		}()
 	}
 
 	// Close the result channels after everything has been sent
@@ -1717,7 +1738,7 @@ func (aws *AWS) getAllDisks() ([]*ec2Types.Volume, error) {
 				if errors.As(err, &awsErr) {
 					switch awsErr.ErrorCode() {
 					case "AuthFailure", "InvalidClientTokenId", "UnauthorizedOperation":
-						log.DedupedInfof(5, "Unable to get disks for region %s due to AWS permissions, error message: %s", r, awsErr.ErrorMessage())
+						log.DedupedInfof(5, "Unable to get disks for region %s due to AWS permissions, error message: %s", region, awsErr.ErrorMessage())
 						return
 					default:
 						errorCh <- err
@@ -2424,7 +2445,7 @@ func (aws *AWS) CombinedDiscountForNode(instanceType string, isPreemptible bool,
 // Regions returns a predefined list of AWS regions
 func (aws *AWS) Regions() []string {
 
-	regionOverrides := env.GetRegionOverrideList()
+	regionOverrides := ocenv.GetRegionOverrideList()
 
 	if len(regionOverrides) > 0 {
 		log.Debugf("Overriding AWS regions with configured region list: %+v", regionOverrides)

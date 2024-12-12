@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opencost/opencost/pkg/kubecost"
-	"github.com/opencost/opencost/pkg/log"
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/opencost"
 	"google.golang.org/api/iterator"
 )
 
@@ -20,10 +20,14 @@ const (
 	UsageDateColumnName          = "usage_date"
 	BillingAccountIDColumnName   = "billing_id"
 	ProjectIDColumnName          = "project_id"
+	ProjectNameColumnName        = "project_name"
+	RegionColumnName             = "region"
+	ZoneColumnName               = "zone"
 	ServiceDescriptionColumnName = "service"
 	SKUDescriptionColumnName     = "description"
 	LabelsColumnName             = "labels"
 	ResourceNameColumnName       = "resource"
+	ResourceGlobalNameColumnName = "global_resource"
 	CostColumnName               = "cost"
 	ListCostColumnName           = "list_cost"
 	CreditsColumnName            = "credits"
@@ -32,7 +36,7 @@ const (
 const BiqQueryWherePartitionFmt = `DATE(_PARTITIONTIME) >= "%s" AND DATE(_PARTITIONTIME) < "%s"`
 const BiqQueryWhereDateFmt = `usage_start_time >= "%s" AND usage_start_time < "%s"`
 
-func (bqi *BigQueryIntegration) GetCloudCost(start time.Time, end time.Time) (*kubecost.CloudCostSetRange, error) {
+func (bqi *BigQueryIntegration) GetCloudCost(start time.Time, end time.Time) (*opencost.CloudCostSetRange, error) {
 	cudRates, err := bqi.GetFlexibleCUDRates(start, end)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving CUD rates: %w", err)
@@ -43,9 +47,13 @@ func (bqi *BigQueryIntegration) GetCloudCost(start time.Time, end time.Time) (*k
 		fmt.Sprintf("TIMESTAMP_TRUNC(usage_start_time, day) as %s", UsageDateColumnName),
 		fmt.Sprintf("billing_account_id as %s", BillingAccountIDColumnName),
 		fmt.Sprintf("project.id as %s", ProjectIDColumnName),
+		fmt.Sprintf("project.name as %s", ProjectNameColumnName),
+		fmt.Sprintf("location.region as %s", RegionColumnName),
+		fmt.Sprintf("location.zone as %s", ZoneColumnName),
 		fmt.Sprintf("service.description as %s", ServiceDescriptionColumnName),
 		fmt.Sprintf("sku.description as %s", SKUDescriptionColumnName),
 		fmt.Sprintf("resource.name as %s", ResourceNameColumnName),
+		fmt.Sprintf("resource.global_name as %s", ResourceGlobalNameColumnName),
 		fmt.Sprintf("TO_JSON_STRING(labels) as %s", LabelsColumnName),
 		fmt.Sprintf("SUM(cost) as %s", CostColumnName),
 		fmt.Sprintf("SUM(cost_at_list) as %s", ListCostColumnName),
@@ -56,10 +64,14 @@ func (bqi *BigQueryIntegration) GetCloudCost(start time.Time, end time.Time) (*k
 		UsageDateColumnName,
 		BillingAccountIDColumnName,
 		ProjectIDColumnName,
+		ProjectNameColumnName,
+		RegionColumnName,
+		ZoneColumnName,
 		ServiceDescriptionColumnName,
 		SKUDescriptionColumnName,
 		LabelsColumnName,
 		ResourceNameColumnName,
+		ResourceGlobalNameColumnName,
 	}
 
 	whereConjuncts := GetWhereConjuncts(start, end)
@@ -79,7 +91,7 @@ func (bqi *BigQueryIntegration) GetCloudCost(start time.Time, end time.Time) (*k
 
 	// Perform Query and parse values
 
-	ccsr, err := kubecost.NewCloudCostSetRange(start, end, kubecost.AccumulateOptionDay, bqi.Key())
+	ccsr, err := opencost.NewCloudCostSetRange(start, end, opencost.AccumulateOptionDay, bqi.Key())
 	if err != nil {
 		return ccsr, fmt.Errorf("error creating new CloudCostSetRange: %s", err)
 	}
@@ -178,7 +190,7 @@ func (bqi *BigQueryIntegration) queryFlexibleCUDTotalCosts(start time.Time, end 
 		  IFNULL(SUM((Select SUM(amount) FROM bd.credits)),0),
 		FROM %s
 		WHERE %s
-		GROUP BY usage_date, sku.description
+		GROUP BY usage_date
 	`
 
 	table := fmt.Sprintf(" `%s` bd ", bqi.GetBillingDataDataset())
@@ -211,7 +223,7 @@ func (bqi *BigQueryIntegration) queryFlexibleCUDTotalCredits(start time.Time, en
 	FROM %s
 	CROSS JOIN UNNEST(bd.credits) AS credits
 	WHERE %s
-	GROUP BY usage_date, credits.id
+	GROUP BY usage_date
 	`
 
 	table := fmt.Sprintf(" `%s` bd ", bqi.GetBillingDataDataset())

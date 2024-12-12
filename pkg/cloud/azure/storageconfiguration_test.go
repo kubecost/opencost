@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/util/json"
 	"github.com/opencost/opencost/pkg/cloud"
-	"github.com/opencost/opencost/pkg/log"
-	"github.com/opencost/opencost/pkg/util/json"
 )
 
 func TestStorageConfiguration_Validate(t *testing.T) {

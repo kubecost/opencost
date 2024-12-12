@@ -14,12 +14,12 @@
     "spotLabelValue": "spotinstance-nodes",
     "awsServiceKeyName": "",
     "awsServiceKeySecret": "",
-    "awsSpotDataRegion":"us-east-2",
-    "awsSpotDataBucket": "x",
+    "awsSpotDataRegion":"",
+    "awsSpotDataBucket": "",
     "awsSpotDataPrefix": "",
-    "athenaBucketName": "s3://x",
-    "athenaRegion": "us-east-1",
+    "athenaBucketName": "",
+    "athenaRegion": "",
     "athenaDatabase": "",
     "athenaTable": "",
-    "projectID": "12345"
+    "projectID": ""
 }

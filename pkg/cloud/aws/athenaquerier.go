@@ -11,10 +11,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/athena"
 	"github.com/aws/aws-sdk-go-v2/service/athena/types"
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/util/stringutil"
 	"github.com/opencost/opencost/pkg/cloud"
-	"github.com/opencost/opencost/pkg/kubecost"
-	"github.com/opencost/opencost/pkg/log"
-	"github.com/opencost/opencost/pkg/util/stringutil"
 )
 
 type AthenaQuerier struct {
@@ -203,34 +203,38 @@ func GetAthenaRowValueFloat(row types.Row, queryColumnIndexes map[string]int, co
 func SelectAWSCategory(providerID, usageType, service string) string {
 	// Network has the highest priority and is based on the usage type ending in "Bytes"
 	if strings.HasSuffix(usageType, "Bytes") {
-		return kubecost.NetworkCategory
+		return opencost.NetworkCategory
 	}
 	// The node and volume conditions are mutually exclusive.
 	// Provider ID has prefix "i-"
 	if strings.HasPrefix(providerID, "i-") {
-		return kubecost.ComputeCategory
+		// GuardDuty has a ProviderID prefix of "i-", but should not be categorized as compute
+		if strings.ToUpper(service) == "AMAZONGUARDDUTY" {
+			return opencost.OtherCategory
+		}
+		return opencost.ComputeCategory
 	}
 	// Provider ID has prefix "vol-"
 	if strings.HasPrefix(providerID, "vol-") {
-		return kubecost.StorageCategory
+		return opencost.StorageCategory
 	}
 
 	// Default categories based on service
 	switch strings.ToUpper(service) {
 	case "AWSELB", "AWSGLUE", "AMAZONROUTE53":
-		return kubecost.NetworkCategory
+		return opencost.NetworkCategory
 	case "AMAZONEC2", "AWSLAMBDA", "AMAZONELASTICACHE":
-		return kubecost.ComputeCategory
+		return opencost.ComputeCategory
 	case "AMAZONEKS":
 		// Check if line item is a fargate pod
 		if strings.Contains(providerID, ":pod/") {
-			return kubecost.ComputeCategory
+			return opencost.ComputeCategory
 		}
-		return kubecost.ManagementCategory
+		return opencost.ManagementCategory
 	case "AMAZONS3", "AMAZONATHENA", "AMAZONRDS", "AMAZONDYNAMODB", "AWSSECRETSMANAGER", "AMAZONFSX":
-		return kubecost.StorageCategory
+		return opencost.StorageCategory
 	default:
-		return kubecost.OtherCategory
+		return opencost.OtherCategory
 	}
 }
 

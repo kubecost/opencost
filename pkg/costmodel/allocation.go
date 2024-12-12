@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/opencost/opencost/pkg/util/timeutil"
+	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/util/timeutil"
 
+	"github.com/opencost/opencost/core/pkg/log"
 	"github.com/opencost/opencost/pkg/env"
-	"github.com/opencost/opencost/pkg/kubecost"
-	"github.com/opencost/opencost/pkg/log"
 	"github.com/opencost/opencost/pkg/prom"
 )
 
@@ -17,8 +17,8 @@ const (
 	// upstream KSM has implementation change vs OC internal KSM - it sets metric to 0 when pod goes down
 	// VS OC implementation which stops emitting it
 	// by adding != 0 filter, we keep just the active times in the prom result
-	queryFmtPods                        = `avg(kube_pod_container_status_running{%s} != 0) by (pod, namespace, %s)[%s:%s]`
-	queryFmtPodsUID                     = `avg(kube_pod_container_status_running{%s} != 0) by (pod, namespace, uid, %s)[%s:%s]`
+	queryFmtPods    = `avg(kube_pod_container_status_running{%s} != 0) by (pod, namespace, %s)[%s:%s]`
+	queryFmtPodsUID = `avg(kube_pod_container_status_running{%s} != 0) by (pod, namespace, uid, %s)[%s:%s]`
 
 	queryFmtRAMBytesAllocated           = `avg(avg_over_time(container_memory_allocation_bytes{container!="", container!="POD", node!="", %s}[%s])) by (container, pod, namespace, node, %s, provider_id)`
 	queryFmtRAMRequests                 = `avg(avg_over_time(kube_pod_container_resource_requests{resource="memory", unit="byte", container!="", container!="POD", node!="", %s}[%s])) by (container, pod, namespace, node, %s)`
@@ -28,6 +28,8 @@ const (
 	queryFmtCPURequests                 = `avg(avg_over_time(kube_pod_container_resource_requests{resource="cpu", unit="core", container!="", container!="POD", node!="", %s}[%s])) by (container, pod, namespace, node, %s)`
 	queryFmtCPUUsageAvg                 = `avg(rate(container_cpu_usage_seconds_total{container!="", container_name!="POD", container!="POD", %s}[%s])) by (container_name, container, pod_name, pod, namespace, instance, %s)`
 	queryFmtGPUsRequested               = `avg(avg_over_time(kube_pod_container_resource_requests{resource="nvidia_com_gpu", container!="",container!="POD", node!="", %s}[%s])) by (container, pod, namespace, node, %s)`
+	queryFmtGPUsUsageAvg                = `avg(avg_over_time(DCGM_FI_PROF_GR_ENGINE_ACTIVE{container!=""}[%s])) by (container, pod, namespace, %s)`
+	queryFmtGPUsUsageMax                = `max(max_over_time(DCGM_FI_PROF_GR_ENGINE_ACTIVE{container!=""}[%s])) by (container, pod, namespace, %s)`
 	queryFmtGPUsAllocated               = `avg(avg_over_time(container_gpu_allocation{container!="", container!="POD", node!="", %s}[%s])) by (container, pod, namespace, node, %s)`
 	queryFmtNodeCostPerCPUHr            = `avg(avg_over_time(node_cpu_hourly_cost{%s}[%s])) by (node, %s, instance_type, provider_id)`
 	queryFmtNodeCostPerRAMGiBHr         = `avg(avg_over_time(node_ram_hourly_cost{%s}[%s])) by (node, %s, instance_type, provider_id)`
@@ -40,9 +42,9 @@ const (
 	queryFmtPVBytes                     = `avg(avg_over_time(kube_persistentvolume_capacity_bytes{%s}[%s])) by (persistentvolume, %s)`
 	queryFmtPVCostPerGiBHour            = `avg(avg_over_time(pv_hourly_cost{%s}[%s])) by (volumename, %s)`
 	queryFmtPVMeta                      = `avg(avg_over_time(kubecost_pv_info{%s}[%s])) by (%s, persistentvolume, provider_id)`
-	queryFmtNetZoneGiB                  = `sum(increase(kubecost_pod_network_egress_bytes_total{internet="false", sameZone="false", sameRegion="true", %s}[%s])) by (pod_name, namespace, %s) / 1024 / 1024 / 1024`
+	queryFmtNetZoneGiB                  = `sum(increase(kubecost_pod_network_egress_bytes_total{internet="false", same_zone="false", same_region="true", %s}[%s])) by (pod_name, namespace, %s) / 1024 / 1024 / 1024`
 	queryFmtNetZoneCostPerGiB           = `avg(avg_over_time(kubecost_network_zone_egress_cost{%s}[%s])) by (%s)`
-	queryFmtNetRegionGiB                = `sum(increase(kubecost_pod_network_egress_bytes_total{internet="false", sameZone="false", sameRegion="false", %s}[%s])) by (pod_name, namespace, %s) / 1024 / 1024 / 1024`
+	queryFmtNetRegionGiB                = `sum(increase(kubecost_pod_network_egress_bytes_total{internet="false", same_zone="false", same_region="false", %s}[%s])) by (pod_name, namespace, %s) / 1024 / 1024 / 1024`
 	queryFmtNetRegionCostPerGiB         = `avg(avg_over_time(kubecost_network_region_egress_cost{%s}[%s])) by (%s)`
 	queryFmtNetInternetGiB              = `sum(increase(kubecost_pod_network_egress_bytes_total{internet="true", %s}[%s])) by (pod_name, namespace, %s) / 1024 / 1024 / 1024`
 	queryFmtNetInternetCostPerGiB       = `avg(avg_over_time(kubecost_network_internet_egress_cost{%s}[%s])) by (%s)`
@@ -65,6 +67,8 @@ const (
 	queryFmtLBActiveMins                = `count(kubecost_load_balancer_cost{%s}) by (namespace, service_name, %s)[%s:%s]`
 	queryFmtOldestSample                = `min_over_time(timestamp(group(node_cpu_hourly_cost{%s}))[%s:%s])`
 	queryFmtNewestSample                = `max_over_time(timestamp(group(node_cpu_hourly_cost{%s}))[%s:%s])`
+	queryFmtIsGPuShared                 = `avg(avg_over_time(kube_pod_container_resource_requests{container!="", node != "", pod != "", container!= "", unit = "integer",  %s}[%s])) by (container, pod, namespace, node, resource)`
+	queryFmtGetGPuInfo                  = `avg(avg_over_time(DCGM_FI_DEV_DEC_UTIL{container!="",%s}[%s])) by (container, pod, namespace, device, modelName, UUID)`
 
 	// Because we use container_cpu_usage_seconds_total to calculate CPU usage
 	// at any given "instant" of time, we need to use an irate or rate. To then
@@ -117,7 +121,7 @@ func (cm *CostModel) Name() string {
 // ComputeAllocation uses the CostModel instance to compute an AllocationSet
 // for the window defined by the given start and end times. The Allocations
 // returned are unaggregated (i.e. down to the container level).
-func (cm *CostModel) ComputeAllocation(start, end time.Time, resolution time.Duration) (*kubecost.AllocationSet, error) {
+func (cm *CostModel) ComputeAllocation(start, end time.Time, resolution time.Duration) (*opencost.AllocationSet, error) {
 
 	// If the duration is short enough, compute the AllocationSet directly
 	if end.Sub(start) <= cm.MaxPrometheusQueryDuration {
@@ -134,7 +138,7 @@ func (cm *CostModel) ComputeAllocation(start, end time.Time, resolution time.Dur
 
 	// Collect AllocationSets in a range, then accumulate
 	// TODO optimize by collecting consecutive AllocationSets, accumulating as we go
-	asr := kubecost.NewAllocationSetRange()
+	asr := opencost.NewAllocationSetRange()
 
 	for e.Before(end) {
 		// By default, query for the full remaining duration. But do not let
@@ -151,7 +155,7 @@ func (cm *CostModel) ComputeAllocation(start, end time.Time, resolution time.Dur
 		// Compute the individual AllocationSet for just (s, e)
 		as, _, err := cm.computeAllocation(s, e, resolution)
 		if err != nil {
-			return kubecost.NewAllocationSet(start, end), fmt.Errorf("error computing allocation for %s: %s", kubecost.NewClosedWindow(s, e), err)
+			return opencost.NewAllocationSet(start, end), fmt.Errorf("error computing allocation for %s: %s", opencost.NewClosedWindow(s, e), err)
 		}
 
 		// Append to the range
@@ -210,15 +214,15 @@ func (cm *CostModel) ComputeAllocation(start, end time.Time, resolution time.Dur
 	// Accumulate to yield the result AllocationSet. After this step, we will
 	// be nearly complete, but without the raw allocation data, which must be
 	// recomputed.
-	resultASR, err := asr.Accumulate(kubecost.AccumulateOptionAll)
+	resultASR, err := asr.Accumulate(opencost.AccumulateOptionAll)
 	if err != nil {
-		return kubecost.NewAllocationSet(start, end), fmt.Errorf("error accumulating data for %s: %s", kubecost.NewClosedWindow(s, e), err)
+		return opencost.NewAllocationSet(start, end), fmt.Errorf("error accumulating data for %s: %s", opencost.NewClosedWindow(s, e), err)
 	}
 	if resultASR != nil && len(resultASR.Allocations) == 0 {
-		return kubecost.NewAllocationSet(start, end), nil
+		return opencost.NewAllocationSet(start, end), nil
 	}
 	if length := len(resultASR.Allocations); length != 1 {
-		return kubecost.NewAllocationSet(start, end), fmt.Errorf("expected 1 accumulated allocation set, found %d sets", length)
+		return opencost.NewAllocationSet(start, end), fmt.Errorf("expected 1 accumulated allocation set, found %d sets", length)
 	}
 	result := resultASR.Allocations[0]
 
@@ -256,7 +260,7 @@ func (cm *CostModel) ComputeAllocation(start, end time.Time, resolution time.Dur
 			}
 
 			if resultAlloc.RawAllocationOnly == nil {
-				resultAlloc.RawAllocationOnly = &kubecost.RawAllocationOnlyData{}
+				resultAlloc.RawAllocationOnly = &opencost.RawAllocationOnlyData{}
 			}
 
 			if alloc.RawAllocationOnly == nil {
@@ -275,6 +279,13 @@ func (cm *CostModel) ComputeAllocation(start, end time.Time, resolution time.Dur
 			if alloc.RawAllocationOnly.RAMBytesUsageMax > resultAlloc.RawAllocationOnly.RAMBytesUsageMax {
 				resultAlloc.RawAllocationOnly.RAMBytesUsageMax = alloc.RawAllocationOnly.RAMBytesUsageMax
 			}
+
+			if alloc.RawAllocationOnly.GPUUsageMax != nil {
+				if *alloc.RawAllocationOnly.GPUUsageMax > *resultAlloc.RawAllocationOnly.GPUUsageMax {
+					resultAlloc.RawAllocationOnly.GPUUsageMax = alloc.RawAllocationOnly.GPUUsageMax
+				}
+			}
+
 		}
 	}
 
@@ -318,18 +329,18 @@ func (cm *CostModel) DateRange() (time.Time, time.Time, error) {
 	return oldest, newest, nil
 }
 
-func (cm *CostModel) computeAllocation(start, end time.Time, resolution time.Duration) (*kubecost.AllocationSet, map[nodeKey]*nodePricing, error) {
+func (cm *CostModel) computeAllocation(start, end time.Time, resolution time.Duration) (*opencost.AllocationSet, map[nodeKey]*nodePricing, error) {
 	// 1. Build out Pod map from resolution-tuned, batched Pod start/end query
 	// 2. Run and apply the results of the remaining queries to
 	// 3. Build out AllocationSet from completed Pod map
 
 	// Create a window spanning the requested query
-	window := kubecost.NewWindow(&start, &end)
+	window := opencost.NewWindow(&start, &end)
 
 	// Create an empty AllocationSet. For safety, in the case of an error, we
 	// should prefer to return this empty set with the error. (In the case of
 	// no error, of course we populate the set and return it.)
-	allocSet := kubecost.NewAllocationSet(start, end)
+	allocSet := opencost.NewAllocationSet(start, end)
 
 	// (1) Build out Pod map
 
@@ -375,7 +386,7 @@ func (cm *CostModel) computeAllocation(start, end time.Time, resolution time.Dur
 	// Query for the duration between start and end
 	durStr := timeutil.DurationString(end.Sub(start))
 	if durStr == "" {
-		return allocSet, nil, fmt.Errorf("illegal duration value for %s", kubecost.NewClosedWindow(start, end))
+		return allocSet, nil, fmt.Errorf("illegal duration value for %s", opencost.NewClosedWindow(start, end))
 	}
 
 	// Convert resolution duration to a query-ready string
@@ -425,8 +436,16 @@ func (cm *CostModel) computeAllocation(start, end time.Time, resolution time.Dur
 		}
 	}
 
+	// GPU Queries
+	//queryIsGpuShared := fmt.Sprintf(queryFmtIsGPuShared, durStr)
 	queryGPUsRequested := fmt.Sprintf(queryFmtGPUsRequested, env.GetPromClusterFilter(), durStr, env.GetPromClusterLabel())
 	resChGPUsRequested := ctx.QueryAtTime(queryGPUsRequested, end)
+
+	queryGPUsUsageAvg := fmt.Sprintf(queryFmtGPUsUsageAvg, durStr, env.GetPromClusterLabel())
+	resChGPUsUsageAvg := ctx.Query(queryGPUsUsageAvg)
+
+	queryGPUsUsageMax := fmt.Sprintf(queryFmtGPUsUsageMax, durStr, env.GetPromClusterLabel())
+	resChGPUsUsageMax := ctx.Query(queryGPUsUsageMax)
 
 	queryGPUsAllocated := fmt.Sprintf(queryFmtGPUsAllocated, env.GetPromClusterFilter(), durStr, env.GetPromClusterLabel())
 	resChGPUsAllocated := ctx.QueryAtTime(queryGPUsAllocated, end)
@@ -488,6 +507,13 @@ func (cm *CostModel) computeAllocation(start, end time.Time, resolution time.Dur
 	queryNetInternetCostPerGiB := fmt.Sprintf(queryFmtNetInternetCostPerGiB, env.GetPromClusterFilter(), durStr, env.GetPromClusterLabel())
 	resChNetInternetCostPerGiB := ctx.QueryAtTime(queryNetInternetCostPerGiB, end)
 
+	//GPU Queries
+	queryIsGpuShared := fmt.Sprintf(queryFmtIsGPuShared, env.GetPromClusterFilter(), durStr)
+	resChIsGpuShared := ctx.QueryAtTime(queryIsGpuShared, end)
+
+	queryGetGPUInfo := fmt.Sprintf(queryFmtGetGPuInfo, env.GetPromClusterFilter(), durStr)
+	resChGetGPUInfo := ctx.QueryAtTime(queryGetGPUInfo, end)
+
 	var resChNodeLabels prom.QueryResultsChan
 	if env.GetAllocationNodeLabelsEnabled() {
 		queryNodeLabels := fmt.Sprintf(queryFmtNodeLabels, env.GetPromClusterFilter(), durStr)
@@ -544,7 +570,12 @@ func (cm *CostModel) computeAllocation(start, end time.Time, resolution time.Dur
 	resRAMUsageAvg, _ := resChRAMUsageAvg.Await()
 	resRAMUsageMax, _ := resChRAMUsageMax.Await()
 	resGPUsRequested, _ := resChGPUsRequested.Await()
+	resGPUsUsageAvg, _ := resChGPUsUsageAvg.Await()
+	resGPUsUsageMax, _ := resChGPUsUsageMax.Await()
 	resGPUsAllocated, _ := resChGPUsAllocated.Await()
+
+	resIsGpuShared, _ := resChIsGpuShared.Await()
+	resGetGPUInfo, _ := resChGetGPUInfo.Await()
 
 	resNodeCostPerCPUHr, _ := resChNodeCostPerCPUHr.Await()
 	resNodeCostPerRAMGiBHr, _ := resChNodeCostPerRAMGiBHr.Await()
@@ -610,6 +641,10 @@ func (cm *CostModel) computeAllocation(start, end time.Time, resolution time.Dur
 	applyRAMBytesRequested(podMap, resRAMRequests, podUIDKeyMap)
 	applyRAMBytesUsedAvg(podMap, resRAMUsageAvg, podUIDKeyMap)
 	applyRAMBytesUsedMax(podMap, resRAMUsageMax, podUIDKeyMap)
+	applyGPUUsage(podMap, resGPUsUsageAvg, podUIDKeyMap, GpuUsageAverageMode)
+	applyGPUUsage(podMap, resGPUsUsageMax, podUIDKeyMap, GpuUsageMaxMode)
+	applyGPUUsage(podMap, resIsGpuShared, podUIDKeyMap, GpuIsSharedMode)
+	applyGPUUsage(podMap, resGetGPUInfo, podUIDKeyMap, GpuInfoMode)
 	applyGPUsAllocated(podMap, resGPUsRequested, resGPUsAllocated, podUIDKeyMap)
 	applyNetworkTotals(podMap, resNetTransferBytes, resNetReceiveBytes, podUIDKeyMap)
 	applyNetworkAllocation(podMap, resNetZoneGiB, resNetZoneCostPerGiB, podUIDKeyMap, networkCrossZoneCost)
@@ -650,7 +685,7 @@ func (cm *CostModel) computeAllocation(start, end time.Time, resolution time.Dur
 	applyControllersToPods(podMap, podReplicaSetMap)
 
 	serviceLabels := getServiceLabels(resServiceLabels)
-	allocsByService := map[serviceKey][]*kubecost.Allocation{}
+	allocsByService := map[serviceKey][]*opencost.Allocation{}
 	applyServicesToPods(podMap, podLabels, allocsByService, serviceLabels)
 
 	// TODO breakdown network costs?

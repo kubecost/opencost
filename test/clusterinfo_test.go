@@ -3,8 +3,8 @@ package test
 import (
 	"testing"
 
-	"github.com/opencost/opencost/pkg/prom"
-	"github.com/opencost/opencost/pkg/util/json"
+	"github.com/opencost/opencost/core/pkg/util/json"
+	"github.com/opencost/opencost/core/pkg/util/promutil"
 )
 
 func TestClusterInfoLabels(t *testing.T) {
@@ -18,7 +18,7 @@ func TestClusterInfoLabels(t *testing.T) {
 		return
 	}
 
-	labels := prom.MapToLabels(m)
+	labels := promutil.MapToLabels(m)
 	for k := range expected {
 		if _, ok := labels[k]; !ok {
 			t.Errorf("Failed to locate key: \"%s\" in labels.", k)

@@ -4,16 +4,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opencost/opencost/pkg/kubecost"
-	"github.com/opencost/opencost/pkg/util/timeutil"
+	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/util/timeutil"
 )
 
 type AzureStorageIntegration struct {
 	AzureStorageBillingParser
 }
 
-func (asi *AzureStorageIntegration) GetCloudCost(start, end time.Time) (*kubecost.CloudCostSetRange, error) {
-	ccsr, err := kubecost.NewCloudCostSetRange(start, end, kubecost.AccumulateOptionDay, asi.Key())
+func (asi *AzureStorageIntegration) GetCloudCost(start, end time.Time) (*opencost.CloudCostSetRange, error) {
+	ccsr, err := opencost.NewCloudCostSetRange(start, end, opencost.AccumulateOptionDay, asi.Key())
 	if err != nil {
 		return nil, err
 	}
@@ -21,7 +21,7 @@ func (asi *AzureStorageIntegration) GetCloudCost(start, end time.Time) (*kubecos
 	err = asi.ParseBillingData(start, end, func(abv *BillingRowValues) error {
 		s := abv.Date
 		e := abv.Date.Add(timeutil.Day)
-		window := kubecost.NewWindow(&s, &e)
+		window := opencost.NewWindow(&s, &e)
 
 		k8sPtc := 0.0
 		if AzureIsK8s(abv.Tags) {
@@ -32,36 +32,39 @@ func (asi *AzureStorageIntegration) GetCloudCost(start, end time.Time) (*kubecos
 		// Create CloudCost
 		// Using the NetCost as a 'placeholder' for Invoiced and Amortized Net costs now,
 		// until we can revisit and spend the time to do the calculations correctly
-		cc := &kubecost.CloudCost{
-			Properties: &kubecost.CloudCostProperties{
-				ProviderID:      providerID,
-				Provider:        kubecost.AzureProvider,
-				AccountID:       abv.SubscriptionID,
-				InvoiceEntityID: abv.InvoiceEntityID,
-				Service:         abv.Service,
-				Category:        SelectAzureCategory(abv.MeterCategory),
-				Labels:          abv.Tags,
+		cc := &opencost.CloudCost{
+			Properties: &opencost.CloudCostProperties{
+				ProviderID:        providerID,
+				Provider:          opencost.AzureProvider,
+				AccountID:         abv.SubscriptionID,
+				AccountName:       abv.SubscriptionName,
+				InvoiceEntityID:   abv.InvoiceEntityID,
+				InvoiceEntityName: abv.InvoiceEntityName,
+				RegionID:          abv.Region,
+				Service:           abv.Service,
+				Category:          SelectAzureCategory(abv.MeterCategory),
+				Labels:            abv.Tags,
 			},
 			Window: window,
-			AmortizedNetCost: kubecost.CostMetric{
+			AmortizedNetCost: opencost.CostMetric{
 				Cost:              abv.NetCost,
 				KubernetesPercent: k8sPtc,
 			},
-			InvoicedCost: kubecost.CostMetric{
+			InvoicedCost: opencost.CostMetric{
 				Cost:              abv.NetCost,
 				KubernetesPercent: k8sPtc,
 			},
-			ListCost: kubecost.CostMetric{
+			ListCost: opencost.CostMetric{
 				Cost:              abv.Cost,
 				KubernetesPercent: k8sPtc,
 			},
-			NetCost: kubecost.CostMetric{
+			NetCost: opencost.CostMetric{
 				Cost:              abv.NetCost,
 				KubernetesPercent: k8sPtc,
 			},
 			// NOTE: on Azure, there is no "AmortizedCost" per se, so we use
 			// AmortizedNetCost, or NetCost, instead.
-			AmortizedCost: kubecost.CostMetric{
+			AmortizedCost: opencost.CostMetric{
 				Cost:              abv.NetCost,
 				KubernetesPercent: k8sPtc,
 			},

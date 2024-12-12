@@ -6,7 +6,7 @@ GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 GIT_LAST_COMMIT_DATE := $(shell git log -1 --date=iso-strict --format=%cd)
 
 # Build flags
-VPREFIX := github.com/opencost/opencost/pkg/version
+VPREFIX := github.com/opencost/opencost/core/pkg/version
 GO_LDFLAGS   := -X $(VPREFIX).Version=$(IMAGE_TAG) -X $(VPREFIX).GitCommit=$(GIT_REVISION)
 GO_FLAGS     := -ldflags "-extldflags \"-static\" -s -w $(GO_LDFLAGS)"
 

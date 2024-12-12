@@ -1,0 +1,5 @@
+EndTimestamp,InstanceID,Region,AssetClass,InstanceIDField,InstanceType,MarketPriceHourly,Version
+2028-01-06 23:34:45 UTC,Reserved,,node,metadata.labels.TestClusterUsage,,0.654795,
+2028-01-06 23:34:45 UTC,OnDemand,,node,metadata.labels.TestClusterUsage,,0.90411,
+2028-01-06 23:34:45 UTC,a100-ondemand,,gpu,nvidia.com/gpu_type,,0.5,
+2028-01-06 23:34:45 UTC,a100-reserved,,gpu,nvidia.com/gpu_type,,1,

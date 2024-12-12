@@ -3,8 +3,91 @@ package costmodel
 import (
 	"testing"
 
-	"github.com/opencost/opencost/pkg/util"
+	"github.com/opencost/opencost/core/pkg/util"
+	"github.com/opencost/opencost/pkg/clustercache"
+	"github.com/stretchr/testify/assert"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
+
+func TestGetGPUCount(t *testing.T) {
+	tests := []struct {
+		name          string
+		node          *clustercache.Node
+		expectedGPU   float64
+		expectedVGPU  float64
+		expectedError bool
+	}{
+		{
+			name: "Standard NVIDIA GPU",
+			node: &clustercache.Node{
+				Status: v1.NodeStatus{
+					Capacity: v1.ResourceList{
+						"nvidia.com/gpu": resource.MustParse("2"),
+					},
+				},
+			},
+			expectedGPU:  2.0,
+			expectedVGPU: 2.0,
+		},
+		{
+			name: "NVIDIA GPU with GFD - renameByDefault=true",
+			node: &clustercache.Node{
+				Labels: map[string]string{
+					"nvidia.com/gpu.replicas": "4",
+					"nvidia.com/gpu.count":    "1",
+				},
+				Status: v1.NodeStatus{
+					Capacity: v1.ResourceList{
+						"nvidia.com/gpu.shared": resource.MustParse("4"),
+					},
+				},
+			},
+			expectedGPU:  1.0,
+			expectedVGPU: 4.0,
+		},
+		{
+			name: "NVIDIA GPU with GFD - renameByDefault=false",
+			node: &clustercache.Node{
+				Labels: map[string]string{
+					"nvidia.com/gpu.replicas": "4",
+					"nvidia.com/gpu.count":    "1",
+				},
+				Status: v1.NodeStatus{
+					Capacity: v1.ResourceList{
+						"nvidia.com/gpu": resource.MustParse("4"),
+					},
+				},
+			},
+			expectedGPU:  1.0,
+			expectedVGPU: 4.0,
+		},
+		{
+			name: "No GPU",
+			node: &clustercache.Node{
+				Status: v1.NodeStatus{
+					Capacity: v1.ResourceList{},
+				},
+			},
+			expectedGPU:  -1.0,
+			expectedVGPU: -1.0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gpu, vgpu, err := getGPUCount(nil, tt.node)
+
+			if tt.expectedError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedGPU, gpu)
+				assert.Equal(t, tt.expectedVGPU, vgpu)
+			}
+		})
+	}
+}
 
 func Test_CostData_GetController_CronJob(t *testing.T) {
 	cases := []struct {

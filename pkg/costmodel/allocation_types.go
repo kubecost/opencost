@@ -4,18 +4,18 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/opencost/opencost/pkg/kubecost"
+	"github.com/opencost/opencost/core/pkg/opencost"
 )
 
 // pod describes a running pod's start and end time within a Window and
 // all the Allocations (i.e. containers) contained within it.
 type pod struct {
-	Window      kubecost.Window
+	Window      opencost.Window
 	Start       time.Time
 	End         time.Time
 	Key         podKey
 	Node        string
-	Allocations map[string]*kubecost.Allocation
+	Allocations map[string]*opencost.Allocation
 }
 
 func (p *pod) equal(that *pod) bool {
@@ -60,9 +60,9 @@ func (p *pod) equal(that *pod) bool {
 func (p *pod) appendContainer(container string) {
 	name := fmt.Sprintf("%s/%s/%s/%s", p.Key.Cluster, p.Key.Namespace, p.Key.Pod, container)
 
-	alloc := &kubecost.Allocation{
+	alloc := &opencost.Allocation{
 		Name:       name,
-		Properties: &kubecost.AllocationProperties{},
+		Properties: &opencost.AllocationProperties{},
 		Window:     p.Window.Clone(),
 		Start:      p.Start,
 		End:        p.End,
@@ -115,7 +115,7 @@ func (p *pvc) String() string {
 	if p == nil {
 		return "<nil>"
 	}
-	return fmt.Sprintf("%s/%s/%s{Bytes:%.2f, Cost:%.6f, Start,End:%s}", p.Cluster, p.Namespace, p.Name, p.Bytes, p.Cost(), kubecost.NewWindow(&p.Start, &p.End))
+	return fmt.Sprintf("%s/%s/%s{Bytes:%.2f, Cost:%.6f, Start,End:%s}", p.Cluster, p.Namespace, p.Name, p.Bytes, p.Cost(), opencost.NewWindow(&p.Start, &p.End))
 }
 
 // Key returns the pvcKey for the calling pvc

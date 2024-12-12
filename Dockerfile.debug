@@ -4,17 +4,26 @@ FROM golang:alpine
 # outside of Docker.
 ARG binary_path
 
+LABEL org.opencontainers.image.description="Cross-cloud cost allocation models for Kubernetes workloads"
+LABEL org.opencontainers.image.documentation=https://opencost.io/docs/
+LABEL org.opencontainers.image.licenses=Apache-2.0
+LABEL org.opencontainers.image.source=https://github.com/opencost/opencost
+LABEL org.opencontainers.image.title=kubecost-cost-model
+LABEL org.opencontainers.image.url=https://opencost.io
+
 WORKDIR /app
 RUN apk add --update --no-cache ca-certificates
 RUN go install github.com/go-delve/delve/cmd/dlv@latest
 
+ADD --chmod=644 ./THIRD_PARTY_LICENSES.txt /THIRD_PARTY_LICENSES.txt
 ADD --chmod=644 ./configs/default.json /models/default.json
 ADD --chmod=644 ./configs/azure.json /models/azure.json
 ADD --chmod=644 ./configs/aws.json /models/aws.json
 ADD --chmod=644 ./configs/gcp.json /models/gcp.json
 ADD --chmod=644 ./configs/alibaba.json /models/alibaba.json
+ADD --chmod=644 ./configs/oracle.json /models/oracle.json
+ADD --chmod=644 ./configs/otc.json /models/otc.json
 
-RUN echo "binary_path"
 COPY ${binary_path} main
 
 ENTRYPOINT ["/go/bin/dlv exec --listen=:40000 --api-version=2 --headless=true --accept-multiclient --log --continue /app/main"]

@@ -1,11 +1,11 @@
 package costmodel
 
 import (
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/util"
 	costAnalyzerCloud "github.com/opencost/opencost/pkg/cloud/models"
 	"github.com/opencost/opencost/pkg/env"
-	"github.com/opencost/opencost/pkg/log"
 	"github.com/opencost/opencost/pkg/prom"
-	"github.com/opencost/opencost/pkg/util"
 )
 
 // NetworkUsageVNetworkUsageDataector contains the network usage values for egress network traffic

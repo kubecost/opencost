@@ -1,4 +1,4 @@
-name: Sonar Code Coverage Upload
+name: Sonar
 on:
   workflow_run:
     workflows: ["Build/Test"]
@@ -8,43 +8,74 @@ jobs:
     name: Sonar
     runs-on: ubuntu-latest
     if: github.event.workflow_run.conclusion == 'success'
+    permissions:
+      checks: write
+      contents: read
+      actions: read
     steps:
+      - uses: LouisBrunner/checks-action@v2.0.0
+        if: always()
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: Quality Gate
+          status: in_progress
+          sha: ${{ github.event.workflow_run.head_sha }}
       - uses: actions/checkout@v4
         with:
           repository: ${{ github.event.workflow_run.head_repository.full_name }}
           ref: ${{ github.event.workflow_run.head_branch }}
           fetch-depth: 0
-      - name: 'Download code coverage'
-        uses: actions/github-script@v7
+      - name: Download coverage artifacts
+        uses: actions/download-artifact@v4
         with:
-          script: |
-            let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
-               owner: context.repo.owner,
-               repo: context.repo.repo,
-               run_id: context.payload.workflow_run.id,
-            });
-            let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
-              return artifact.name == "oc-code-coverage"
-            })[0];
-            let download = await github.rest.actions.downloadArtifact({
-               owner: context.repo.owner,
-               repo: context.repo.repo,
-               artifact_id: matchArtifact.id,
-               archive_format: 'zip',
-            });
-            let fs = require('fs');
-            fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/oc-code-coverage.zip`, Buffer.from(download.data));
-      - name: 'Unzip code coverage'
-        run: unzip oc-code-coverage.zip -d coverage
-      - name: set env vars 
+          name: code-coverage
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: pr-artifact
+      - name: Validate Coverage Vars
+        id: validate-vars
+        if: github.event.workflow_run.head_branch != 'develop'
+        shell: bash
         run: | 
-          echo "SONAR_PR_NUM=$(cat coverage/pr_num.txt)" >> $GITHUB_ENV
-          echo "SONAR_BASE=$(cat coverage/base.txt)" >> $GITHUB_ENV
-          echo "SONAR_HEAD=$(cat coverage/head.txt)" >> $GITHUB_ENV
+          # check the PR number
+          pr_content=$(cat pr-artifact/pr_num.txt | tr -d '\n' | tr -d ' ')
+
+          # Check if the content matches a single number
+          if [[ "$pr_content" =~ ^[0-9]+$ ]]; then
+            echo "The file 'pr_num.txt' contains a single number: $pr_content"
+          else
+            echo "The file 'pr_num.txt' does not contain a single number."
+            exit 1
+          fi
+
+          base_content=$(cat pr-artifact/base.txt | tr -d '\n' | tr -d ' ')
+          if git check-ref-format --allow-onelevel "$base_content"; then
+            echo "The file 'base.txt' contains a valid git ref: $base_content"
+          else
+            echo "The file 'base.txt' does not contain a valid git ref: $base_content"
+            exit 1
+          fi
+
+          head_content=$(cat pr-artifact/head.txt | tr -d '\n' | tr -d ' ')
+          if git check-ref-format --allow-onelevel "$head_content"; then
+            echo "The file 'head.txt' contains a valid git ref: $head_content"
+          else
+            echo "The file 'head.txt' does not contain a valid git ref: $head_content"
+            exit 1
+          fi
+
+      - name: set vars 
+        id: set-vars
+        run: | 
+          echo "SONAR_PR_NUM=$(cat pr-artifact/pr_num.txt | tr -d '\n' | tr -d ' ')" >> $GITHUB_OUTPUT
+          echo "SONAR_BASE=$(cat pr-artifact/base.txt | tr -d '\n' | tr -d ' ')" >> $GITHUB_OUTPUT
+          echo "SONAR_HEAD=$(cat pr-artifact/head.txt | tr -d '\n' | tr -d ' ')" >> $GITHUB_OUTPUT
+          # move coverage file to root where sonar properties file is expecting it
+          cp pr-artifact/coverage.out coverage.out
       # on develop branch, only run a baseline scan
       - name: SonarCloud Scan (Baseline)
         uses: sonarsource/sonarcloud-github-action@master
-        if: env.SONAR_HEAD == 'develop'
+        if: github.event.workflow_run.head_branch == 'develop'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -54,18 +85,48 @@ jobs:
             -Dsonar.projectKey=opencost_opencost
             -Dsonar.organization=opencost
             -Dsonar.branch.name=develop
-            -Dsonar.branch.target=develop
       - name: SonarCloud Scan (PR)
         uses: sonarsource/sonarcloud-github-action@master
-        if: env.SONAR_HEAD != 'develop'
+        if: github.event.workflow_run.head_branch != 'develop'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
           args: >
             -Dsonar.scm.revision=${{ github.event.workflow_run.head_sha }}
-            -Dsonar.pullrequest.key=${{ env.SONAR_PR_NUM }}
-            -Dsonar.pullrequest.branch=${{ env.SONAR_HEAD }}
-            -Dsonar.pullrequest.base=${{ env.SONAR_BASE }}
+            -Dsonar.pullrequest.key=${{ steps.set-vars.outputs.SONAR_PR_NUM }}
+            -Dsonar.pullrequest.branch="${{ steps.set-vars.outputs.SONAR_HEAD }}"
+            -Dsonar.pullrequest.base="${{ steps.set-vars.outputs.SONAR_BASE }}"
             -Dsonar.projectKey=opencost_opencost
             -Dsonar.organization=opencost
+      - name: SonarQube Quality Gate check
+        id: sonarqube-quality-gate-check
+        continue-on-error: true
+        uses: sonarsource/sonarqube-quality-gate-action@master
+        # fail step after specific time.
+        timeout-minutes: 5
+        env:
+             SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+             SONAR_HOST_URL: "https://sonarcloud.io"
+      - uses: LouisBrunner/checks-action@v2.0.0
+        id: fail-quality-gate
+        if: steps.sonarqube-quality-gate-check.outputs.quality-gate-status != 'PASSED'
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: Quality Gate
+          status: completed
+          conclusion: failure
+          sha: ${{ github.event.workflow_run.head_sha }}
+          output: |
+            {"summary":"Failed - see https://sonarcloud.io/summary/new_code?id=opencost_opencostl&pullRequest=${{ steps.set-vars.outputs.SONAR_PR_NUM }}","text_description":"Quality Gate failed. Check the [SonarCloud Dashboard](https://sonarcloud.io/dashboard?id=opencost_opencost&pullRequest=${{ steps.set-vars.outputs.SONAR_PR_NUM }}) for more details."}
+      - uses: LouisBrunner/checks-action@v2.0.0
+        id: pass-quality-gate
+        if: steps.sonarqube-quality-gate-check.outputs.quality-gate-status == 'PASSED'
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: Quality Gate
+          status: completed
+          conclusion: success
+          sha: ${{ github.event.workflow_run.head_sha }}
+          output: |
+            {"summary":"Passed","text_description":"Quality Gate passed. Check the [SonarCloud Dashboard](https://sonarcloud.io/dashboard?id=opencost_opencost&pullRequest=${{ steps.set-vars.outputs.SONAR_PR_NUM }}) for more details."} 

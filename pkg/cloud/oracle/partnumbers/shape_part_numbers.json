@@ -1,0 +1,434 @@
+{
+  "": {
+    "OCPU": "B88516",
+    "Memory": "",
+    "GPU": "",
+    "Disk": ""
+  },
+  "BM.DenseIO.E4.128": {
+    "OCPU": "B93121",
+    "Memory": "B93122",
+    "GPU": "",
+    "Disk": "B93123"
+  },
+  "BM.DenseIO.E5.128": {
+    "OCPU": "B98202",
+    "Memory": "B98203",
+    "GPU": "",
+    "Disk": "B98204"
+  },
+  "BM.DenseIO2.52": {
+    "OCPU": "B88515",
+    "Memory": "",
+    "GPU": "",
+    "Disk": ""
+  },
+  "BM.GPU.A10.4": {
+    "OCPU": "",
+    "Memory": "",
+    "GPU": "B95909",
+    "Disk": ""
+  },
+  "BM.GPU.A100-v2.8": {
+    "OCPU": "",
+    "Memory": "",
+    "GPU": "B95907",
+    "Disk": ""
+  },
+  "BM.GPU.H100.8": {
+    "OCPU": "",
+    "Memory": "",
+    "GPU": "B98415",
+    "Disk": ""
+  },
+  "BM.GPU.L40S.4": {
+    "OCPU": "",
+    "Memory": "",
+    "GPU": "B109479",
+    "Disk": ""
+  },
+  "BM.GPU2.2": {
+    "OCPU": "",
+    "Memory": "",
+    "GPU": "B88517",
+    "Disk": ""
+  },
+  "BM.GPU3.8": {
+    "OCPU": "",
+    "Memory": "",
+    "GPU": "B89734",
+    "Disk": ""
+  },
+  "BM.GPU4.8": {
+    "OCPU": "",
+    "Memory": "",
+    "GPU": "B92740",
+    "Disk": ""
+  },
+  "BM.HPC2.36": {
+    "OCPU": "B90398",
+    "Memory": "",
+    "GPU": "",
+    "Disk": ""
+  },
+  "BM.Optimized3.36": {
+    "OCPU": "B93311",
+    "Memory": "B93312",
+    "GPU": "",
+    "Disk": ""
+  },
+  "BM.Standard.A1.160": {
+    "OCPU": "B93297",
+    "Memory": "B93298",
+    "GPU": "",
+    "Disk": ""
+  },
+  "BM.Standard.E3.128": {
+    "OCPU": "B92306",
+    "Memory": "B92307",
+    "GPU": "",
+    "Disk": ""
+  },
+  "BM.Standard.E4.128": {
+    "OCPU": "B93113",
+    "Memory": "B93114",
+    "GPU": "",
+    "Disk": ""
+  },
+  "BM.Standard.E5.192": {
+    "OCPU": "B97384",
+    "Memory": "B97385",
+    "GPU": "",
+    "Disk": ""
+  },
+  "BM.Standard2.52": {
+    "OCPU": "B88513",
+    "Memory": "",
+    "GPU": "",
+    "Disk": ""
+  },
+  "BM.Standard3.64": {
+    "OCPU": "B94176",
+    "Memory": "B94177",
+    "GPU": "",
+    "Disk": ""
+  },
+  "CI.Standard.A1.Flex": {
+    "OCPU": "B93297",
+    "Memory": "B93298",
+    "GPU": "",
+    "Disk": ""
+  },
+  "CI.Standard.E3.Flex": {
+    "OCPU": "B92306",
+    "Memory": "B92307",
+    "GPU": "",
+    "Disk": ""
+  },
+  "CI.Standard.E4.Flex": {
+    "OCPU": "B93113",
+    "Memory": "B93114",
+    "GPU": "",
+    "Disk": ""
+  },
+  "DVH.DenseIO2.52": {
+    "OCPU": "B88515",
+    "Memory": "",
+    "GPU": "",
+    "Disk": ""
+  },
+  "DVH.Optimized3.36": {
+    "OCPU": "B93311",
+    "Memory": "B93312",
+    "GPU": "",
+    "Disk": ""
+  },
+  "DVH.Standard.E2.64": {
+    "OCPU": "B90425",
+    "Memory": "",
+    "GPU": "",
+    "Disk": ""
+  },
+  "DVH.Standard.E3.128": {
+    "OCPU": "B92306",
+    "Memory": "B92307",
+    "GPU": "",
+    "Disk": ""
+  },
+  "DVH.Standard.E4.128": {
+    "OCPU": "B93113",
+    "Memory": "B93114",
+    "GPU": "",
+    "Disk": ""
+  },
+  "DVH.Standard2.52": {
+    "OCPU": "B88513",
+    "Memory": "",
+    "GPU": "",
+    "Disk": ""
+  },
+  "DVH.Standard3.64": {
+    "OCPU": "B94176",
+    "Memory": "B94177",
+    "GPU": "",
+    "Disk": ""
+  },
+  "Pod.Standard.A1.Flex": {
+    "OCPU": "B93297",
+    "Memory": "B93298",
+    "GPU": "",
+    "Disk": ""
+  },
+  "Pod.Standard.E3.Flex": {
+    "OCPU": "B92306",
+    "Memory": "B92307",
+    "GPU": "",
+    "Disk": ""
+  },
+  "Pod.Standard.E4.Flex": {
+    "OCPU": "B93113",
+    "Memory": "B93114",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard.Flex.E4": {
+    "OCPU": "B93113",
+    "Memory": "B93114",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard.Flex.E4.16.256GB": {
+    "OCPU": "B93113",
+    "Memory": "B93114",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard.Flex.E4.2.32GB": {
+    "OCPU": "B93113",
+    "Memory": "B93114",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard.Flex.E4.32.512GB": {
+    "OCPU": "B93113",
+    "Memory": "B93114",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard.Flex.E4.4.64GB": {
+    "OCPU": "B93113",
+    "Memory": "B93114",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard.Flex.E4.64.1024GB": {
+    "OCPU": "B93113",
+    "Memory": "B93114",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard.Flex.E4.8.128GB": {
+    "OCPU": "B93113",
+    "Memory": "B93114",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard3.Flex": {
+    "OCPU": "B92306",
+    "Memory": "B92307",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard3.Flex.16.256GB": {
+    "OCPU": "B92306",
+    "Memory": "B92307",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard3.Flex.2.32GB": {
+    "OCPU": "B92306",
+    "Memory": "B92307",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard3.Flex.32.512GB": {
+    "OCPU": "B92306",
+    "Memory": "B92307",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard3.Flex.4.64GB": {
+    "OCPU": "B92306",
+    "Memory": "B92307",
+    "GPU": "",
+    "Disk": ""
+  },
+  "PostgreSQL.VM.Standard3.Flex.8.128GB": {
+    "OCPU": "B92306",
+    "Memory": "B92307",
+    "GPU": "",
+    "Disk": ""
+  },
+  "VM.DenseIO.E4.Flex": {
+    "OCPU": "B93121",
+    "Memory": "B93122",
+    "GPU": "",
+    "Disk": "B93123"
+  },
+  "VM.DenseIO.E5.Flex": {
+    "OCPU": "B98202",
+    "Memory": "B98203",
+    "GPU": "",
+    "Disk": "B98204"
+  },
+  "VM.DenseIO1.16": {
+    "OCPU": "B88516",
+    "Memory": "",
+    "GPU": "",
+    "Disk": ""
+  },
+  "VM.DenseIO1.4": {
+    "OCPU": "B88516",
+    "Memory": "",
+    "GPU": "",
+    "Disk": ""
+  },
+  "VM.DenseIO1.8": {
+    "OCPU": "B88516",
+    "Memory": "",
+    "GPU": "",
+    "Disk": ""
+  },
+  "VM.DenseIO2.16": {
+    "OCPU": "B88516",
+    "Memory": "",
+    "GPU": "",
+    "Disk": ""
+  },
+  "VM.DenseIO2.24": {
+    "OCPU": "B88516",
+    "Memory": "",
+    "GPU": "",
+    "Disk": ""
+  },
+  "VM.DenseIO2.8": {
+    "OCPU": "B88516",
+    "Memory": "",
+    "GPU": "",
+    "Disk": ""
+  },
+  "VM.GPU.A10.1": {
+    "OCPU": "",
+    "Memory": "",
+    "GPU": "B95909",
+    "Disk": ""
+  },
+  "VM.GPU.A10.2": {
+    "OCPU": "",
+    "Memory": "",
+    "GPU": "B95909",
+    "Disk": ""
+  },
+  "VM.GPU2.1": {
+    "OCPU": "",
+    "Memory": "",
+    "GPU": "B88518",
+    "Disk": ""
+  },
+  "VM.GPU3.1": {
+    "OCPU": "",
+    "Memory": "",
+    "GPU": "B89734",
+    "Disk": ""
+  },
+  "VM.GPU3.2": {
+    "OCPU": "",
+    "Memory": "",
+    "GPU": "B89734",
+    "Disk": ""
+  },
+  "VM.GPU3.4": {
+    "OCPU": "",
+    "Memory": "",
+    "GPU": "B89734",
+    "Disk": ""
+  },
+  "VM.Optimized3.Flex": {
+    "OCPU": "B93311",
+    "Memory": "B93312",
+    "GPU": "",
+    "Disk": ""
+  },
+  "VM.Standard.A1.Flex": {
+    "OCPU": "B93297",
+    "Memory": "B93298",
+    "GPU": "",
+    "Disk": ""
+  },
+  "VM.Standard.A2.Flex": {
+    "OCPU": "B109529",
+    "Memory": "B109530",
+    "GPU": "",
+    "Disk": ""
+  },
+  "VM.Standard.E3.Flex": {
+    "OCPU": "B92306",
+    "Memory": "B92307",
+    "GPU": "",
+    "Disk": ""
+  },
+  "VM.Standard.E4.Flex": {
+    "OCPU": "B93113",
+    "Memory": "B93114",
+    "GPU": "",
+    "Disk": ""
+  },
+  "VM.Standard.E5.Flex": {
+    "OCPU": "B97384",
+    "Memory": "B97385",
+    "GPU": "",
+    "Disk": ""
+  },
+  "VM.Standard2.1": {
+    "OCPU": "B88514",
+    "Memory": "",
+    "GPU": "",
+    "Disk": ""
+  },
+  "VM.Standard2.16": {
+    "OCPU": "B88514",
+    "Memory": "",
+    "GPU": "",
+    "Disk": ""
+  },
+  "VM.Standard2.2": {
+    "OCPU": "B88514",
+    "Memory": "",
+    "GPU": "",
+    "Disk": ""
+  },
+  "VM.Standard2.24": {
+    "OCPU": "B88514",
+    "Memory": "",
+    "GPU": "",
+    "Disk": ""
+  },
+  "VM.Standard2.4": {
+    "OCPU": "B88514",
+    "Memory": "",
+    "GPU": "",
+    "Disk": ""
+  },
+  "VM.Standard2.8": {
+    "OCPU": "B88514",
+    "Memory": "",
+    "GPU": "",
+    "Disk": ""
+  },
+  "VM.Standard3.Flex": {
+    "OCPU": "B94176",
+    "Memory": "B94177",
+    "GPU": "",
+    "Disk": ""
+  }
+}

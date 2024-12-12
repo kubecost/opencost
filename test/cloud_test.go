@@ -4,17 +4,18 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/opencost/opencost/core/pkg/clusters"
 
 	"github.com/opencost/opencost/pkg/cloud/provider"
 	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/opencost/opencost/pkg/config"
 	"github.com/opencost/opencost/pkg/costmodel"
-	"github.com/opencost/opencost/pkg/costmodel/clusters"
 
-	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
@@ -31,10 +32,10 @@ func TestRegionValueFromMapField(t *testing.T) {
 	wantpid := strings.ToLower("/subscriptions/0bd50fdf-c923-4e1e-850c-196dd3dcc5d3/resourceGroups/MC_test_test_eastus/providers/Microsoft.Compute/virtualMachines/aks-agentpool-20139558-0")
 	providerIDWant := wantRegion + "," + wantpid
 
-	n := &v1.Node{}
-	n.Spec.ProviderID = "azure:///subscriptions/0bd50fdf-c923-4e1e-850c-196dd3dcc5d3/resourceGroups/MC_test_test_eastus/providers/Microsoft.Compute/virtualMachines/aks-agentpool-20139558-0"
+	n := &clustercache.Node{}
+	n.SpecProviderID = "azure:///subscriptions/0bd50fdf-c923-4e1e-850c-196dd3dcc5d3/resourceGroups/MC_test_test_eastus/providers/Microsoft.Compute/virtualMachines/aks-agentpool-20139558-0"
 	n.Labels = make(map[string]string)
-	n.Labels[v1.LabelZoneRegion] = wantRegion
+	n.Labels[v1.LabelTopologyRegion] = wantRegion
 	got := provider.NodeValueFromMapField(providerIDMap, n, true)
 	if got != providerIDWant {
 		t.Errorf("Assert on '%s' want '%s' got '%s'", providerIDMap, providerIDWant, got)
@@ -43,24 +44,24 @@ func TestRegionValueFromMapField(t *testing.T) {
 }
 func TestTransformedValueFromMapField(t *testing.T) {
 	providerIDWant := "i-05445591e0d182d42"
-	n := &v1.Node{}
-	n.Spec.ProviderID = "aws:///us-east-1a/i-05445591e0d182d42"
+	n := &clustercache.Node{}
+	n.SpecProviderID = "aws:///us-east-1a/i-05445591e0d182d42"
 	got := provider.NodeValueFromMapField(providerIDMap, n, false)
 	if got != providerIDWant {
 		t.Errorf("Assert on '%s' want '%s' got '%s'", providerIDMap, providerIDWant, got)
 	}
 
 	providerIDWant2 := strings.ToLower("/subscriptions/0bd50fdf-c923-4e1e-850c-196dd3dcc5d3/resourceGroups/MC_test_test_eastus/providers/Microsoft.Compute/virtualMachines/aks-agentpool-20139558-0")
-	n2 := &v1.Node{}
-	n2.Spec.ProviderID = "azure:///subscriptions/0bd50fdf-c923-4e1e-850c-196dd3dcc5d3/resourceGroups/MC_test_test_eastus/providers/Microsoft.Compute/virtualMachines/aks-agentpool-20139558-0"
+	n2 := &clustercache.Node{}
+	n2.SpecProviderID = "azure:///subscriptions/0bd50fdf-c923-4e1e-850c-196dd3dcc5d3/resourceGroups/MC_test_test_eastus/providers/Microsoft.Compute/virtualMachines/aks-agentpool-20139558-0"
 	got2 := provider.NodeValueFromMapField(providerIDMap, n2, false)
 	if got2 != providerIDWant2 {
 		t.Errorf("Assert on '%s' want '%s' got '%s'", providerIDMap, providerIDWant2, got2)
 	}
 
 	providerIDWant3 := strings.ToLower("/subscriptions/0bd50fdf-c923-4e1e-850c-196dd3dcc5d3/resourceGroups/mc_testspot_testspot_eastus/providers/Microsoft.Compute/virtualMachineScaleSets/aks-nodepool1-19213364-vmss/virtualMachines/0")
-	n3 := &v1.Node{}
-	n3.Spec.ProviderID = "azure:///subscriptions/0bd50fdf-c923-4e1e-850c-196dd3dcc5d3/resourceGroups/mc_testspot_testspot_eastus/providers/Microsoft.Compute/virtualMachineScaleSets/aks-nodepool1-19213364-vmss/virtualMachines/0"
+	n3 := &clustercache.Node{}
+	n3.SpecProviderID = "azure:///subscriptions/0bd50fdf-c923-4e1e-850c-196dd3dcc5d3/resourceGroups/mc_testspot_testspot_eastus/providers/Microsoft.Compute/virtualMachineScaleSets/aks-nodepool1-19213364-vmss/virtualMachines/0"
 	got3 := provider.NodeValueFromMapField(providerIDMap, n3, false)
 	if got3 != providerIDWant3 {
 		t.Errorf("Assert on '%s' want '%s' got '%s'", providerIDMap, providerIDWant3, got3)
@@ -72,8 +73,8 @@ func TestNodeValueFromMapField(t *testing.T) {
 	nameWant := "gke-standard-cluster-1-pool-1-91dc432d-cg69"
 	labelFooWant := "labelfoo"
 
-	n := &v1.Node{}
-	n.Spec.ProviderID = providerIDWant
+	n := &clustercache.Node{}
+	n.SpecProviderID = providerIDWant
 	n.Name = nameWant
 	n.Labels = make(map[string]string)
 	n.Labels["foo"] = labelFooWant
@@ -97,7 +98,7 @@ func TestNodeValueFromMapField(t *testing.T) {
 
 func TestPVPriceFromCSV(t *testing.T) {
 	nameWant := "pvc-08e1f205-d7a9-4430-90fc-7b3965a18c4d"
-	pv := &v1.PersistentVolume{}
+	pv := &clustercache.PersistentVolume{}
 	pv.Name = nameWant
 
 	confMan := config.NewConfigFileManager(&config.ConfigFileManagerOpts{
@@ -118,8 +119,10 @@ func TestPVPriceFromCSV(t *testing.T) {
 		t.Errorf("Error in NodePricing: %s", err.Error())
 	} else {
 		gotPrice := resPV.Cost
-		if gotPrice != wantPrice {
-			t.Errorf("Wanted price '%s' got price '%s'", wantPrice, gotPrice)
+		wantPriceFloat, _ := strconv.ParseFloat(wantPrice, 64)
+		gotPriceFloat, _ := strconv.ParseFloat(gotPrice, 64)
+		if gotPriceFloat != wantPriceFloat {
+			t.Errorf("Wanted price '%f' got price '%f'", wantPriceFloat, gotPriceFloat)
 		}
 	}
 
@@ -128,7 +131,7 @@ func TestPVPriceFromCSV(t *testing.T) {
 func TestPVPriceFromCSVStorageClass(t *testing.T) {
 	nameWant := "pvc-08e1f205-d7a9-4430-90fc-7b3965a18c4d"
 	storageClassWant := "storageclass0"
-	pv := &v1.PersistentVolume{}
+	pv := &clustercache.PersistentVolume{}
 	pv.Name = nameWant
 	pv.Spec.StorageClassName = storageClassWant
 
@@ -150,8 +153,10 @@ func TestPVPriceFromCSVStorageClass(t *testing.T) {
 		t.Errorf("Error in NodePricing: %s", err.Error())
 	} else {
 		gotPrice := resPV.Cost
-		if gotPrice != wantPrice {
-			t.Errorf("Wanted price '%s' got price '%s'", wantPrice, gotPrice)
+		wantPriceFloat, _ := strconv.ParseFloat(wantPrice, 64)
+		gotPriceFloat, _ := strconv.ParseFloat(gotPrice, 64)
+		if gotPriceFloat != wantPriceFloat {
+			t.Errorf("Wanted price '%f' got price '%f'", wantPriceFloat, gotPriceFloat)
 		}
 	}
 
@@ -167,8 +172,8 @@ func TestNodePriceFromCSVWithGPU(t *testing.T) {
 		LocalConfigPath: "./",
 	})
 
-	n := &v1.Node{}
-	n.Spec.ProviderID = providerIDWant
+	n := &clustercache.Node{}
+	n.SpecProviderID = providerIDWant
 	n.Name = nameWant
 	n.Labels = make(map[string]string)
 	n.Labels["foo"] = labelFooWant
@@ -176,8 +181,8 @@ func TestNodePriceFromCSVWithGPU(t *testing.T) {
 	n.Status.Capacity = v1.ResourceList{"nvidia.com/gpu": *resource.NewScaledQuantity(2, 0)}
 	wantPrice := "1.633700"
 
-	n2 := &v1.Node{}
-	n2.Spec.ProviderID = providerIDWant
+	n2 := &clustercache.Node{}
+	n2.SpecProviderID = providerIDWant
 	n2.Name = nameWant
 	n2.Labels = make(map[string]string)
 	n2.Labels["foo"] = labelFooWant
@@ -203,8 +208,10 @@ func TestNodePriceFromCSVWithGPU(t *testing.T) {
 		if gotGPU != wantGPU {
 			t.Errorf("Wanted gpu count '%s' got gpu count '%s'", wantGPU, gotGPU)
 		}
-		if gotPrice != wantPrice {
-			t.Errorf("Wanted price '%s' got price '%s'", wantPrice, gotPrice)
+		wantPriceFloat, _ := strconv.ParseFloat(wantPrice, 64)
+		gotPriceFloat, _ := strconv.ParseFloat(gotPrice, 64)
+		if gotPriceFloat != wantPriceFloat {
+			t.Errorf("Wanted price '%f' got price '%f'", wantPriceFloat, gotPriceFloat)
 		}
 
 	}
@@ -219,8 +226,10 @@ func TestNodePriceFromCSVWithGPU(t *testing.T) {
 		if gotGPU != wantGPU {
 			t.Errorf("Wanted gpu count '%s' got gpu count '%s'", wantGPU, gotGPU)
 		}
-		if gotPrice != wantPrice2 {
-			t.Errorf("Wanted price '%s' got price '%s'", wantPrice2, gotPrice)
+		wantPriceFloat, _ := strconv.ParseFloat(wantPrice2, 64)
+		gotPriceFloat, _ := strconv.ParseFloat(gotPrice, 64)
+		if gotPriceFloat != wantPriceFloat {
+			t.Errorf("Wanted price '%f' got price '%f'", wantPriceFloat, gotPriceFloat)
 		}
 
 	}
@@ -234,7 +243,7 @@ func TestNodePriceFromCSVSpecialChar(t *testing.T) {
 		LocalConfigPath: "./",
 	})
 
-	n := &v1.Node{}
+	n := &clustercache.Node{}
 	n.Name = nameWant
 	n.Labels = make(map[string]string)
 	n.Labels["<http://metadata.label.servers.com/label|metadata.label.servers.com/label>"] = nameWant
@@ -254,8 +263,10 @@ func TestNodePriceFromCSVSpecialChar(t *testing.T) {
 		t.Errorf("Error in NodePricing: %s", err.Error())
 	} else {
 		gotPrice := resN.Cost
-		if gotPrice != wantPrice {
-			t.Errorf("Wanted price '%s' got price '%s'", wantPrice, gotPrice)
+		wantPriceFloat, _ := strconv.ParseFloat(wantPrice, 64)
+		gotPriceFloat, _ := strconv.ParseFloat(gotPrice, 64)
+		if gotPriceFloat != wantPriceFloat {
+			t.Errorf("Wanted price '%f' got price '%f'", wantPriceFloat, gotPriceFloat)
 		}
 	}
 }
@@ -269,8 +280,8 @@ func TestNodePriceFromCSV(t *testing.T) {
 		LocalConfigPath: "./",
 	})
 
-	n := &v1.Node{}
-	n.Spec.ProviderID = providerIDWant
+	n := &clustercache.Node{}
+	n.SpecProviderID = providerIDWant
 	n.Name = nameWant
 	n.Labels = make(map[string]string)
 	n.Labels["foo"] = labelFooWant
@@ -290,17 +301,19 @@ func TestNodePriceFromCSV(t *testing.T) {
 		t.Errorf("Error in NodePricing: %s", err.Error())
 	} else {
 		gotPrice := resN.Cost
-		if gotPrice != wantPrice {
-			t.Errorf("Wanted price '%s' got price '%s'", wantPrice, gotPrice)
+		wantPriceFloat, _ := strconv.ParseFloat(wantPrice, 64)
+		gotPriceFloat, _ := strconv.ParseFloat(gotPrice, 64)
+		if gotPriceFloat != wantPriceFloat {
+			t.Errorf("Wanted price '%f' got price '%f'", wantPriceFloat, gotPriceFloat)
 		}
 	}
 
-	unknownN := &v1.Node{}
-	unknownN.Spec.ProviderID = providerIDWant
+	unknownN := &clustercache.Node{}
+	unknownN.SpecProviderID = providerIDWant
 	unknownN.Name = "unknownname"
 	unknownN.Labels = make(map[string]string)
 	unknownN.Labels["foo"] = labelFooWant
-	unknownN.Labels["topology.kubernetes.io/region"] = "fakeregion"
+	unknownN.Labels[v1.LabelTopologyRegion] = "fakeregion"
 	k2 := c.GetKey(unknownN.Labels, unknownN)
 	resN2, _, _ := c.NodePricing(k2)
 	if resN2 != nil {
@@ -329,28 +342,28 @@ func TestNodePriceFromCSVWithRegion(t *testing.T) {
 		LocalConfigPath: "./",
 	})
 
-	n := &v1.Node{}
-	n.Spec.ProviderID = providerIDWant
+	n := &clustercache.Node{}
+	n.SpecProviderID = providerIDWant
 	n.Name = nameWant
 	n.Labels = make(map[string]string)
 	n.Labels["foo"] = labelFooWant
-	n.Labels[v1.LabelZoneRegion] = "regionone"
+	n.Labels[v1.LabelTopologyRegion] = "regionone"
 	wantPrice := "0.133700"
 
-	n2 := &v1.Node{}
-	n2.Spec.ProviderID = providerIDWant
+	n2 := &clustercache.Node{}
+	n2.SpecProviderID = providerIDWant
 	n2.Name = nameWant
 	n2.Labels = make(map[string]string)
 	n2.Labels["foo"] = labelFooWant
-	n2.Labels[v1.LabelZoneRegion] = "regiontwo"
+	n2.Labels[v1.LabelTopologyRegion] = "regiontwo"
 	wantPrice2 := "0.133800"
 
-	n3 := &v1.Node{}
-	n3.Spec.ProviderID = providerIDWant
+	n3 := &clustercache.Node{}
+	n3.SpecProviderID = providerIDWant
 	n3.Name = nameWant
 	n3.Labels = make(map[string]string)
 	n3.Labels["foo"] = labelFooWant
-	n3.Labels[v1.LabelZoneRegion] = "fakeregion"
+	n3.Labels[v1.LabelTopologyRegion] = "fakeregion"
 	wantPrice3 := "0.1339"
 
 	c := &provider.CSVProvider{
@@ -366,8 +379,10 @@ func TestNodePriceFromCSVWithRegion(t *testing.T) {
 		t.Errorf("Error in NodePricing: %s", err.Error())
 	} else {
 		gotPrice := resN.Cost
-		if gotPrice != wantPrice {
-			t.Errorf("Wanted price '%s' got price '%s'", wantPrice, gotPrice)
+		wantPriceFloat, _ := strconv.ParseFloat(wantPrice, 64)
+		gotPriceFloat, _ := strconv.ParseFloat(gotPrice, 64)
+		if gotPriceFloat != wantPriceFloat {
+			t.Errorf("Wanted price '%f' got price '%f'", wantPriceFloat, gotPriceFloat)
 		}
 	}
 	k2 := c.GetKey(n2.Labels, n2)
@@ -376,8 +391,10 @@ func TestNodePriceFromCSVWithRegion(t *testing.T) {
 		t.Errorf("Error in NodePricing: %s", err.Error())
 	} else {
 		gotPrice := resN2.Cost
-		if gotPrice != wantPrice2 {
-			t.Errorf("Wanted price '%s' got price '%s'", wantPrice2, gotPrice)
+		wantPriceFloat, _ := strconv.ParseFloat(wantPrice2, 64)
+		gotPriceFloat, _ := strconv.ParseFloat(gotPrice, 64)
+		if gotPriceFloat != wantPriceFloat {
+			t.Errorf("Wanted price '%f' got price '%f'", wantPriceFloat, gotPriceFloat)
 		}
 	}
 	k3 := c.GetKey(n3.Labels, n3)
@@ -386,16 +403,18 @@ func TestNodePriceFromCSVWithRegion(t *testing.T) {
 		t.Errorf("Error in NodePricing: %s", err.Error())
 	} else {
 		gotPrice := resN3.Cost
-		if gotPrice != wantPrice3 {
-			t.Errorf("Wanted price '%s' got price '%s'", wantPrice3, gotPrice)
+		wantPriceFloat, _ := strconv.ParseFloat(wantPrice3, 64)
+		gotPriceFloat, _ := strconv.ParseFloat(gotPrice, 64)
+		if gotPriceFloat != wantPriceFloat {
+			t.Errorf("Wanted price '%f' got price '%f'", wantPriceFloat, gotPriceFloat)
 		}
 	}
 
-	unknownN := &v1.Node{}
-	unknownN.Spec.ProviderID = "fake providerID"
+	unknownN := &clustercache.Node{}
+	unknownN.SpecProviderID = "fake providerID"
 	unknownN.Name = "unknownname"
 	unknownN.Labels = make(map[string]string)
-	unknownN.Labels["topology.kubernetes.io/region"] = "fakeregion"
+	unknownN.Labels[v1.LabelTopologyRegion] = "fakeregion"
 	unknownN.Labels["foo"] = labelFooWant
 	k4 := c.GetKey(unknownN.Labels, unknownN)
 	resN4, _, _ := c.NodePricing(k4)
@@ -417,19 +436,19 @@ func TestNodePriceFromCSVWithRegion(t *testing.T) {
 }
 
 type FakeCache struct {
-	nodes []*v1.Node
+	nodes []*clustercache.Node
 	clustercache.ClusterCache
 }
 
-func (f FakeCache) GetAllNodes() []*v1.Node {
+func (f FakeCache) GetAllNodes() []*clustercache.Node {
 	return f.nodes
 }
 
-func (f FakeCache) GetAllDaemonSets() []*appsv1.DaemonSet {
+func (f FakeCache) GetAllDaemonSets() []*clustercache.DaemonSet {
 	return nil
 }
 
-func NewFakeNodeCache(nodes []*v1.Node) FakeCache {
+func NewFakeNodeCache(nodes []*clustercache.Node) FakeCache {
 	return FakeCache{
 		nodes: nodes,
 	}
@@ -453,14 +472,14 @@ func TestNodePriceFromCSVWithBadConfig(t *testing.T) {
 	}
 	c.DownloadPricingData()
 
-	n := &v1.Node{}
-	n.Spec.ProviderID = "fake"
+	n := &clustercache.Node{}
+	n.SpecProviderID = "fake"
 	n.Name = "nameWant"
 	n.Labels = make(map[string]string)
 	n.Labels["foo"] = "labelFooWant"
-	n.Labels[v1.LabelZoneRegion] = "regionone"
+	n.Labels[v1.LabelTopologyRegion] = "regionone"
 
-	fc := NewFakeNodeCache([]*v1.Node{n})
+	fc := NewFakeNodeCache([]*clustercache.Node{n})
 	fm := FakeClusterMap{}
 	d, _ := time.ParseDuration("1m")
 
@@ -487,17 +506,17 @@ func TestSourceMatchesFromCSV(t *testing.T) {
 	}
 	c.DownloadPricingData()
 
-	n := &v1.Node{}
-	n.Spec.ProviderID = "fake"
+	n := &clustercache.Node{}
+	n.SpecProviderID = "fake"
 	n.Name = "nameWant"
 	n.Labels = make(map[string]string)
 	n.Labels["foo"] = "labelFooWant"
-	n.Labels[v1.LabelZoneRegion] = "regionone"
+	n.Labels[v1.LabelTopologyRegion] = "regionone"
 
-	n2 := &v1.Node{}
-	n2.Spec.ProviderID = "azure:///subscriptions/123a7sd-asd-1234-578a9-123abcdef/resourceGroups/case_12_STaGe_TeSt7/providers/Microsoft.Compute/virtualMachineScaleSets/vmss-agent-worker0-12stagetest7-ezggnore/virtualMachines/7"
+	n2 := &clustercache.Node{}
+	n2.SpecProviderID = "azure:///subscriptions/123a7sd-asd-1234-578a9-123abcdef/resourceGroups/case_12_STaGe_TeSt7/providers/Microsoft.Compute/virtualMachineScaleSets/vmss-agent-worker0-12stagetest7-ezggnore/virtualMachines/7"
 	n2.Labels = make(map[string]string)
-	n2.Labels[v1.LabelZoneRegion] = "eastus2"
+	n2.Labels[v1.LabelTopologyRegion] = "eastus2"
 	n2.Labels["foo"] = "labelFooWant"
 
 	k := c.GetKey(n2.Labels, n2)
@@ -512,14 +531,14 @@ func TestSourceMatchesFromCSV(t *testing.T) {
 		}
 	}
 
-	n3 := &v1.Node{}
-	n3.Spec.ProviderID = "fake"
+	n3 := &clustercache.Node{}
+	n3.SpecProviderID = "fake"
 	n3.Name = "nameWant"
 	n3.Labels = make(map[string]string)
-	n.Labels[v1.LabelZoneRegion] = "eastus2"
-	n.Labels[v1.LabelInstanceType] = "Standard_F32s_v2"
+	n3.Labels[v1.LabelTopologyRegion] = "eastus2"
+	n3.Labels[v1.LabelInstanceTypeStable] = "Standard_F32s_v2"
 
-	fc := NewFakeNodeCache([]*v1.Node{n, n2, n3})
+	fc := NewFakeNodeCache([]*clustercache.Node{n, n2, n3})
 	fm := FakeClusterMap{}
 	d, _ := time.ParseDuration("1m")
 
@@ -548,10 +567,10 @@ func TestSourceMatchesFromCSV(t *testing.T) {
 }
 
 func TestNodePriceFromCSVWithCase(t *testing.T) {
-	n := &v1.Node{}
-	n.Spec.ProviderID = "azure:///subscriptions/123a7sd-asd-1234-578a9-123abcdef/resourceGroups/case_12_STaGe_TeSt7/providers/Microsoft.Compute/virtualMachineScaleSets/vmss-agent-worker0-12stagetest7-ezggnore/virtualMachines/7"
+	n := &clustercache.Node{}
+	n.SpecProviderID = "azure:///subscriptions/123a7sd-asd-1234-578a9-123abcdef/resourceGroups/case_12_STaGe_TeSt7/providers/Microsoft.Compute/virtualMachineScaleSets/vmss-agent-worker0-12stagetest7-ezggnore/virtualMachines/7"
 	n.Labels = make(map[string]string)
-	n.Labels[v1.LabelZoneRegion] = "eastus2"
+	n.Labels[v1.LabelTopologyRegion] = "eastus2"
 	wantPrice := "0.13370357"
 
 	confMan := config.NewConfigFileManager(&config.ConfigFileManagerOpts{
@@ -572,19 +591,78 @@ func TestNodePriceFromCSVWithCase(t *testing.T) {
 		t.Errorf("Error in NodePricing: %s", err.Error())
 	} else {
 		gotPrice := resN.Cost
-		if gotPrice != wantPrice {
-			t.Errorf("Wanted price '%s' got price '%s'", wantPrice, gotPrice)
+		wantPriceFloat, _ := strconv.ParseFloat(wantPrice, 64)
+		gotPriceFloat, _ := strconv.ParseFloat(gotPrice, 64)
+		if gotPriceFloat != wantPriceFloat {
+			t.Errorf("Wanted price '%f' got price '%f'", wantPriceFloat, gotPriceFloat)
+		}
+	}
+
+}
+
+func TestNodePriceFromCSVMixed(t *testing.T) {
+	labelFooWant := "OnDemand"
+
+	confMan := config.NewConfigFileManager(&config.ConfigFileManagerOpts{
+		LocalConfigPath: "./",
+	})
+
+	n := &clustercache.Node{}
+	n.Labels = make(map[string]string)
+	n.Labels["TestClusterUsage"] = labelFooWant
+	n.Labels["nvidia.com/gpu_type"] = "a100-ondemand"
+	n.Status.Capacity = v1.ResourceList{"nvidia.com/gpu": *resource.NewScaledQuantity(2, 0)}
+	wantPrice := "1.904110"
+
+	labelFooWant2 := "Reserved"
+	n2 := &clustercache.Node{}
+	n2.Labels = make(map[string]string)
+	n2.Labels["TestClusterUsage"] = labelFooWant2
+	n2.Labels["nvidia.com/gpu_type"] = "a100-reserved"
+	n2.Status.Capacity = v1.ResourceList{"nvidia.com/gpu": *resource.NewScaledQuantity(1, 0)}
+
+	wantPrice2 := "1.654795"
+
+	c := &provider.CSVProvider{
+		CSVLocation: "../configs/pricing_schema_mixed_gpu_ondemand.csv",
+		CustomProvider: &provider.CustomProvider{
+			Config: provider.NewProviderConfig(confMan, "../configs/default.json"),
+		},
+	}
+	c.DownloadPricingData()
+	k := c.GetKey(n.Labels, n)
+	resN, _, err := c.NodePricing(k)
+	if err != nil {
+		t.Errorf("Error in NodePricing: %s", err.Error())
+	} else {
+		gotPrice := resN.Cost
+		wantPriceFloat, _ := strconv.ParseFloat(wantPrice, 64)
+		gotPriceFloat, _ := strconv.ParseFloat(gotPrice, 64)
+		if gotPriceFloat != wantPriceFloat {
+			t.Errorf("Wanted price '%f' got price '%f'", wantPriceFloat, gotPriceFloat)
+		}
+	}
+	k2 := c.GetKey(n2.Labels, n2)
+	resN2, _, err2 := c.NodePricing(k2)
+	if err2 != nil {
+		t.Errorf("Error in NodePricing: %s", err.Error())
+	} else {
+		gotPrice := resN2.Cost
+		wantPriceFloat, _ := strconv.ParseFloat(wantPrice2, 64)
+		gotPriceFloat, _ := strconv.ParseFloat(gotPrice, 64)
+		if gotPriceFloat != wantPriceFloat {
+			t.Errorf("Wanted price '%f' got price '%f'", wantPriceFloat, gotPriceFloat)
 		}
 	}
 
 }
 
 func TestNodePriceFromCSVByClass(t *testing.T) {
-	n := &v1.Node{}
-	n.Spec.ProviderID = "fakeproviderid"
+	n := &clustercache.Node{}
+	n.SpecProviderID = "fakeproviderid"
 	n.Labels = make(map[string]string)
-	n.Labels[v1.LabelZoneRegion] = "eastus2"
-	n.Labels[v1.LabelInstanceType] = "Standard_F32s_v2"
+	n.Labels[v1.LabelTopologyRegion] = "eastus2"
+	n.Labels[v1.LabelInstanceTypeStable] = "Standard_F32s_v2"
 	wantpricefloat := 0.13370357
 	wantPrice := fmt.Sprintf("%f", (math.Round(wantpricefloat*1000000) / 1000000))
 
@@ -612,11 +690,11 @@ func TestNodePriceFromCSVByClass(t *testing.T) {
 		}
 	}
 
-	n2 := &v1.Node{}
-	n2.Spec.ProviderID = "fakeproviderid"
+	n2 := &clustercache.Node{}
+	n2.SpecProviderID = "fakeproviderid"
 	n2.Labels = make(map[string]string)
-	n2.Labels[v1.LabelZoneRegion] = "fakeregion"
-	n2.Labels[v1.LabelInstanceType] = "Standard_F32s_v2"
+	n2.Labels[v1.LabelTopologyRegion] = "fakeregion"
+	n2.Labels[v1.LabelInstanceTypeStable] = "Standard_F32s_v2"
 	k2 := c.GetKey(n2.Labels, n)
 
 	c.DownloadPricingData()

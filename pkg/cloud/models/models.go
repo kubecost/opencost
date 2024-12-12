@@ -10,10 +10,9 @@ import (
 	"time"
 
 	"github.com/microcosm-cc/bluemonday"
-	v1 "k8s.io/api/core/v1"
-
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/opencost/opencost/pkg/config"
-	"github.com/opencost/opencost/pkg/log"
 )
 
 var (
@@ -56,6 +55,7 @@ type Node struct {
 	GPU              string                `json:"gpu"` // GPU represents the number of GPU on the instance
 	GPUName          string                `json:"gpuName"`
 	GPUCost          string                `json:"gpuCost"`
+	VGPU             string                `json:"vgpu"` // virtualized gpu-- if we are using gpu replicas
 	InstanceType     string                `json:"instanceType,omitempty"`
 	Region           string                `json:"region,omitempty"`
 	Reserved         *ReservedInstanceData `json:"reserved,omitempty"`
@@ -248,13 +248,18 @@ func SetCustomPricingField(obj *CustomPricing, name string, value string) error 
 	// from getting set here.
 	switch strings.ToLower(name) {
 	case "cpu", "gpu", "ram", "spotcpu", "spotgpu", "spotram", "storage", "zonenetworkegress", "regionnetworkegress", "internetnetworkegress":
-		// Validate that "value" represents a real floating point number, and
-		// set precision, bits, etc. Do not allow NaN.
-		val, err := sanitizeFloatString(value, false)
-		if err != nil {
-			return fmt.Errorf("invalid numeric value for field '%s': %s", name, value)
+		// If we are sent an empty string, ignore the key and don't change the value
+		if value == "" {
+			return nil
+		} else {
+			// Validate that "value" represents a real floating point number, and
+			// set precision, bits, etc. Do not allow NaN.
+			val, err := sanitizeFloatString(value, false)
+			if err != nil {
+				return fmt.Errorf("invalid numeric value for field '%s': %s", name, value)
+			}
+			value = val
 		}
-		value = val
 	default:
 	}
 
@@ -309,8 +314,8 @@ type Provider interface {
 	LoadBalancerPricing() (*LoadBalancer, error) // TODO: add key interface arg for dynamic price fetching
 	AllNodePricing() (interface{}, error)
 	DownloadPricingData() error
-	GetKey(map[string]string, *v1.Node) Key
-	GetPVKey(*v1.PersistentVolume, map[string]string, string) PVKey
+	GetKey(map[string]string, *clustercache.Node) Key
+	GetPVKey(*clustercache.PersistentVolume, map[string]string, string) PVKey
 	UpdateConfig(r io.Reader, updateType string) (*CustomPricing, error)
 	UpdateConfigFromConfigMap(map[string]string) (*CustomPricing, error)
 	GetConfig() (*CustomPricing, error)

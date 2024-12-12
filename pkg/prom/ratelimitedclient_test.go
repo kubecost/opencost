@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/opencost/opencost/pkg/util"
-	"github.com/opencost/opencost/pkg/util/httputil"
+	"github.com/opencost/opencost/core/pkg/util"
+	"github.com/opencost/opencost/core/pkg/util/httputil"
 	prometheus "github.com/prometheus/client_golang/api"
 )
 
@@ -156,6 +156,9 @@ func TestRateLimitedOnceAndSuccess(t *testing.T) {
 
 	// we just need to execute this  once to see retries in effect
 	res, body, err := client.Do(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if res.StatusCode != 200 {
 		t.Fatalf("200 StatusCode expected. Got: %d", res.StatusCode)
@@ -198,6 +201,9 @@ func TestRateLimitedOnceAndFail(t *testing.T) {
 
 	// we just need to execute this  once to see retries in effect
 	res, body, err := client.Do(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if res.StatusCode != 400 {
 		t.Fatalf("400 StatusCode expected. Got: %d", res.StatusCode)

@@ -3,8 +3,8 @@ package costmodel
 import (
 	"fmt"
 
+	"github.com/opencost/opencost/core/pkg/opencost"
 	"github.com/opencost/opencost/pkg/env"
-	"github.com/opencost/opencost/pkg/kubecost"
 	"github.com/opencost/opencost/pkg/prom"
 )
 
@@ -85,7 +85,7 @@ func newPodKey(cluster, namespace, pod string) podKey {
 
 // getUnmountedPodKey while certain Unmounted costs can have a namespace, all unmounted costs for a single cluster will be represented by the same asset
 func getUnmountedPodKey(cluster string) podKey {
-	return newPodKey(cluster, kubecost.UnmountedSuffix, kubecost.UnmountedSuffix)
+	return newPodKey(cluster, opencost.UnmountedSuffix, opencost.UnmountedSuffix)
 }
 
 // resultPodKey converts a Prometheus query result to a podKey by looking

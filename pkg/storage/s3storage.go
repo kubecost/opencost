@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opencost/opencost/pkg/log"
+	"github.com/opencost/opencost/core/pkg/log"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -347,7 +347,7 @@ func (s3 *S3Storage) FullPath(name string) string {
 func (s3 *S3Storage) Read(name string) ([]byte, error) {
 	name = trimLeading(name)
 
-	log.Debugf("S3Storage::Read(%s)", name)
+	log.Tracef("S3Storage::Read(%s)", name)
 	ctx := context.Background()
 
 	return s3.getRange(ctx, name, 0, -1)
@@ -357,7 +357,7 @@ func (s3 *S3Storage) Read(name string) ([]byte, error) {
 // Exists checks if the given object exists.
 func (s3 *S3Storage) Exists(name string) (bool, error) {
 	name = trimLeading(name)
-	//log.Debugf("S3Storage::Exists(%s)", name)
+	log.Tracef("S3Storage::Exists(%s)", name)
 
 	ctx := context.Background()
 
@@ -376,7 +376,7 @@ func (s3 *S3Storage) Exists(name string) (bool, error) {
 func (s3 *S3Storage) Write(name string, data []byte) error {
 	name = trimLeading(name)
 
-	log.Debugf("S3Storage::Write(%s)", name)
+	log.Tracef("S3Storage::Write(%s)", name)
 
 	ctx := context.Background()
 	sse, err := s3.getServerSideEncryption(ctx)
@@ -410,7 +410,7 @@ func (s3 *S3Storage) Write(name string, data []byte) error {
 func (s3 *S3Storage) Stat(name string) (*StorageInfo, error) {
 	name = trimLeading(name)
 
-	//log.Debugf("S3Storage::Stat(%s)", name)
+	log.Tracef("S3Storage::Stat(%s)", name)
 	ctx := context.Background()
 
 	objInfo, err := s3.client.StatObject(ctx, s3.name, name, minio.StatObjectOptions{})
@@ -432,7 +432,7 @@ func (s3 *S3Storage) Stat(name string) (*StorageInfo, error) {
 func (s3 *S3Storage) Remove(name string) error {
 	name = trimLeading(name)
 
-	log.Debugf("S3Storage::Remove(%s)", name)
+	log.Tracef("S3Storage::Remove(%s)", name)
 	ctx := context.Background()
 
 	return s3.client.RemoveObject(ctx, s3.name, name, minio.RemoveObjectOptions{})
@@ -441,7 +441,7 @@ func (s3 *S3Storage) Remove(name string) error {
 func (s3 *S3Storage) List(path string) ([]*StorageInfo, error) {
 	path = trimLeading(path)
 
-	log.Debugf("S3Storage::List(%s)", path)
+	log.Tracef("S3Storage::List(%s)", path)
 	ctx := context.Background()
 
 	// Ensure the object name actually ends with a dir suffix. Otherwise we'll just iterate the
@@ -462,17 +462,21 @@ func (s3 *S3Storage) List(path string) ([]*StorageInfo, error) {
 		if object.Err != nil {
 			return nil, object.Err
 		}
-		// This sometimes happens with empty buckets.
-		if object.Key == "" {
-			continue
-		}
+
 		// The s3 client can also return the directory itself in the ListObjects call above.
 		if object.Key == path {
 			continue
 		}
 
+		name := trimName(object.Key)
+
+		// This sometimes happens with empty buckets.
+		if name == "" {
+			continue
+		}
+
 		stats = append(stats, &StorageInfo{
-			Name:    trimName(object.Key),
+			Name:    name,
 			Size:    object.Size,
 			ModTime: object.LastModified,
 		})
@@ -484,7 +488,7 @@ func (s3 *S3Storage) List(path string) ([]*StorageInfo, error) {
 func (s3 *S3Storage) ListDirectories(path string) ([]*StorageInfo, error) {
 	path = trimLeading(path)
 
-	log.Debugf("S3Storage::List(%s)", path)
+	log.Tracef("S3Storage::List(%s)", path)
 	ctx := context.Background()
 
 	if path != "" {

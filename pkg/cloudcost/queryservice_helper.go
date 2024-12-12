@@ -4,13 +4,11 @@ import (
 	"encoding/csv"
 	"fmt"
 	"net/http"
-	"strings"
 
-	filter21 "github.com/opencost/opencost/pkg/filter21"
-	"github.com/opencost/opencost/pkg/filter21/cloudcost"
-	"github.com/opencost/opencost/pkg/kubecost"
-	"github.com/opencost/opencost/pkg/prom"
-	"github.com/opencost/opencost/pkg/util/httputil"
+	"github.com/opencost/opencost/core/pkg/filter"
+	"github.com/opencost/opencost/core/pkg/filter/cloudcost"
+	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/util/httputil"
 )
 
 func ParseCloudCostRequest(qp httputil.QueryParams) (*QueryRequest, error) {
@@ -20,7 +18,7 @@ func ParseCloudCostRequest(qp httputil.QueryParams) (*QueryRequest, error) {
 		return nil, fmt.Errorf("missing require window param")
 	}
 
-	window, err := kubecost.ParseWindowUTC(windowStr)
+	window, err := opencost.ParseWindowUTC(windowStr)
 	if err != nil {
 		return nil, fmt.Errorf("invalid window parameter: %w", err)
 	}
@@ -31,21 +29,21 @@ func ParseCloudCostRequest(qp httputil.QueryParams) (*QueryRequest, error) {
 	aggregateByRaw := qp.GetList("aggregate", ",")
 	var aggregateBy []string
 	for _, aggBy := range aggregateByRaw {
-		prop, err := ParseCloudCostProperty(aggBy)
+		prop, err := opencost.ParseCloudCostProperty(aggBy)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing aggregate by %v", err)
 		}
-		aggregateBy = append(aggregateBy, prop)
+		aggregateBy = append(aggregateBy, string(prop))
 	}
 
 	// if we're aggregating by nothing (aka `item` on the frontend) then aggregate by all
 	if len(aggregateBy) == 0 {
-		aggregateBy = []string{kubecost.CloudCostInvoiceEntityIDProp, kubecost.CloudCostAccountIDProp, kubecost.CloudCostProviderProp, kubecost.CloudCostProviderIDProp, kubecost.CloudCostCategoryProp, kubecost.CloudCostServiceProp}
+		aggregateBy = []string{opencost.CloudCostInvoiceEntityIDProp, opencost.CloudCostAccountIDProp, opencost.CloudCostProviderProp, opencost.CloudCostProviderIDProp, opencost.CloudCostCategoryProp, opencost.CloudCostServiceProp}
 	}
 
-	accumulate := kubecost.ParseAccumulate(qp.Get("accumulate", ""))
+	accumulate := opencost.ParseAccumulate(qp.Get("accumulate", ""))
 
-	var filter filter21.Filter
+	var filter filter.Filter
 	filterString := qp.Get("filter", "")
 	if filterString != "" {
 		parser := cloudcost.NewCloudCostFilterParser()
@@ -66,38 +64,14 @@ func ParseCloudCostRequest(qp httputil.QueryParams) (*QueryRequest, error) {
 	return opts, nil
 }
 
-func ParseCloudCostProperty(text string) (string, error) {
-	switch strings.TrimSpace(strings.ToLower(text)) {
-	case strings.ToLower(kubecost.CloudCostInvoiceEntityIDProp):
-		return kubecost.CloudCostInvoiceEntityIDProp, nil
-	case strings.ToLower(kubecost.CloudCostAccountIDProp):
-		return kubecost.CloudCostAccountIDProp, nil
-	case strings.ToLower(kubecost.CloudCostProviderProp):
-		return kubecost.CloudCostProviderProp, nil
-	case strings.ToLower(kubecost.CloudCostProviderIDProp):
-		return kubecost.CloudCostProviderIDProp, nil
-	case strings.ToLower(kubecost.CloudCostCategoryProp):
-		return kubecost.CloudCostCategoryProp, nil
-	case strings.ToLower(kubecost.CloudCostServiceProp):
-		return kubecost.CloudCostServiceProp, nil
-	}
-
-	if strings.HasPrefix(text, "label:") {
-		label := prom.SanitizeLabelName(strings.TrimSpace(strings.TrimPrefix(text, "label:")))
-		return fmt.Sprintf("label:%s", label), nil
-	}
-
-	return "", fmt.Errorf("invalid cloud cost property: %s", text)
-}
-
-func parseCloudCostViewRequest(qp httputil.QueryParams) (*ViewQueryRequest, error) {
+func ParseCloudCostViewRequest(qp httputil.QueryParams) (*ViewQueryRequest, error) {
 	qr, err := ParseCloudCostRequest(qp)
 	if err != nil {
 		return nil, err
 	}
 
 	// parse cost metric
-	costMetricName, err := kubecost.ParseCostMetricName(qp.Get("costMetric", string(kubecost.CostMetricAmortizedNetCost)))
+	costMetricName, err := opencost.ParseCostMetricName(qp.Get("costMetric", string(opencost.CostMetricAmortizedNetCost)))
 	if err != nil {
 		return nil, fmt.Errorf("error parsing 'costMetric': %w", err)
 	}

@@ -12,10 +12,10 @@ import (
 	"github.com/opencost/opencost/pkg/cloud/gcp"
 	"github.com/opencost/opencost/pkg/cloud/models"
 
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/util/fileutil"
+	"github.com/opencost/opencost/core/pkg/util/json"
 	"github.com/opencost/opencost/pkg/env"
-	"github.com/opencost/opencost/pkg/log"
-	"github.com/opencost/opencost/pkg/util/fileutil"
-	"github.com/opencost/opencost/pkg/util/json"
 )
 
 const authSecretPath = "/var/secrets/service-key.json"
@@ -239,7 +239,13 @@ type MultiCloudWatcher struct {
 }
 
 func (mcw *MultiCloudWatcher) GetConfigs() []cloud.KeyedConfig {
-	multiConfigPath := path.Join(env.GetConfigPathWithDefault("/var/configs"), cloudIntegrationSecretPath)
+	var multiConfigPath string
+
+	if env.IsKubernetesEnabled() {
+		multiConfigPath = path.Join(env.GetConfigPathWithDefault("/var/configs"), cloudIntegrationSecretPath)
+	} else {
+		multiConfigPath = env.GetCloudCostConfigPath()
+	}
 	exists, err := fileutil.FileExists(multiConfigPath)
 	if err != nil {
 		log.Errorf("MultiCloudWatcher:  error checking file at '%s': %s", multiConfigPath, err.Error())
@@ -259,6 +265,8 @@ func (mcw *MultiCloudWatcher) GetConfigs() []cloud.KeyedConfig {
 			return nil
 		}
 	}
+
+	log.Debugf("MultiCloudWatcher GetConfigs: multiConfigPath: %s", multiConfigPath)
 
 	configurations := &Configurations{}
 	err = loadFile(multiConfigPath, configurations)

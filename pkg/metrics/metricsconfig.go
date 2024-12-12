@@ -17,7 +17,9 @@ var (
 )
 
 type MetricsConfig struct {
-	DisabledMetrics []string `json:"disabledMetrics"`
+	DisabledMetrics    []string        `json:"disabledMetrics"`
+	UseLabelsWhitelist bool            `json:"useLabelsWhitelist,omitempty"`
+	LabelsWhitelist    map[string]bool `json:"labelsWhiteList,omitempty"`
 }
 
 // Gets map of disabled metrics to empty structs

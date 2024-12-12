@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/opencost/opencost/pkg/kubecost"
+	"github.com/opencost/opencost/core/pkg/opencost"
 )
 
 // IntervalPoint describes a start or end of a window of time
@@ -58,7 +58,7 @@ type CoefficientComponent struct {
 // getIntervalPointFromWindows takes a map of podKeys to windows
 // and returns a sorted list of IntervalPoints representing the
 // starts and ends of all those windows.
-func getIntervalPointsFromWindows(windows map[podKey]kubecost.Window) IntervalPoints {
+func getIntervalPointsFromWindows(windows map[podKey]opencost.Window) IntervalPoints {
 
 	var intervals IntervalPoints
 
@@ -85,7 +85,7 @@ func getPVCCostCoefficients(intervals IntervalPoints, thisPVC *pvc) (map[podKey]
 	// components are preserved for testing purposes.
 	pvcCostCoefficientMap := make(map[podKey][]CoefficientComponent)
 
-	pvcWindow := kubecost.NewWindow(&thisPVC.Start, &thisPVC.End)
+	pvcWindow := opencost.NewWindow(&thisPVC.Start, &thisPVC.End)
 	pvcWindowDurationMinutes := pvcWindow.Duration().Minutes()
 	if pvcWindowDurationMinutes <= 0.0 {
 		// Protect against Inf and NaN issues that would be caused by dividing

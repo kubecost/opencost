@@ -123,3 +123,72 @@ func TestGetExportCSVMaxDays(t *testing.T) {
 		})
 	}
 }
+
+func TestGetKubernetesEnabled(t *testing.T) {
+	tests := []struct {
+		name string
+		want bool
+		pre  func()
+	}{
+		{
+			name: "Ensure the default value is false",
+			want: false,
+		},
+		{
+			name: "Ensure the value is true when KUBERNETES_PORT has a value",
+			want: true,
+			pre: func() {
+				os.Setenv("KUBERNETES_PORT", "tcp://10.43.0.1:443")
+			},
+		},
+	}
+	for _, tt := range tests {
+		if tt.pre != nil {
+			tt.pre()
+		}
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsKubernetesEnabled(); got != tt.want {
+				t.Errorf("IsKubernetesEnabled() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+
+}
+
+func TestGetCloudCostConfigPath(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+		pre  func()
+	}{
+		{
+			name: "Ensure the default value is 'cloud-integration.json'",
+			want: "cloud-integration.json",
+		},
+		{
+			name: "Ensure the value is 'cloud-integration.json' when CLOUD_COST_CONFIG_PATH is set to ''",
+			want: "cloud-integration.json",
+			pre: func() {
+				os.Setenv("CLOUD_COST_CONFIG_PATH", "")
+			},
+		},
+		{
+			name: "Ensure the value is 'flying-pig.json' when CLOUD_COST_CONFIG_PATH is set to 'flying-pig.json'",
+			want: "flying-pig.json",
+			pre: func() {
+				os.Setenv("CLOUD_COST_CONFIG_PATH", "flying-pig.json")
+			},
+		},
+	}
+	for _, tt := range tests {
+		if tt.pre != nil {
+			tt.pre()
+		}
+		t.Run(tt.name, func(t *testing.T) {
+			if got := GetCloudCostConfigPath(); got != tt.want {
+				t.Errorf("GetCloudCostConfigPath() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+
+}

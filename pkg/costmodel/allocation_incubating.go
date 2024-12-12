@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/opencost"
 	"github.com/opencost/opencost/pkg/env"
-	"github.com/opencost/opencost/pkg/kubecost"
-	"github.com/opencost/opencost/pkg/log"
 	"github.com/opencost/opencost/pkg/prom"
 )
 
@@ -33,7 +33,7 @@ type NodeTotals struct {
 // for the window defined by the given start and end times. The Allocations returned are unaggregated
 // (i.e. down to the container level), and the node totals should contained additional data that can be
 // used to calculate the idle costs at the node level.
-func (cm *CostModel) ComputeAllocationWithNodeTotals(start, end time.Time, resolution time.Duration) (*kubecost.AllocationSet, map[string]*NodeTotals, error) {
+func (cm *CostModel) ComputeAllocationWithNodeTotals(start, end time.Time, resolution time.Duration) (*opencost.AllocationSet, map[string]*NodeTotals, error) {
 	nodeMap := make(map[string]*NodeTotals)
 
 	// If the duration is short enough, compute the AllocationSet directly
@@ -53,7 +53,7 @@ func (cm *CostModel) ComputeAllocationWithNodeTotals(start, end time.Time, resol
 
 	// Collect AllocationSets in a range, then accumulate
 	// TODO optimize by collecting consecutive AllocationSets, accumulating as we go
-	asr := kubecost.NewAllocationSetRange()
+	asr := opencost.NewAllocationSetRange()
 
 	for e.Before(end) {
 		// By default, query for the full remaining duration. But do not let
@@ -71,7 +71,7 @@ func (cm *CostModel) ComputeAllocationWithNodeTotals(start, end time.Time, resol
 		as, nodeData, err := cm.computeAllocation(s, e, resolution)
 		appendNodeData(nodeMap, s, e, nodeData)
 		if err != nil {
-			return kubecost.NewAllocationSet(start, end), nodeMap, fmt.Errorf("error computing allocation for %s: %s", kubecost.NewClosedWindow(s, e), err)
+			return opencost.NewAllocationSet(start, end), nodeMap, fmt.Errorf("error computing allocation for %s: %s", opencost.NewClosedWindow(s, e), err)
 		}
 
 		// Append to the range
@@ -130,15 +130,15 @@ func (cm *CostModel) ComputeAllocationWithNodeTotals(start, end time.Time, resol
 	// Accumulate to yield the result AllocationSet. After this step, we will
 	// be nearly complete, but without the raw allocation data, which must be
 	// recomputed.
-	resultASR, err := asr.Accumulate(kubecost.AccumulateOptionAll)
+	resultASR, err := asr.Accumulate(opencost.AccumulateOptionAll)
 	if err != nil {
-		return kubecost.NewAllocationSet(start, end), nil, fmt.Errorf("error accumulating data for %s: %s", kubecost.NewClosedWindow(s, e), err)
+		return opencost.NewAllocationSet(start, end), nil, fmt.Errorf("error accumulating data for %s: %s", opencost.NewClosedWindow(s, e), err)
 	}
 	if resultASR != nil && len(resultASR.Allocations) == 0 {
-		return kubecost.NewAllocationSet(start, end), nil, nil
+		return opencost.NewAllocationSet(start, end), nil, nil
 	}
 	if length := len(resultASR.Allocations); length != 1 {
-		return kubecost.NewAllocationSet(start, end), nil, fmt.Errorf("expected 1 accumulated allocation set, found %d sets", length)
+		return opencost.NewAllocationSet(start, end), nil, fmt.Errorf("expected 1 accumulated allocation set, found %d sets", length)
 	}
 	result := resultASR.Allocations[0]
 
@@ -176,7 +176,7 @@ func (cm *CostModel) ComputeAllocationWithNodeTotals(start, end time.Time, resol
 			}
 
 			if resultAlloc.RawAllocationOnly == nil {
-				resultAlloc.RawAllocationOnly = &kubecost.RawAllocationOnlyData{}
+				resultAlloc.RawAllocationOnly = &opencost.RawAllocationOnlyData{}
 			}
 
 			if alloc.RawAllocationOnly == nil {
