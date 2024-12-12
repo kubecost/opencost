@@ -1102,6 +1102,37 @@ func (cm *CostModel) GetNodeCost(cp costAnalyzerCloud.Provider) (map[string]*cos
 				defaultCPUCorePrice = 0
 			}
 
+			// Some customers may want GPU pricing to be determined by the labels affixed to their nodes. GpuPricing
+			// passes the node's labels to the provider, which then cross-references them with the labels that the
+			// provider knows to have label-specific costs associated with them, and returns that cost. See CSVProvider
+			// for an example implementation.
+			var gpuPrice float64
+			gpuPricing, err := cp.GpuPricing(nodeLabels)
+			if err != nil {
+				log.Errorf("Could not determine custom GPU pricing: %s", err)
+				gpuPrice = 0
+			} else if len(gpuPricing) > 0 {
+				gpuPrice, err = strconv.ParseFloat(gpuPricing, 64)
+				if err != nil {
+					log.Errorf("Could not parse custom GPU pricing: %s", err)
+					gpuPrice = 0
+				}
+				if math.IsNaN(gpuPrice) {
+					log.Warnf("Custom GPU pricing parsed as NaN. Setting to 0.")
+					gpuPrice = 0
+				}
+			} else {
+				gpuPrice, err = strconv.ParseFloat(cfg.GPU, 64)
+				if err != nil {
+					log.Errorf("Could not parse default gpu price")
+					gpuPrice = 0
+				}
+				if math.IsNaN(gpuPrice) {
+					log.Warnf("defaultGPU parsed as NaN. Setting to 0.")
+					gpuPrice = 0
+				}
+			}
+
 			defaultRAMPrice, err := strconv.ParseFloat(cfg.RAM, 64)
 			if err != nil {
 				log.Errorf("Could not parse default ram price")
@@ -1112,24 +1143,15 @@ func (cm *CostModel) GetNodeCost(cp costAnalyzerCloud.Provider) (map[string]*cos
 				defaultRAMPrice = 0
 			}
 
-			defaultGPUPrice, err := strconv.ParseFloat(cfg.GPU, 64)
-			if err != nil {
-				log.Errorf("Could not parse default gpu price")
-				defaultGPUPrice = 0
-			}
-			if math.IsNaN(defaultGPUPrice) {
-				log.Warnf("defaultGPU parsed as NaN. Setting to 0.")
-				defaultGPUPrice = 0
-			}
 			// Just say no to doing the ratios!
 			cpuCost := defaultCPUCorePrice * cpu
-			gpuCost := defaultGPUPrice * gpuc
+			gpuCost := gpuPrice * gpuc
 			ramCost := defaultRAMPrice * ram
 			nodeCost := cpuCost + gpuCost + ramCost
 
 			newCnode.Cost = fmt.Sprintf("%f", nodeCost)
 			newCnode.VCPUCost = fmt.Sprintf("%f", defaultCPUCorePrice)
-			newCnode.GPUCost = fmt.Sprintf("%f", defaultGPUPrice)
+			newCnode.GPUCost = fmt.Sprintf("%f", gpuPrice)
 			newCnode.RAMCost = fmt.Sprintf("%f", defaultRAMPrice)
 			newCnode.RAMBytes = fmt.Sprintf("%f", ram)
 
@@ -1144,7 +1166,7 @@ func (cm *CostModel) GetNodeCost(cp costAnalyzerCloud.Provider) (map[string]*cos
 			log.Tracef("GPU without cost found for %s, calculating...", cp.GetKey(nodeLabels, n).Features())
 
 			// Some customers may want GPU pricing to be determined by the labels affixed to their nodes. GpuPricing
-			// passes the node's labels to the provider, which then cross references them with the labels that the
+			// passes the node's labels to the provider, which then cross-references them with the labels that the
 			// provider knows to have label-specific costs associated with them, and returns that cost. See CSVProvider
 			// for an example implementation.
 			gpuPricing, err := cp.GpuPricing(nodeLabels)
