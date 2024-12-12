@@ -1116,10 +1116,11 @@ func (cm *CostModel) GetNodeCost(cp costAnalyzerCloud.Provider) (map[string]*cos
 				if err != nil {
 					log.Errorf("Could not parse custom GPU pricing: %s", err)
 					gpuPrice = 0
-				}
-				if math.IsNaN(gpuPrice) {
+				} else if math.IsNaN(gpuPrice) {
 					log.Warnf("Custom GPU pricing parsed as NaN. Setting to 0.")
 					gpuPrice = 0
+				} else {
+					log.Infof("Using custom GPU pricing for node \"%s\": %f", name, gpuPrice)
 				}
 			} else {
 				gpuPrice, err = strconv.ParseFloat(cfg.GPU, 64)
