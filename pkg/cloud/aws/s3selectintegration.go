@@ -37,6 +37,13 @@ const S3SelectUserLabelPrefix = "resourceTags/user:"
 const S3SelectAWSLabelPrefix = "resourceTags/aws:"
 const S3SelectResourceTagsPrefix = "resourceTags/"
 
+const (
+	TypeSavingsPlanCoveredUsage = "SavingsPlanCoveredUsage"
+	TypeDiscountedUsage         = "DiscountedUsage"
+	TypeEDPDiscount             = "EdpDiscount"
+	TypePrivateRateDiscount     = "PrivateRateDiscount"
+)
+
 type S3SelectIntegration struct {
 	S3SelectQuerier
 }
@@ -96,40 +103,40 @@ func (s3si *S3SelectIntegration) GetCloudCost(
 		S3SelectAvailabilityZone,
 		S3SelectListCost,
 	}
-	_, checkNet := allColumns[S3SelectNetCost]
-	if checkNet {
+
+	if _, ok := allColumns[S3SelectNetCost]; ok {
 		selectColumns = append(selectColumns, S3SelectNetCost)
 	}
 
 	// Check for Reservation columns in CUR and query if available
-	_, checkReservations := allColumns[S3SelectRICost]
-	if checkReservations {
+
+	if _, ok := allColumns[S3SelectRICost]; ok {
 		selectColumns = append(selectColumns, S3SelectRICost)
 	}
-	_, checkNetReservations := allColumns[S3SelectNetRICost]
-	if checkNetReservations {
+
+	if _, ok := allColumns[S3SelectNetRICost]; ok {
 		selectColumns = append(selectColumns, S3SelectNetRICost)
 	}
 
 	// Check for Savings Plan Columns in CUR and query if available
-	_, checkSavingsPlan := allColumns[S3SelectSPCost]
-	if checkSavingsPlan {
+
+	if _, ok := allColumns[S3SelectSPCost]; ok {
 		selectColumns = append(selectColumns, S3SelectSPCost)
 	}
-	_, checkNetSavingsPlan := allColumns[S3SelectNetSPCost]
-	if checkNetSavingsPlan {
+
+	if _, ok := allColumns[S3SelectNetSPCost]; ok {
 		selectColumns = append(selectColumns, S3SelectNetSPCost)
 	}
 
 	// Determine which columns are user-defined tags and add those to the list
 	// of columns to query.
-	labelColumns := []string{}
+	userLabelColumns := []string{}
 	awsLabelColumns := []string{}
 	for column := range allColumns {
 		if strings.HasPrefix(column, S3SelectUserLabelPrefix) {
 			quotedTag := fmt.Sprintf(`s."%s"`, column)
 			selectColumns = append(selectColumns, quotedTag)
-			labelColumns = append(labelColumns, quotedTag)
+			userLabelColumns = append(userLabelColumns, quotedTag)
 		}
 		if strings.HasPrefix(column, S3SelectAWSLabelPrefix) {
 			quotedTag := fmt.Sprintf(`s."%s"`, column)
@@ -162,163 +169,12 @@ func (s3si *S3SelectIntegration) GetCloudCost(
 				return nil
 			}
 
-			startStr := GetCSVRowValue(row, columnIndexes, S3SelectStartDate)
-			billPayerAccountID := GetCSVRowValue(row, columnIndexes, S3SelectBillPayerAccountID)
-			itemAccountID := GetCSVRowValue(row, columnIndexes, S3SelectAccountID)
-			itemProviderID := GetCSVRowValue(row, columnIndexes, S3SelectResourceID)
-			lineItemType := GetCSVRowValue(row, columnIndexes, S3SelectItemType)
-			itemProductCode := GetCSVRowValue(row, columnIndexes, S3SelectProductCode)
-			usageType := GetCSVRowValue(row, columnIndexes, S3SelectUsageType)
-			regionCode := GetCSVRowValue(row, columnIndexes, S3SelectRegionCode)
-			availabilityZone := GetCSVRowValue(row, columnIndexes, S3SelectAvailabilityZone)
-
-			// Iterate through the slice of tag columns, assigning
-			// values to the column names, minus the tag prefix.
-			labels := opencost.CloudCostLabels{}
-			for _, labelColumnName := range labelColumns {
-				// remove quotes
-				labelName := strings.TrimPrefix(labelColumnName, `s."`)
-				labelName = strings.TrimSuffix(labelName, `"`)
-				// remove prefix
-				labelName = strings.TrimPrefix(labelName, S3SelectUserLabelPrefix)
-				value := GetCSVRowValue(row, columnIndexes, labelColumnName)
-				if value != "" {
-					labels[labelName] = value
-				}
-			}
-			for _, awsLabelColumnName := range awsLabelColumns {
-				// remove quotes
-				labelName := strings.TrimPrefix(awsLabelColumnName, `s."`)
-				labelName = strings.TrimSuffix(labelName, `"`)
-				// partially remove prefix leaving "aws:"
-				labelName = strings.TrimPrefix(labelName, S3SelectResourceTagsPrefix)
-				value := GetCSVRowValue(row, columnIndexes, awsLabelColumnName)
-				if value != "" {
-					labels[labelName] = value
-				}
+			cc, err3 := s3RowToCloudCost(row, columnIndexes, userLabelColumns, awsLabelColumns)
+			if err3 != nil {
+				log.Errorf("error creating cloud cost from row: %s", err3.Error())
+				continue
 			}
 
-			isKubernetes := 0.0
-			if itemProductCode == "AmazonEKS" || hasK8sLabel(labels) {
-				isKubernetes = 1.0
-			}
-
-			var (
-				amortizedCost    float64
-				amortizedNetCost float64
-				listCost         float64
-				netCost          float64
-			)
-			// Get list and net costs
-			if lineItemType != "EdpDiscount" && lineItemType != "PrivateRateDiscount" {
-				listCost, err = GetCSVRowValueFloat(row, columnIndexes, S3SelectListCost)
-				if err != nil {
-					return err
-				}
-			}
-
-			// Get net cost if available
-			netCost = listCost
-			if checkNet {
-				netCost, err = GetCSVRowValueFloat(row, columnIndexes, S3SelectNetCost)
-				if err != nil {
-					return err
-				}
-			}
-
-			// If there is a reservation_reservation_a_r_n on the line item use the awsRIPricingSUMColumn as cost
-			amortizedCost = listCost
-			amortizedNetCost = listCost
-			if lineItemType == "DiscountedUsage" {
-				if checkReservations {
-					amortizedCost, err = GetCSVRowValueFloat(row, columnIndexes, S3SelectRICost)
-					if err != nil {
-						log.Errorf(err.Error())
-						continue
-					}
-					amortizedNetCost = amortizedCost
-				}
-				if checkNetReservations {
-					amortizedNetCost, err = GetCSVRowValueFloat(row, columnIndexes, S3SelectNetRICost)
-					if err != nil {
-						log.Errorf(err.Error())
-						continue
-					}
-				}
-				// If there is a lineItemType of SavingsPlanCoveredUsage use the awsSPPricingSUMColumn
-			} else if lineItemType == "SavingsPlanCoveredUsage" {
-				if checkSavingsPlan {
-					amortizedCost, err = GetCSVRowValueFloat(row, columnIndexes, S3SelectSPCost)
-					if err != nil {
-						log.Errorf(err.Error())
-						continue
-					}
-					amortizedNetCost = amortizedCost
-				}
-				if checkNetSavingsPlan {
-					amortizedNetCost, err = GetCSVRowValueFloat(row, columnIndexes, S3SelectNetSPCost)
-					if err != nil {
-						log.Errorf(err.Error())
-						continue
-					}
-				}
-			}
-
-			category := SelectAWSCategory(itemProviderID, usageType, itemProductCode)
-			// Retrieve final stanza of product code for ProviderID
-			if itemProductCode == "AWSELB" || itemProductCode == "AmazonFSx" {
-				itemProviderID = ParseARN(itemProviderID)
-			}
-
-			properties := opencost.CloudCostProperties{}
-			properties.Provider = opencost.AWSProvider
-			properties.InvoiceEntityID = billPayerAccountID
-			properties.InvoiceEntityName = billPayerAccountID
-			properties.AccountID = itemAccountID
-			properties.AccountName = itemAccountID
-			properties.Category = category
-			properties.Service = itemProductCode
-			properties.ProviderID = itemProviderID
-			properties.RegionID = regionCode
-			properties.AvailabilityZone = availabilityZone
-			properties.Labels = labels
-
-			itemStart, err := time.Parse(S3SelectDateLayout, startStr)
-			if err != nil {
-				log.Infof(
-					"Unable to parse '%s': '%s'",
-					S3SelectStartDate,
-					err.Error(),
-				)
-				itemStart = time.Now()
-			}
-			itemStart = itemStart.Truncate(time.Hour * 24)
-			itemEnd := itemStart.AddDate(0, 0, 1)
-
-			cc := &opencost.CloudCost{
-				Properties: &properties,
-				Window:     opencost.NewWindow(&itemStart, &itemEnd),
-				ListCost: opencost.CostMetric{
-					Cost:              listCost,
-					KubernetesPercent: isKubernetes,
-				},
-				NetCost: opencost.CostMetric{
-					Cost:              netCost,
-					KubernetesPercent: isKubernetes,
-				},
-				AmortizedNetCost: opencost.CostMetric{
-					Cost:              amortizedCost,
-					KubernetesPercent: isKubernetes,
-				},
-				AmortizedCost: opencost.CostMetric{
-					Cost:              amortizedNetCost,
-					KubernetesPercent: isKubernetes,
-				},
-				InvoicedCost: opencost.CostMetric{
-					Cost:              netCost,
-					KubernetesPercent: isKubernetes,
-				},
-			}
 			ccsr.LoadCloudCost(cc)
 		}
 	}
@@ -328,6 +184,162 @@ func (s3si *S3SelectIntegration) GetCloudCost(
 	}
 
 	return ccsr, nil
+}
+
+func s3RowToCloudCost(row []string, columnIndexes map[string]int, userLabelColumns, awsLabelColumns []string) (*opencost.CloudCost, error) {
+	startStr := GetCSVRowValue(row, columnIndexes, S3SelectStartDate)
+	billPayerAccountID := GetCSVRowValue(row, columnIndexes, S3SelectBillPayerAccountID)
+	itemAccountID := GetCSVRowValue(row, columnIndexes, S3SelectAccountID)
+	itemProviderID := GetCSVRowValue(row, columnIndexes, S3SelectResourceID)
+	lineItemType := GetCSVRowValue(row, columnIndexes, S3SelectItemType)
+	itemProductCode := GetCSVRowValue(row, columnIndexes, S3SelectProductCode)
+	usageType := GetCSVRowValue(row, columnIndexes, S3SelectUsageType)
+	regionCode := GetCSVRowValue(row, columnIndexes, S3SelectRegionCode)
+	availabilityZone := GetCSVRowValue(row, columnIndexes, S3SelectAvailabilityZone)
+
+	// Iterate through the slice of tag columns, assigning
+	// values to the column names, minus the tag prefix.
+	labels := opencost.CloudCostLabels{}
+	for _, labelColumnName := range userLabelColumns {
+		// remove quotes
+		labelName := strings.TrimPrefix(labelColumnName, `s."`)
+		labelName = strings.TrimSuffix(labelName, `"`)
+		// remove prefix
+		labelName = strings.TrimPrefix(labelName, S3SelectUserLabelPrefix)
+		value := GetCSVRowValue(row, columnIndexes, labelColumnName)
+		if value != "" {
+			labels[labelName] = value
+		}
+	}
+	for _, awsLabelColumnName := range awsLabelColumns {
+		// remove quotes
+		labelName := strings.TrimPrefix(awsLabelColumnName, `s."`)
+		labelName = strings.TrimSuffix(labelName, `"`)
+		// partially remove prefix leaving "aws:"
+		labelName = strings.TrimPrefix(labelName, S3SelectResourceTagsPrefix)
+		value := GetCSVRowValue(row, columnIndexes, awsLabelColumnName)
+		if value != "" {
+			labels[labelName] = value
+		}
+	}
+
+	isKubernetes := 0.0
+	if itemProductCode == "AmazonEKS" || hasK8sLabel(labels) {
+		isKubernetes = 1.0
+	}
+
+	var (
+		amortizedCost    float64
+		amortizedNetCost float64
+		listCost         float64
+		netCost          float64
+		err              error
+	)
+	// Get list and net costs
+	if lineItemType != TypeEDPDiscount && lineItemType != TypePrivateRateDiscount {
+		listCost, err = GetCSVRowValueFloat(row, columnIndexes, S3SelectListCost)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Get net cost if available
+	netCost = listCost
+	if _, ok := columnIndexes[S3SelectNetCost]; ok {
+		netCost, err = GetCSVRowValueFloat(row, columnIndexes, S3SelectNetCost)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// If there is a reservation_reservation_a_r_n on the line item use the awsRIPricingSUMColumn as cost
+	amortizedCost = listCost
+	amortizedNetCost = listCost
+	if lineItemType == TypeDiscountedUsage {
+		if _, ok := columnIndexes[S3SelectRICost]; ok {
+			amortizedCost, err = GetCSVRowValueFloat(row, columnIndexes, S3SelectRICost)
+			if err != nil {
+				return nil, err
+			}
+			amortizedNetCost = amortizedCost
+		}
+		if _, ok := columnIndexes[S3SelectNetRICost]; ok {
+			amortizedNetCost, err = GetCSVRowValueFloat(row, columnIndexes, S3SelectNetRICost)
+			if err != nil {
+				return nil, err
+			}
+		}
+		// If there is a lineItemType of SavingsPlanCoveredUsage use the awsSPPricingSUMColumn
+	} else if lineItemType == TypeSavingsPlanCoveredUsage {
+		if _, ok := columnIndexes[S3SelectSPCost]; ok {
+			amortizedCost, err = GetCSVRowValueFloat(row, columnIndexes, S3SelectSPCost)
+			if err != nil {
+				return nil, err
+			}
+			amortizedNetCost = amortizedCost
+		}
+		if _, ok := columnIndexes[S3SelectNetSPCost]; ok {
+			amortizedNetCost, err = GetCSVRowValueFloat(row, columnIndexes, S3SelectNetSPCost)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	category := SelectAWSCategory(itemProviderID, usageType, itemProductCode)
+	// Retrieve final stanza of product code for ProviderID
+	if itemProductCode == "AWSELB" || itemProductCode == "AmazonFSx" {
+		itemProviderID = ParseARN(itemProviderID)
+	}
+
+	properties := opencost.CloudCostProperties{}
+	properties.Provider = opencost.AWSProvider
+	properties.InvoiceEntityID = billPayerAccountID
+	properties.InvoiceEntityName = billPayerAccountID
+	properties.AccountID = itemAccountID
+	properties.AccountName = itemAccountID
+	properties.Category = category
+	properties.Service = itemProductCode
+	properties.ProviderID = itemProviderID
+	properties.RegionID = regionCode
+	properties.AvailabilityZone = availabilityZone
+	properties.Labels = labels
+
+	itemStart, err := time.Parse(S3SelectDateLayout, startStr)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"Unable to parse '%s': '%s'",
+			S3SelectStartDate,
+			err.Error(),
+		)
+	}
+	itemStart = itemStart.Truncate(time.Hour * 24)
+	itemEnd := itemStart.AddDate(0, 0, 1)
+
+	return &opencost.CloudCost{
+		Properties: &properties,
+		Window:     opencost.NewWindow(&itemStart, &itemEnd),
+		ListCost: opencost.CostMetric{
+			Cost:              listCost,
+			KubernetesPercent: isKubernetes,
+		},
+		NetCost: opencost.CostMetric{
+			Cost:              netCost,
+			KubernetesPercent: isKubernetes,
+		},
+		AmortizedNetCost: opencost.CostMetric{
+			Cost:              amortizedNetCost,
+			KubernetesPercent: isKubernetes,
+		},
+		AmortizedCost: opencost.CostMetric{
+			Cost:              amortizedCost,
+			KubernetesPercent: isKubernetes,
+		},
+		InvoicedCost: opencost.CostMetric{
+			Cost:              netCost,
+			KubernetesPercent: isKubernetes,
+		},
+	}, nil
 }
 
 const (

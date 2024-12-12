@@ -275,6 +275,7 @@ func (d *Disk) MarshalJSON() ([]byte, error) {
 	jsonEncodeString(buffer, "storageClass", d.StorageClass, ",")
 	jsonEncodeString(buffer, "volumeName", d.VolumeName, ",")
 	jsonEncodeString(buffer, "claimName", d.ClaimName, ",")
+	jsonEncodeFloat64(buffer, "local", d.Local, ",")
 	jsonEncodeString(buffer, "claimNamespace", d.ClaimNamespace, "")
 	buffer.WriteString("}")
 	return buffer.Bytes(), nil
@@ -375,10 +376,9 @@ func (d *Disk) InterfaceToDisk(itf interface{}) error {
 		d.ClaimNamespace = ClaimNamespace.(string)
 	}
 
-	// d.Local is not marhsaled, and cannot be calculated from marshaled values.
-	// Currently, it is just ignored and not set in the resulting unmarshal to Disk
-	//  be aware that this means a resulting Disk from an unmarshal is therefore NOT
-	// equal to the originally marshaled Disk.
+	if local, err := getTypedVal(fmap["local"]); err == nil {
+		d.Local = local.(float64)
+	}
 
 	return nil
 

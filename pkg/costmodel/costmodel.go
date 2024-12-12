@@ -358,7 +358,7 @@ func (cm *CostModel) ComputeCostData(cli prometheusClient.Client, cp costAnalyze
 	for key := range CPUUsedMap {
 		containers[key] = true
 	}
-	currentContainers := make(map[string]v1.Pod)
+	currentContainers := make(map[string]clustercache.Pod)
 	for _, pod := range podlist {
 		if pod.Status.Phase != v1.PodRunning {
 			continue
@@ -382,11 +382,11 @@ func (cm *CostModel) ComputeCostData(cli prometheusClient.Client, cp costAnalyze
 		// deleted so we have usage information but not request information. In that case,
 		// we return partial data for CPU and RAM: only usage and not requests.
 		if pod, ok := currentContainers[key]; ok {
-			podName := pod.GetObjectMeta().GetName()
-			ns := pod.GetObjectMeta().GetNamespace()
+			podName := pod.Name
+			ns := pod.Namespace
 
 			nsLabels := namespaceLabelsMapping[ns+","+clusterID]
-			podLabels := pod.GetObjectMeta().GetLabels()
+			podLabels := pod.Labels
 			if podLabels == nil {
 				podLabels = make(map[string]string)
 			}
@@ -398,7 +398,7 @@ func (cm *CostModel) ComputeCostData(cli prometheusClient.Client, cp costAnalyze
 			}
 
 			nsAnnotations := namespaceAnnotationsMapping[ns+","+clusterID]
-			podAnnotations := pod.GetObjectMeta().GetAnnotations()
+			podAnnotations := pod.Annotations
 			if podAnnotations == nil {
 				podAnnotations = make(map[string]string)
 			}
@@ -419,7 +419,7 @@ func (cm *CostModel) ComputeCostData(cli prometheusClient.Client, cp costAnalyze
 
 			var podDeployments []string
 			if _, ok := podDeploymentsMapping[nsKey]; ok {
-				if ds, ok := podDeploymentsMapping[nsKey][pod.GetObjectMeta().GetName()]; ok {
+				if ds, ok := podDeploymentsMapping[nsKey][pod.Name]; ok {
 					podDeployments = ds
 				} else {
 					podDeployments = []string{}
@@ -454,7 +454,7 @@ func (cm *CostModel) ComputeCostData(cli prometheusClient.Client, cp costAnalyze
 
 			var podServices []string
 			if _, ok := podServicesMapping[nsKey]; ok {
-				if svcs, ok := podServicesMapping[nsKey][pod.GetObjectMeta().GetName()]; ok {
+				if svcs, ok := podServicesMapping[nsKey][pod.Name]; ok {
 					podServices = svcs
 				} else {
 					podServices = []string{}
@@ -904,8 +904,8 @@ func addPVData(cache clustercache.ClusterCache, pvClaimMapping map[string]*Persi
 	storageClassMap := make(map[string]map[string]string)
 	for _, storageClass := range storageClasses {
 		params := storageClass.Parameters
-		storageClassMap[storageClass.ObjectMeta.Name] = params
-		if storageClass.GetAnnotations()["storageclass.kubernetes.io/is-default-class"] == "true" || storageClass.GetAnnotations()["storageclass.beta.kubernetes.io/is-default-class"] == "true" {
+		storageClassMap[storageClass.Name] = params
+		if storageClass.Annotations["storageclass.kubernetes.io/is-default-class"] == "true" || storageClass.Annotations["storageclass.beta.kubernetes.io/is-default-class"] == "true" {
 			storageClassMap["default"] = params
 			storageClassMap[""] = params
 		}
@@ -951,7 +951,7 @@ func addPVData(cache clustercache.ClusterCache, pvClaimMapping map[string]*Persi
 	return nil
 }
 
-func GetPVCost(pv *costAnalyzerCloud.PV, kpv *v1.PersistentVolume, cp costAnalyzerCloud.Provider, defaultRegion string) error {
+func GetPVCost(pv *costAnalyzerCloud.PV, kpv *clustercache.PersistentVolume, cp costAnalyzerCloud.Provider, defaultRegion string) error {
 	cfg, err := cp.GetConfig()
 	if err != nil {
 		return err
@@ -993,9 +993,9 @@ func (cm *CostModel) GetNodeCost(cp costAnalyzerCloud.Provider) (map[string]*cos
 		PricingTypeCounts: make(map[costAnalyzerCloud.PricingType]int),
 	}
 	for _, n := range nodeList {
-		name := n.GetObjectMeta().GetName()
-		nodeLabels := n.GetObjectMeta().GetLabels()
-		nodeLabels["providerID"] = n.Spec.ProviderID
+		name := n.Name
+		nodeLabels := n.Labels
+		nodeLabels["providerID"] = n.SpecProviderID
 
 		pmd.TotalNodes++
 
@@ -1034,7 +1034,7 @@ func (cm *CostModel) GetNodeCost(cp costAnalyzerCloud.Provider) (map[string]*cos
 			arch, _ := util.GetArchType(n.Labels)
 			newCnode.ArchType = arch
 		}
-		newCnode.ProviderID = n.Spec.ProviderID
+		newCnode.ProviderID = n.SpecProviderID
 
 		var cpu float64
 		if newCnode.VCPU == "" {
@@ -1349,15 +1349,15 @@ func (cm *CostModel) GetLBCost(cp costAnalyzerCloud.Provider) (map[serviceKey]*c
 	loadBalancerMap := make(map[serviceKey]*costAnalyzerCloud.LoadBalancer)
 
 	for _, service := range servicesList {
-		namespace := service.GetObjectMeta().GetNamespace()
-		name := service.GetObjectMeta().GetName()
+		namespace := service.Namespace
+		name := service.Name
 		key := serviceKey{
 			Cluster:   env.GetClusterID(),
 			Namespace: namespace,
 			Service:   name,
 		}
 
-		if service.Spec.Type == "LoadBalancer" {
+		if service.Type == "LoadBalancer" {
 			loadBalancer, err := cp.LoadBalancerPricing()
 			if err != nil {
 				return nil, err
@@ -1378,28 +1378,28 @@ func (cm *CostModel) GetLBCost(cp costAnalyzerCloud.Provider) (map[serviceKey]*c
 	return loadBalancerMap, nil
 }
 
-func getPodServices(cache clustercache.ClusterCache, podList []*v1.Pod, clusterID string) (map[string]map[string][]string, error) {
+func getPodServices(cache clustercache.ClusterCache, podList []*clustercache.Pod, clusterID string) (map[string]map[string][]string, error) {
 	servicesList := cache.GetAllServices()
 	podServicesMapping := make(map[string]map[string][]string)
 	for _, service := range servicesList {
-		namespace := service.GetObjectMeta().GetNamespace()
-		name := service.GetObjectMeta().GetName()
+		namespace := service.Namespace
+		name := service.Name
 		key := namespace + "," + clusterID
 		if _, ok := podServicesMapping[key]; !ok {
 			podServicesMapping[key] = make(map[string][]string)
 		}
 		s := labels.Nothing()
-		if service.Spec.Selector != nil && len(service.Spec.Selector) > 0 {
-			s = labels.Set(service.Spec.Selector).AsSelectorPreValidated()
+		if service.SpecSelector != nil && len(service.SpecSelector) > 0 {
+			s = labels.Set(service.SpecSelector).AsSelectorPreValidated()
 		}
 		for _, pod := range podList {
-			labelSet := labels.Set(pod.GetObjectMeta().GetLabels())
-			if s.Matches(labelSet) && pod.GetObjectMeta().GetNamespace() == namespace {
-				services, ok := podServicesMapping[key][pod.GetObjectMeta().GetName()]
+			labelSet := labels.Set(pod.Labels)
+			if s.Matches(labelSet) && pod.Namespace == namespace {
+				services, ok := podServicesMapping[key][pod.Name]
 				if ok {
-					podServicesMapping[key][pod.GetObjectMeta().GetName()] = append(services, name)
+					podServicesMapping[key][pod.Name] = append(services, name)
 				} else {
-					podServicesMapping[key][pod.GetObjectMeta().GetName()] = []string{name}
+					podServicesMapping[key][pod.Name] = []string{name}
 				}
 			}
 		}
@@ -1407,29 +1407,29 @@ func getPodServices(cache clustercache.ClusterCache, podList []*v1.Pod, clusterI
 	return podServicesMapping, nil
 }
 
-func getPodStatefulsets(cache clustercache.ClusterCache, podList []*v1.Pod, clusterID string) (map[string]map[string][]string, error) {
+func getPodStatefulsets(cache clustercache.ClusterCache, podList []*clustercache.Pod, clusterID string) (map[string]map[string][]string, error) {
 	ssList := cache.GetAllStatefulSets()
 	podSSMapping := make(map[string]map[string][]string) // namespace: podName: [deploymentNames]
 	for _, ss := range ssList {
-		namespace := ss.GetObjectMeta().GetNamespace()
-		name := ss.GetObjectMeta().GetName()
+		namespace := ss.Namespace
+		name := ss.Name
 
 		key := namespace + "," + clusterID
 		if _, ok := podSSMapping[key]; !ok {
 			podSSMapping[key] = make(map[string][]string)
 		}
-		s, err := metav1.LabelSelectorAsSelector(ss.Spec.Selector)
+		s, err := metav1.LabelSelectorAsSelector(ss.SpecSelector)
 		if err != nil {
 			log.Errorf("Error doing deployment label conversion: " + err.Error())
 		}
 		for _, pod := range podList {
-			labelSet := labels.Set(pod.GetObjectMeta().GetLabels())
-			if s.Matches(labelSet) && pod.GetObjectMeta().GetNamespace() == namespace {
-				sss, ok := podSSMapping[key][pod.GetObjectMeta().GetName()]
+			labelSet := labels.Set(pod.Labels)
+			if s.Matches(labelSet) && pod.Namespace == namespace {
+				sss, ok := podSSMapping[key][pod.Name]
 				if ok {
-					podSSMapping[key][pod.GetObjectMeta().GetName()] = append(sss, name)
+					podSSMapping[key][pod.Name] = append(sss, name)
 				} else {
-					podSSMapping[key][pod.GetObjectMeta().GetName()] = []string{name}
+					podSSMapping[key][pod.Name] = []string{name}
 				}
 			}
 		}
@@ -1438,29 +1438,29 @@ func getPodStatefulsets(cache clustercache.ClusterCache, podList []*v1.Pod, clus
 
 }
 
-func getPodDeployments(cache clustercache.ClusterCache, podList []*v1.Pod, clusterID string) (map[string]map[string][]string, error) {
+func getPodDeployments(cache clustercache.ClusterCache, podList []*clustercache.Pod, clusterID string) (map[string]map[string][]string, error) {
 	deploymentsList := cache.GetAllDeployments()
 	podDeploymentsMapping := make(map[string]map[string][]string) // namespace: podName: [deploymentNames]
 	for _, deployment := range deploymentsList {
-		namespace := deployment.GetObjectMeta().GetNamespace()
-		name := deployment.GetObjectMeta().GetName()
+		namespace := deployment.Namespace
+		name := deployment.Name
 
 		key := namespace + "," + clusterID
 		if _, ok := podDeploymentsMapping[key]; !ok {
 			podDeploymentsMapping[key] = make(map[string][]string)
 		}
-		s, err := metav1.LabelSelectorAsSelector(deployment.Spec.Selector)
+		s, err := metav1.LabelSelectorAsSelector(deployment.SpecSelector)
 		if err != nil {
 			log.Errorf("Error doing deployment label conversion: " + err.Error())
 		}
 		for _, pod := range podList {
-			labelSet := labels.Set(pod.GetObjectMeta().GetLabels())
-			if s.Matches(labelSet) && pod.GetObjectMeta().GetNamespace() == namespace {
-				deployments, ok := podDeploymentsMapping[key][pod.GetObjectMeta().GetName()]
+			labelSet := labels.Set(pod.Labels)
+			if s.Matches(labelSet) && pod.Namespace == namespace {
+				deployments, ok := podDeploymentsMapping[key][pod.Name]
 				if ok {
-					podDeploymentsMapping[key][pod.GetObjectMeta().GetName()] = append(deployments, name)
+					podDeploymentsMapping[key][pod.Name] = append(deployments, name)
 				} else {
-					podDeploymentsMapping[key][pod.GetObjectMeta().GetName()] = []string{name}
+					podDeploymentsMapping[key][pod.Name] = []string{name}
 				}
 			}
 		}
@@ -2300,8 +2300,8 @@ func getNamespaceAnnotations(cache clustercache.ClusterCache, clusterID string) 
 	return nsToAnnotations, nil
 }
 
-func getDaemonsetsOfPod(pod v1.Pod) []string {
-	for _, ownerReference := range pod.ObjectMeta.OwnerReferences {
+func getDaemonsetsOfPod(pod clustercache.Pod) []string {
+	for _, ownerReference := range pod.OwnerReferences {
 		if ownerReference.Kind == "DaemonSet" {
 			return []string{ownerReference.Name}
 		}
@@ -2309,8 +2309,8 @@ func getDaemonsetsOfPod(pod v1.Pod) []string {
 	return []string{}
 }
 
-func getJobsOfPod(pod v1.Pod) []string {
-	for _, ownerReference := range pod.ObjectMeta.OwnerReferences {
+func getJobsOfPod(pod clustercache.Pod) []string {
+	for _, ownerReference := range pod.OwnerReferences {
 		if ownerReference.Kind == "Job" {
 			return []string{ownerReference.Name}
 		}
@@ -2318,8 +2318,8 @@ func getJobsOfPod(pod v1.Pod) []string {
 	return []string{}
 }
 
-func getStatefulSetsOfPod(pod v1.Pod) []string {
-	for _, ownerReference := range pod.ObjectMeta.OwnerReferences {
+func getStatefulSetsOfPod(pod clustercache.Pod) []string {
+	for _, ownerReference := range pod.OwnerReferences {
 		if ownerReference.Kind == "StatefulSet" {
 			return []string{ownerReference.Name}
 		}
@@ -2330,7 +2330,7 @@ func getStatefulSetsOfPod(pod v1.Pod) []string {
 // getGPUCount reads the node's Status and Labels (via the k8s API) to identify
 // the number of GPUs and vGPUs are equipped on the node. If unable to identify
 // a GPU count, it will return -1.
-func getGPUCount(cache clustercache.ClusterCache, n *v1.Node) (float64, float64, error) {
+func getGPUCount(cache clustercache.ClusterCache, n *clustercache.Node) (float64, float64, error) {
 	g, hasGpu := n.Status.Capacity["nvidia.com/gpu"]
 	_, hasReplicas := n.Labels["nvidia.com/gpu.replicas"]
 
@@ -2393,7 +2393,7 @@ func getAllocatableVGPUs(cache clustercache.ClusterCache) (float64, error) {
 	daemonsets := cache.GetAllDaemonSets()
 	vgpuCount := 0.0
 	for _, ds := range daemonsets {
-		dsContainerList := &ds.Spec.Template.Spec.Containers
+		dsContainerList := &ds.SpecContainers
 		for _, ctnr := range *dsContainerList {
 			if ctnr.Args != nil {
 				for _, arg := range ctnr.Args {
