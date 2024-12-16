@@ -59,13 +59,24 @@ func NewCachingWatcher(restClient rest.Interface, resource string, resourceType 
 		AddFunc: func(obj interface{}) {
 			key, err := cache.MetaNamespaceKeyFunc(obj)
 			if err == nil {
+				log.Infof("")
+				log.Infof("DEBUG 0: %v - %v", queue, key)
+				log.Infof("")
 				queue.Add(key)
+			} else {
+				log.Infof("")
+				log.Infof("DEBUG 1: %v", err)
+				log.Infof("")
 			}
 		},
 		UpdateFunc: func(old interface{}, new interface{}) {
 			key, err := cache.MetaNamespaceKeyFunc(new)
 			if err == nil {
 				queue.Add(key)
+			} else {
+				log.Infof("")
+				log.Infof("DEBUG 2: %v", err)
+				log.Infof("")
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
@@ -74,6 +85,10 @@ func NewCachingWatcher(restClient rest.Interface, resource string, resourceType 
 			key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
 			if err == nil {
 				queue.Add(key)
+			} else {
+				log.Infof("")
+				log.Infof("DEBUG 3: %v", err)
+				log.Infof("")
 			}
 		},
 	}, cache.Indexers{})
