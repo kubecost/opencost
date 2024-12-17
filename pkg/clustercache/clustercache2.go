@@ -1,8 +1,9 @@
 package clustercache
 
 import (
-	"context"
+	"sync"
 
+	"github.com/opencost/opencost/pkg/env"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
@@ -26,32 +27,60 @@ type KubernetesClusterCacheV2 struct {
 	replicationControllerStore *GenericStore[*v1.ReplicationController, *ReplicationController]
 	replicaSetStore            *GenericStore[*appsv1.ReplicaSet, *ReplicaSet]
 	pdbStore                   *GenericStore[*policyv1.PodDisruptionBudget, *PodDisruptionBudget]
+	stopCh                     chan struct{}
 }
 
 func NewKubernetesClusterCacheV2(clientset kubernetes.Interface) *KubernetesClusterCacheV2 {
-	ctx := context.TODO()
 	return &KubernetesClusterCacheV2{
-		namespaceStore:             CreateStoreAndWatch(ctx, clientset.CoreV1().RESTClient(), "namespaces", transformNamespace),
-		nodeStore:                  CreateStoreAndWatch(ctx, clientset.CoreV1().RESTClient(), "nodes", transformNode),
-		persistentVolumeClaimStore: CreateStoreAndWatch(ctx, clientset.CoreV1().RESTClient(), "persistentvolumeclaims", transformPersistentVolumeClaim),
-		persistentVolumeStore:      CreateStoreAndWatch(ctx, clientset.CoreV1().RESTClient(), "persistentvolumes", transformPersistentVolume),
-		podStore:                   CreateStoreAndWatch(ctx, clientset.CoreV1().RESTClient(), "pods", transformPod),
-		replicationControllerStore: CreateStoreAndWatch(ctx, clientset.CoreV1().RESTClient(), "replicationcontrollers", transformReplicationController),
-		serviceStore:               CreateStoreAndWatch(ctx, clientset.CoreV1().RESTClient(), "services", transformService),
-		daemonSetStore:             CreateStoreAndWatch(ctx, clientset.AppsV1().RESTClient(), "daemonsets", transformDaemonSet),
-		deploymentStore:            CreateStoreAndWatch(ctx, clientset.AppsV1().RESTClient(), "deployments", transformDeployment),
-		replicaSetStore:            CreateStoreAndWatch(ctx, clientset.AppsV1().RESTClient(), "replicasets", transformReplicaSet),
-		statefulSetStore:           CreateStoreAndWatch(ctx, clientset.AppsV1().RESTClient(), "statefulsets", transformStatefulSet),
-		storageClassStore:          CreateStoreAndWatch(ctx, clientset.StorageV1().RESTClient(), "storageclasses", transformStorageClass),
-		jobStore:                   CreateStoreAndWatch(ctx, clientset.BatchV1().RESTClient(), "jobs", transformJob),
-		pdbStore:                   CreateStoreAndWatch(ctx, clientset.PolicyV1().RESTClient(), "poddisruptionbudgets", transformPodDisruptionBudget),
+		namespaceStore:             CreateStore(clientset.CoreV1().RESTClient(), "namespaces", transformNamespace),
+		nodeStore:                  CreateStore(clientset.CoreV1().RESTClient(), "nodes", transformNode),
+		persistentVolumeClaimStore: CreateStore(clientset.CoreV1().RESTClient(), "persistentvolumeclaims", transformPersistentVolumeClaim),
+		persistentVolumeStore:      CreateStore(clientset.CoreV1().RESTClient(), "persistentvolumes", transformPersistentVolume),
+		podStore:                   CreateStore(clientset.CoreV1().RESTClient(), "pods", transformPod),
+		replicationControllerStore: CreateStore(clientset.CoreV1().RESTClient(), "replicationcontrollers", transformReplicationController),
+		serviceStore:               CreateStore(clientset.CoreV1().RESTClient(), "services", transformService),
+		daemonSetStore:             CreateStore(clientset.AppsV1().RESTClient(), "daemonsets", transformDaemonSet),
+		deploymentStore:            CreateStore(clientset.AppsV1().RESTClient(), "deployments", transformDeployment),
+		replicaSetStore:            CreateStore(clientset.AppsV1().RESTClient(), "replicasets", transformReplicaSet),
+		statefulSetStore:           CreateStore(clientset.AppsV1().RESTClient(), "statefulsets", transformStatefulSet),
+		storageClassStore:          CreateStore(clientset.StorageV1().RESTClient(), "storageclasses", transformStorageClass),
+		jobStore:                   CreateStore(clientset.BatchV1().RESTClient(), "jobs", transformJob),
+		pdbStore:                   CreateStore(clientset.PolicyV1().RESTClient(), "poddisruptionbudgets", transformPodDisruptionBudget),
+		stopCh:                     make(chan struct{}),
 	}
 }
 
 func (kcc *KubernetesClusterCacheV2) Run() {
+	var wg sync.WaitGroup
+
+	if !env.IsETLReadOnlyMode() {
+		wg.Add(14)
+
+		kcc.namespaceStore.Watch(kcc.stopCh, wg.Done)
+		kcc.nodeStore.Watch(kcc.stopCh, wg.Done)
+		kcc.persistentVolumeClaimStore.Watch(kcc.stopCh, wg.Done)
+		kcc.persistentVolumeStore.Watch(kcc.stopCh, wg.Done)
+		kcc.podStore.Watch(kcc.stopCh, wg.Done)
+		kcc.replicationControllerStore.Watch(kcc.stopCh, wg.Done)
+		kcc.serviceStore.Watch(kcc.stopCh, wg.Done)
+		kcc.daemonSetStore.Watch(kcc.stopCh, wg.Done)
+		kcc.deploymentStore.Watch(kcc.stopCh, wg.Done)
+		kcc.replicaSetStore.Watch(kcc.stopCh, wg.Done)
+		kcc.statefulSetStore.Watch(kcc.stopCh, wg.Done)
+		kcc.storageClassStore.Watch(kcc.stopCh, wg.Done)
+		kcc.jobStore.Watch(kcc.stopCh, wg.Done)
+		kcc.pdbStore.Watch(kcc.stopCh, wg.Done)
+	}
+
+	wg.Wait()
 }
 
 func (kcc *KubernetesClusterCacheV2) Stop() {
+	if kcc.stopCh != nil {
+		close(kcc.stopCh)
+
+		kcc.stopCh = nil
+	}
 }
 
 func (kcc *KubernetesClusterCacheV2) GetAllNamespaces() []*Namespace {
