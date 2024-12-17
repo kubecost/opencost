@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/opencost/opencost/core/pkg/log"
 	"github.com/opencost/opencost/core/pkg/util/json"
 )
 
@@ -74,9 +75,9 @@ func (a *Any) InterfaceToAny(itf interface{}) error {
 	a.Labels = labels
 	a.Start = start
 	a.End = end
-	a.Window = Window{
-		start: &start,
-		end:   &end,
+
+	if _, found := fmap["window"]; found {
+		a.Window = toWindow(fmap["window"].(map[string]interface{}))
 	}
 
 	if adjustment, err := getTypedVal(fmap["adjustment"]); err == nil {
@@ -154,9 +155,8 @@ func (ca *Cloud) InterfaceToCloud(itf interface{}) error {
 	ca.Labels = labels
 	ca.Start = start
 	ca.End = end
-	ca.Window = Window{
-		start: &start,
-		end:   &end,
+	if _, found := fmap["window"]; found {
+		ca.Window = toWindow(fmap["window"].(map[string]interface{}))
 	}
 
 	if adjustment, err := getTypedVal(fmap["adjustment"]); err == nil {
@@ -221,21 +221,10 @@ func (cm *ClusterManagement) InterfaceToClusterManagement(itf interface{}) error
 		labels[k] = v.(string)
 	}
 
-	// parse start and end strings to time.Time
-	start, err := time.Parse(time.RFC3339, fmap["start"].(string))
-	if err != nil {
-		return err
-	}
-	end, err := time.Parse(time.RFC3339, fmap["end"].(string))
-	if err != nil {
-		return err
-	}
-
 	cm.Properties = &properties
 	cm.Labels = labels
-	cm.Window = Window{
-		start: &start,
-		end:   &end,
+	if _, found := fmap["window"]; found {
+		cm.Window = toWindow(fmap["window"].(map[string]interface{}))
 	}
 
 	if Cost, err := getTypedVal(fmap["totalCost"]); err == nil {
@@ -331,9 +320,8 @@ func (d *Disk) InterfaceToDisk(itf interface{}) error {
 	d.Labels = labels
 	d.Start = start
 	d.End = end
-	d.Window = Window{
-		start: &start,
-		end:   &end,
+	if _, found := fmap["window"]; found {
+		d.Window = toWindow(fmap["window"].(map[string]interface{}))
 	}
 	d.Breakdown = &breakdown
 
@@ -448,9 +436,8 @@ func (n *Network) InterfaceToNetwork(itf interface{}) error {
 	n.Labels = labels
 	n.Start = start
 	n.End = end
-	n.Window = Window{
-		start: &start,
-		end:   &end,
+	if _, found := fmap["window"]; found {
+		n.Window = toWindow(fmap["window"].(map[string]interface{}))
 	}
 
 	if adjustment, err := getTypedVal(fmap["adjustment"]); err == nil {
@@ -559,9 +546,8 @@ func (n *Node) InterfaceToNode(itf interface{}) error {
 	n.Labels = labels
 	n.Start = start
 	n.End = end
-	n.Window = Window{
-		start: &start,
-		end:   &end,
+	if _, found := fmap["window"]; found {
+		n.Window = toWindow(fmap["window"].(map[string]interface{}))
 	}
 	n.CPUBreakdown = &cpuBreakdown
 	n.RAMBreakdown = &ramBreakdown
@@ -670,9 +656,8 @@ func (lb *LoadBalancer) InterfaceToLoadBalancer(itf interface{}) error {
 	lb.Labels = labels
 	lb.Start = start
 	lb.End = end
-	lb.Window = Window{
-		start: &start,
-		end:   &end,
+	if _, found := fmap["window"]; found {
+		lb.Window = toWindow(fmap["window"].(map[string]interface{}))
 	}
 
 	if adjustment, err := getTypedVal(fmap["adjustment"]); err == nil {
@@ -741,21 +726,10 @@ func (sa *SharedAsset) InterfaceToSharedAsset(itf interface{}) error {
 		labels[k] = v.(string)
 	}
 
-	// parse start and end strings to time.Time
-	start, err := time.Parse(time.RFC3339, fmap["start"].(string))
-	if err != nil {
-		return err
-	}
-	end, err := time.Parse(time.RFC3339, fmap["end"].(string))
-	if err != nil {
-		return err
-	}
-
 	sa.Properties = &properties
 	sa.Labels = labels
-	sa.Window = Window{
-		start: &start,
-		end:   &end,
+	if _, found := fmap["window"]; found {
+		sa.Window = toWindow(fmap["window"].(map[string]interface{}))
 	}
 
 	if Cost, err := getTypedVal(fmap["totalCost"]); err == nil {
@@ -970,6 +944,35 @@ func toAssetProp(fproperties map[string]interface{}) AssetProperties {
 	}
 
 	return properties
+
+}
+
+func toWindow(fproperties map[string]interface{}) Window {
+
+	var start, end time.Time
+	var err error
+
+	if startStr, v := fproperties["start"].(string); v {
+		start, err = time.Parse(time.RFC3339, startStr)
+
+		if err != nil {
+			log.Errorf("error parsing window start from string %s, setting as 0 time", startStr)
+			start = time.Time{}
+		}
+
+	}
+
+	if endStr, v := fproperties["end"].(string); v {
+		end, err = time.Parse(time.RFC3339, endStr)
+
+		if err != nil {
+			log.Errorf("error parsing window end from string %s, setting as 0 time", endStr)
+			end = time.Time{}
+		}
+
+	}
+
+	return NewClosedWindow(start, end)
 
 }
 

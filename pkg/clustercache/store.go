@@ -1,7 +1,6 @@
 package clustercache
 
 import (
-	"context"
 	"sync"
 
 	v1 "k8s.io/api/core/v1"
@@ -17,6 +16,10 @@ type GenericStore[Input UIDGetter, Output any] struct {
 	mutex         sync.RWMutex
 	items         map[types.UID]Output
 	transformFunc func(input Input) Output
+
+	// storing this cyclic reflector allows us to defer watching
+	reflector *cache.Reflector
+	onInit    func()
 }
 
 // NewGenericStore creates a new instance of GenericStore.
@@ -31,8 +34,7 @@ type UIDGetter interface {
 	GetUID() types.UID
 }
 
-func CreateStoreAndWatch[Input UIDGetter, Output any](
-	ctx context.Context,
+func CreateStore[Input UIDGetter, Output any](
 	restClient rest.Interface,
 	resource string,
 	transformFunc func(input Input) Output,
@@ -40,9 +42,17 @@ func CreateStoreAndWatch[Input UIDGetter, Output any](
 	lw := cache.NewListWatchFromClient(restClient, resource, v1.NamespaceAll, fields.Everything())
 	store := NewGenericStore(transformFunc)
 	var zeroValue Input
-	reflector := cache.NewReflector(lw, zeroValue, store, 0)
-	go reflector.Run(ctx.Done())
+	store.reflector = cache.NewReflector(lw, zeroValue, store, 0)
+
 	return store
+}
+
+func (s *GenericStore[Input, Output]) Watch(stopCh <-chan struct{}, onInit func()) {
+	s.onInit = onInit
+
+	// reflector.Run() will eventually call Replace() on the store with the initial contents
+	// of the resource list. we'll call onInit after that happens the _first_ time
+	go s.reflector.Run(stopCh)
 }
 
 // Add inserts an object into the store.
@@ -96,16 +106,28 @@ func (s *GenericStore[Input, Output]) Replace(list []any, _ string) error {
 		}
 	}
 
+	// call onInit after the initial list has been processed
+	if s.onInit != nil {
+		s.onInit()
+		s.onInit = nil
+	}
+
 	return nil
 }
 
 // Stubs to satisfy the cache.Store interface
-func (s *GenericStore[Input, Output]) List() []interface{} { return nil }
-func (s *GenericStore[Input, Output]) ListKeys() []string  { return nil }
+func (s *GenericStore[Input, Output]) List() []interface{} {
+	return nil
+}
+func (s *GenericStore[Input, Output]) ListKeys() []string {
+	return nil
+}
 func (s *GenericStore[Input, Output]) Get(_ interface{}) (item interface{}, exists bool, err error) {
 	return nil, false, nil
 }
 func (s *GenericStore[Input, Output]) GetByKey(_ string) (item interface{}, exists bool, err error) {
 	return nil, false, nil
 }
-func (s *GenericStore[Input, Output]) Resync() error { return nil }
+func (s *GenericStore[Input, Output]) Resync() error {
+	return nil
+}
