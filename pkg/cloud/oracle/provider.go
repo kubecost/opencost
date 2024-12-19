@@ -62,6 +62,10 @@ func (o *Oracle) NodePricing(key models.Key) (*models.Node, models.PricingMetada
 	return o.RateCardStore.ForKey(key, o.DefaultPricing)
 }
 
+func (o *Oracle) GpuPricing(nodeLabels map[string]string) (string, error) {
+	return "", nil
+}
+
 func (o *Oracle) PVPricing(pvk models.PVKey) (*models.PV, error) {
 	if err := o.ensurePricingData(); err != nil {
 		return nil, err

@@ -309,6 +309,7 @@ type Provider interface {
 	GetDisks() ([]byte, error)
 	GetOrphanedResources() ([]OrphanedResource, error)
 	NodePricing(Key) (*Node, PricingMetadata, error)
+	GpuPricing(map[string]string) (string, error)
 	PVPricing(PVKey) (*PV, error)
 	NetworkPricing() (*Network, error)           // TODO: add key interface arg for dynamic price fetching
 	LoadBalancerPricing() (*LoadBalancer, error) // TODO: add key interface arg for dynamic price fetching

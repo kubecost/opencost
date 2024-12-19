@@ -1157,6 +1157,10 @@ func (gcp *GCP) DownloadPricingData() error {
 	return nil
 }
 
+func (gcp *GCP) GpuPricing(nodeLabels map[string]string) (string, error) {
+	return "", nil
+}
+
 func (gcp *GCP) PVPricing(pvk models.PVKey) (*models.PV, error) {
 	gcp.DownloadPricingDataLock.RLock()
 	defer gcp.DownloadPricingDataLock.RUnlock()

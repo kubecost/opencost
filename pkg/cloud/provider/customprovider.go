@@ -261,6 +261,10 @@ func (*CustomProvider) QuerySQL(query string) ([]byte, error) {
 	return nil, nil
 }
 
+func (cp *CustomProvider) GpuPricing(nodeLabels map[string]string) (string, error) {
+	return "", nil
+}
+
 func (cp *CustomProvider) PVPricing(pvk models.PVKey) (*models.PV, error) {
 	cpricing, err := cp.Config.GetCustomPricingData()
 	if err != nil {

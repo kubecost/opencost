@@ -659,6 +659,10 @@ func (k *awsKey) getUsageType(labels map[string]string) string {
 	return ""
 }
 
+func (awsProvider *AWS) GpuPricing(nodeLabels map[string]string) (string, error) {
+	return "", nil
+}
+
 func (aws *AWS) PVPricing(pvk models.PVKey) (*models.PV, error) {
 	pricing, ok := aws.Pricing[pvk.Features()]
 	if !ok {

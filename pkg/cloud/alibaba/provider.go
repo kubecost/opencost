@@ -530,6 +530,10 @@ func (alibaba *Alibaba) NodePricing(key models.Key) (*models.Node, models.Pricin
 	return returnNode, meta, nil
 }
 
+func (alibaba *Alibaba) GpuPricing(nodeLabels map[string]string) (string, error) {
+	return "", nil
+}
+
 // PVPricing gives a pricing information of a specific PV given by PVkey
 func (alibaba *Alibaba) PVPricing(pvk models.PVKey) (*models.PV, error) {
 	alibaba.DownloadPricingDataLock.RLock()
