@@ -149,11 +149,21 @@ func ShareTenancyCosts(p models.Provider) bool {
 // NewProvider looks at the nodespec or provider metadata server to decide which provider to instantiate.
 func NewProvider(cache clustercache.ClusterCache, apiKey string, config *config.ConfigFileManager) (models.Provider, error) {
 	nodes := cache.GetAllNodes()
-	log.Infof("Could not locate any nodes for cluster.") // valid in ETL readonly mode
-	return &CustomProvider{
-		Clientset: cache,
-		Config:    NewProviderConfig(config, "default.json"),
-	}, nil
+	var numRetries int
+	for len(nodes) == 0 {
+		log.Infof("No nodes found for cluster, will retry...")
+		time.Sleep(time.Second)
+		nodes = cache.GetAllNodes()
+
+		numRetries++
+		if numRetries == 10 {
+			log.Infof("Could not locate any nodes for cluster.") // valid in ETL readonly mode
+			return &CustomProvider{
+				Clientset: cache,
+				Config:    NewProviderConfig(config, "default.json"),
+			}, nil
+		}
+	}
 
 	cp := getClusterProperties(nodes[0])
 	providerConfig := NewProviderConfig(config, cp.configFileName)
