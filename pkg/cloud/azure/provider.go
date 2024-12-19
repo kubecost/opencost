@@ -1209,6 +1209,10 @@ func (az *Azure) NodePricing(key models.Key) (*models.Node, models.PricingMetada
 	}, meta, nil
 }
 
+func (az *Azure) GpuPricing(nodeLabels map[string]string) (string, error) {
+	return "", nil
+}
+
 // Stubbed NetworkPricing for Azure. Pull directly from azure.json for now
 func (az *Azure) NetworkPricing() (*models.Network, error) {
 	cpricing, err := az.Config.GetCustomPricingData()

@@ -1639,6 +1639,10 @@ func (gcp *GCP) NodePricing(key models.Key) (*models.Node, models.PricingMetadat
 	return nil, meta, fmt.Errorf("no pricing data found for %s", key.Features())
 }
 
+func (gcp *GCP) GpuPricing(nodeLabels map[string]string) (string, error) {
+	return "", nil
+}
+
 func (gcp *GCP) ServiceAccountStatus() *models.ServiceAccountStatus {
 	return &models.ServiceAccountStatus{
 		Checks: []*models.ServiceAccountCheck{},

@@ -513,6 +513,11 @@ func (otc *OTC) GetOrphanedResources() ([]models.OrphanedResource, error) {
 }
 
 // TODO: Implement method
+func (otc *OTC) GpuPricing(nodeLabels map[string]string) (string, error) {
+	return "", nil
+}
+
+// TODO: Implement method
 func (otc *OTC) AllNodePricing() (interface{}, error) {
 	return nil, nil
 }
