@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -10,6 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/util"
+	"github.com/opencost/opencost/core/pkg/util/retry"
 	"github.com/opencost/opencost/pkg/cloud/alibaba"
 	"github.com/opencost/opencost/pkg/cloud/aws"
 	"github.com/opencost/opencost/pkg/cloud/azure"
@@ -18,9 +22,6 @@ import (
 	"github.com/opencost/opencost/pkg/cloud/oracle"
 	"github.com/opencost/opencost/pkg/cloud/otc"
 	"github.com/opencost/opencost/pkg/cloud/scaleway"
-
-	"github.com/opencost/opencost/core/pkg/opencost"
-	"github.com/opencost/opencost/core/pkg/util"
 
 	"cloud.google.com/go/compute/metadata"
 
@@ -148,21 +149,28 @@ func ShareTenancyCosts(p models.Provider) bool {
 
 // NewProvider looks at the nodespec or provider metadata server to decide which provider to instantiate.
 func NewProvider(cache clustercache.ClusterCache, apiKey string, config *config.ConfigFileManager) (models.Provider, error) {
-	nodes := cache.GetAllNodes()
-	var numRetries int
-	for len(nodes) == 0 {
-		log.Infof("No nodes found for cluster, will retry...")
-		time.Sleep(time.Second)
-		nodes = cache.GetAllNodes()
-
-		numRetries++
-		if numRetries == 10 {
-			log.Infof("Could not locate any nodes for cluster.") // valid in ETL readonly mode
-			return &CustomProvider{
-				Clientset: cache,
-				Config:    NewProviderConfig(config, "default.json"),
-			}, nil
+	getAllNodesFunc := func() ([]*clustercache.Node, error) {
+		nodes := cache.GetAllNodes()
+		if len(nodes) == 0 {
+			return nil, fmt.Errorf("no nodes found in cluster cache")
 		}
+		return nodes, nil
+	}
+
+	var nodes []*clustercache.Node
+	if !env.IsETLReadOnlyMode() {
+		// the error can be ignored because getAllNodesFunc only errors if nodes is empty, a case which we explicitly
+		// handle by checking the length of nodes below
+		nodes, _ = retry.Retry(context.Background(), getAllNodesFunc, 10, time.Second)
+	} else {
+		nodes, _ = getAllNodesFunc()
+	}
+	if len(nodes) == 0 {
+		log.Infof("Could not locate any nodes for cluster.")
+		return &CustomProvider{
+			Clientset: cache,
+			Config:    NewProviderConfig(config, "default.json"),
+		}, nil
 	}
 
 	cp := getClusterProperties(nodes[0])
