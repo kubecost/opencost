@@ -39,6 +39,7 @@ type CSVProvider struct {
 	PricingPV               map[string]*price
 	PVMapField              string
 	GPUClassPricing         map[string]*price
+	GPULabelPricing         map[string]*price
 	GPUMapFields            []string // Fields in a node's labels that represent the GPU class.
 	UsesRegion              bool
 	DownloadPricingDataLock sync.RWMutex
@@ -67,6 +68,7 @@ func (c *CSVProvider) DownloadPricingData() error {
 	nodeclasscount := make(map[string]float64)
 	pvpricing := make(map[string]*price)
 	gpupricing := make(map[string]*price)
+	gpulabelpricing := make(map[string]*price)
 	c.GPUMapFields = make([]string, 0, 1)
 	header, err := csvutil.Header(price{}, "csv")
 	if err != nil {
@@ -97,6 +99,7 @@ func (c *CSVProvider) DownloadPricingData() error {
 			c.NodeClassCount = nodeclasscount
 			c.PricingPV = pvpricing
 			c.GPUClassPricing = gpupricing
+			c.GPULabelPricing = gpulabelpricing
 			return fmt.Errorf("Invalid s3 URI: %s", c.CSVLocation)
 		}
 	} else {
@@ -109,6 +112,7 @@ func (c *CSVProvider) DownloadPricingData() error {
 		c.NodeClassCount = nodeclasscount
 		c.PricingPV = pvpricing
 		c.GPUClassPricing = gpupricing
+		c.GPULabelPricing = gpulabelpricing
 		return nil
 	}
 	csvReader := csv.NewReader(csvr)
@@ -122,6 +126,7 @@ func (c *CSVProvider) DownloadPricingData() error {
 		c.NodeClassCount = nodeclasscount
 		c.PricingPV = pvpricing
 		c.GPUClassPricing = gpupricing
+		c.GPULabelPricing = gpulabelpricing
 		return err
 	}
 	for {
@@ -178,18 +183,22 @@ func (c *CSVProvider) DownloadPricingData() error {
 		} else if p.AssetClass == "gpu" {
 			gpupricing[key] = &p
 			c.GPUMapFields = append(c.GPUMapFields, strings.ToLower(p.InstanceIDField))
+		} else if p.AssetClass == "gpulabel" {
+			labelKeyValue := p.InstanceIDField + "=" + p.InstanceID
+			gpulabelpricing[labelKeyValue] = &p
 		} else {
 			log.Infof("Unrecognized asset class %s, defaulting to node", p.AssetClass)
 			pricing[key] = &p
 			c.NodeMapField = p.InstanceIDField
 		}
 	}
-	if len(pricing) > 0 {
+	if len(pricing) > 0 || len(gpupricing) > 0 || len(gpulabelpricing) > 0 {
 		c.Pricing = pricing
 		c.NodeClassPricing = nodeclasspricing
 		c.NodeClassCount = nodeclasscount
 		c.PricingPV = pvpricing
 		c.GPUClassPricing = gpupricing
+		c.GPULabelPricing = gpulabelpricing
 	} else {
 		log.DedupedWarningf(5, "No data received from csv at %s", c.CSVLocation)
 	}
@@ -286,6 +295,16 @@ func (c *CSVProvider) NodePricing(key models.Key) (*models.Node, models.PricingM
 		node.Cost = fmt.Sprintf("%f", nc+totalCost)
 	}
 	return node, models.PricingMetadata{}, nil
+}
+
+func (c *CSVProvider) GpuPricing(nodeLabels map[string]string) (string, error) {
+	for key, value := range nodeLabels {
+		labelKeyValue := key + "=" + value
+		if p, ok := c.GPULabelPricing[labelKeyValue]; ok {
+			return p.MarketPriceHourly, nil
+		}
+	}
+	return "", nil
 }
 
 func NodeValueFromMapField(m string, n *clustercache.Node, useRegion bool) string {

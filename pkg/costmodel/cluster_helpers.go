@@ -191,12 +191,6 @@ func buildGPUCostMap(
 	gpuCostMap := make(map[NodeIdentifier]float64)
 	clusterAndNameToType := make(map[nodeIdentifierNoProviderID]string)
 
-	customPricingEnabled := provider.CustomPricesEnabled(cp)
-	customPricingConfig, err := cp.GetConfig()
-	if err != nil {
-		log.Warnf("ClusterNodes: failed to load custom pricing: %s", err)
-	}
-
 	for _, result := range resNodeGPUCost {
 		cluster, err := result.GetString(env.GetPromClusterLabel())
 		if err != nil {
@@ -222,33 +216,11 @@ func buildGPUCostMap(
 			Name:    name,
 		}
 
-		var gpuCost float64
-
-		if customPricingEnabled && customPricingConfig != nil {
-
-			var customGPUStr string
-			if spot, ok := preemptible[key]; ok && spot {
-				customGPUStr = customPricingConfig.SpotGPU
-			} else {
-				customGPUStr = customPricingConfig.GPU
-			}
-
-			customGPUCost, err := strconv.ParseFloat(customGPUStr, 64)
-			if err != nil {
-				log.Warnf("ClusterNodes: error parsing custom GPU price: %s", customGPUStr)
-			}
-			gpuCost = customGPUCost
-
-		} else {
-
-			gpuCost = result.Values[0].Value
-
-		}
-
 		clusterAndNameToType[keyNon] = nodeType
 
 		// If gpu count is available use it to multiply gpu cost
 		if value, ok := gpuCountMap[key]; ok {
+			gpuCost := result.Values[0].Value
 			gpuCostMap[key] = gpuCost * value
 		} else {
 			gpuCostMap[key] = 0

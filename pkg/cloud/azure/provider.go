@@ -1597,6 +1597,10 @@ func (az *Azure) ApplyReservedInstancePricing(nodes map[string]*models.Node) {
 
 }
 
+func (az *Azure) GpuPricing(nodeLabels map[string]string) (string, error) {
+	return "", nil
+}
+
 func (az *Azure) PVPricing(pvk models.PVKey) (*models.PV, error) {
 	az.DownloadPricingDataLock.RLock()
 	defer az.DownloadPricingDataLock.RUnlock()
