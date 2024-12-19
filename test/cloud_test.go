@@ -236,6 +236,97 @@ func TestNodePriceFromCSVWithGPU(t *testing.T) {
 
 }
 
+func TestNodePriceFromCSVWithGPULabels(t *testing.T) {
+	nameWant := "gke-standard-cluster-1-pool-1-91dc432d-cg69"
+	wantGPUCost := "0.75"
+
+	confMan := config.NewConfigFileManager(&config.ConfigFileManagerOpts{
+		LocalConfigPath: "./",
+	})
+
+	n := &clustercache.Node{}
+	n.SpecProviderID = "providerid"
+	n.Name = nameWant
+	n.Labels = make(map[string]string)
+	n.Labels["foo"] = "labelfoo"
+	n.Labels["nvidia.com/gpu_type"] = "Quadro_RTX_4000"
+	n.Status.Capacity = v1.ResourceList{"nvidia.com/gpu": *resource.NewScaledQuantity(2, 0)}
+
+	c := &provider.CSVProvider{
+		CSVLocation: "../configs/pricing_schema_gpu_labels.csv",
+		CustomProvider: &provider.CustomProvider{
+			Config: provider.NewProviderConfig(confMan, "../configs/default.json"),
+		},
+	}
+
+	c.DownloadPricingData()
+
+	fc := NewFakeNodeCache([]*clustercache.Node{n})
+	fm := FakeClusterMap{}
+	d, _ := time.ParseDuration("1m")
+
+	model := costmodel.NewCostModel(nil, nil, fc, fm, d)
+
+	nodeMap, err := model.GetNodeCost(c)
+	if err != nil {
+		t.Errorf("Error in NodePricing: %s", err.Error())
+	} else {
+		if node, ok := nodeMap[nameWant]; ok {
+			if node.GPUCost != wantGPUCost {
+				t.Errorf("Wanted gpu cost '%v' got gpu cost '%v'", wantGPUCost, node.GPUCost)
+			}
+		} else {
+			t.Errorf("Node %s not found in node map", nameWant)
+		}
+	}
+}
+
+func TestRKE2NodePriceFromCSVWithGPULabels(t *testing.T) {
+	nameWant := "gke-standard-cluster-1-pool-1-91dc432d-cg69"
+	wantGPUCost := "0.750000"
+
+	confMan := config.NewConfigFileManager(&config.ConfigFileManagerOpts{
+		LocalConfigPath: "./",
+	})
+
+	n := &clustercache.Node{}
+	n.SpecProviderID = "providerid"
+	n.Name = nameWant
+	n.Labels = make(map[string]string)
+	n.Labels["foo"] = "labelfoo"
+	n.Labels["nvidia.com/gpu_type"] = "Quadro_RTX_4000"
+	n.Labels[v1.LabelInstanceTypeStable] = "rke2"
+	n.Status.Capacity = v1.ResourceList{"nvidia.com/gpu": *resource.NewScaledQuantity(2, 0)}
+
+	c := &provider.CSVProvider{
+		CSVLocation: "../configs/pricing_schema_gpu_labels.csv",
+		CustomProvider: &provider.CustomProvider{
+			Config: provider.NewProviderConfig(confMan, "../configs/default.json"),
+		},
+	}
+
+	c.DownloadPricingData()
+
+	fc := NewFakeNodeCache([]*clustercache.Node{n})
+	fm := FakeClusterMap{}
+	d, _ := time.ParseDuration("1m")
+
+	model := costmodel.NewCostModel(nil, nil, fc, fm, d)
+
+	nodeMap, err := model.GetNodeCost(c)
+	if err != nil {
+		t.Errorf("Error in NodePricing: %s", err.Error())
+	} else {
+		if node, ok := nodeMap[nameWant]; ok {
+			if node.GPUCost != wantGPUCost {
+				t.Errorf("Wanted gpu cost '%v' got gpu cost '%v'", wantGPUCost, node.GPUCost)
+			}
+		} else {
+			t.Errorf("Node %s not found in node map", nameWant)
+		}
+	}
+}
+
 func TestNodePriceFromCSVSpecialChar(t *testing.T) {
 	nameWant := "gke-standard-cluster-1-pool-1-91dc432d-cg69"
 

@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/opencost/opencost/core/pkg/util/retry"
 	"github.com/opencost/opencost/pkg/cloud/alibaba"
 	"github.com/opencost/opencost/pkg/cloud/aws"
 	"github.com/opencost/opencost/pkg/cloud/azure"
@@ -148,9 +150,24 @@ func ShareTenancyCosts(p models.Provider) bool {
 
 // NewProvider looks at the nodespec or provider metadata server to decide which provider to instantiate.
 func NewProvider(cache clustercache.ClusterCache, apiKey string, config *config.ConfigFileManager) (models.Provider, error) {
-	nodes := cache.GetAllNodes()
+	getAllNodesFunc := func() ([]*clustercache.Node, error) {
+		nodes := cache.GetAllNodes()
+		if len(nodes) == 0 {
+			return nil, fmt.Errorf("no nodes found in cluster cache")
+		}
+		return nodes, nil
+	}
+
+	var nodes []*clustercache.Node
+	if !env.IsETLReadOnlyMode() {
+		// the error can be ignored because getAllNodesFunc only errors if nodes is empty, a case which we explicitly
+		// handle by checking the length of nodes below
+		nodes, _ = retry.Retry(context.Background(), getAllNodesFunc, 10, time.Second)
+	} else {
+		nodes, _ = getAllNodesFunc()
+	}
 	if len(nodes) == 0 {
-		log.Infof("Could not locate any nodes for cluster.") // valid in ETL readonly mode
+		log.Infof("Could not locate any nodes for cluster.")
 		return &CustomProvider{
 			Clientset: cache,
 			Config:    NewProviderConfig(config, "default.json"),
@@ -291,6 +308,7 @@ func getClusterProperties(node *clustercache.Node) clusterProperties {
 	if env.IsUseCustomProvider() {
 		// Use CSV provider if set
 		if env.IsUseCSVProvider() {
+			log.Debug("using custom CSV provider")
 			cp.provider = opencost.CSVProvider
 		}
 		return cp
@@ -298,34 +316,43 @@ func getClusterProperties(node *clustercache.Node) clusterProperties {
 
 	// The second conditional is mainly if you're running opencost outside of GCE, say in a local environment.
 	if metadata.OnGCE() || strings.HasPrefix(providerID, "gce") {
+		log.Debug("using GCP provider")
 		cp.provider = opencost.GCPProvider
 		cp.configFileName = "gcp.json"
 		cp.projectID = gcp.ParseGCPProjectID(providerID)
 	} else if strings.HasPrefix(providerID, "aws") {
+		log.Debug("using AWS provider")
 		cp.provider = opencost.AWSProvider
 		cp.configFileName = "aws.json"
 	} else if strings.Contains(node.Status.NodeInfo.KubeletVersion, "eks") { // Additional check for EKS, via kubelet check
+		log.Debug("using AWS provider from EKS")
 		cp.provider = opencost.AWSProvider
 		cp.configFileName = "aws.json"
 	} else if strings.HasPrefix(providerID, "azure") {
+		log.Debug("using Azure provider")
 		cp.provider = opencost.AzureProvider
 		cp.configFileName = "azure.json"
 		cp.accountID = azure.ParseAzureSubscriptionID(providerID)
 	} else if strings.HasPrefix(providerID, "scaleway") { // the scaleway provider ID looks like scaleway://instance/<instance_id>
+		log.Debug("using Scaleway provider")
 		cp.provider = opencost.ScalewayProvider
 		cp.configFileName = "scaleway.json"
 	} else if strings.Contains(node.Status.NodeInfo.KubeletVersion, "aliyun") { // provider ID is not prefix with any distinct keyword like other providers
+		log.Debug("using Alibaba provider")
 		cp.provider = opencost.AlibabaProvider
 		cp.configFileName = "alibaba.json"
 	} else if strings.HasPrefix(providerID, "ocid") {
+		log.Debug("using Oracle provider")
 		cp.provider = opencost.OracleProvider
 		cp.configFileName = "oracle.json"
 	} else if _, ok := node.Labels["cce.cloud.com/cce-nodepool"]; ok { // The node label "cce.cloud.com/cce-nodepool" exists
+		log.Debug("using OTC provider")
 		cp.provider = opencost.OTCProvider
 		cp.configFileName = "otc.json"
 	}
 	// Override provider to CSV if CSVProvider is used and custom provider is not set
 	if env.IsUseCSVProvider() {
+		log.Debug("using CSV provider")
 		cp.provider = opencost.CSVProvider
 	}
 
