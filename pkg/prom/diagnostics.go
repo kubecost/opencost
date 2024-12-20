@@ -26,9 +26,6 @@ const (
 	// KubecostDiagnosticMetricID is the identifier for the metric used to determine if Kubecost metrics are being scraped.
 	KubecostDiagnosticMetricID = "kubecostMetric"
 
-	// NodeExporterDiagnosticMetricID is the identifier for the metric used to determine if NodeExporter metrics are being scraped.
-	NodeExporterDiagnosticMetricID = "neMetric"
-
 	// ScrapeIntervalDiagnosticMetricID is the identifier for the metric used to determine if prometheus has its own self-scraped
 	// metrics.
 	ScrapeIntervalDiagnosticMetricID = "scrapeInterval"
