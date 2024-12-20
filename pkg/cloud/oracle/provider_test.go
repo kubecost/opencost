@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -56,7 +57,7 @@ func TestGetKey(t *testing.T) {
 func TestGetPVKey(t *testing.T) {
 	storageClass := "xyz"
 	providerID := "ocid.abc"
-	pv := &v1.PersistentVolume{
+	pv := &clustercache.PersistentVolume{
 		Spec: v1.PersistentVolumeSpec{
 			StorageClassName: storageClass,
 			PersistentVolumeSource: v1.PersistentVolumeSource{
@@ -78,15 +79,13 @@ func TestRegions(t *testing.T) {
 	assert.Len(t, regions, 39)
 }
 
-func testNode(gpus int) *v1.Node {
+func testNode(gpus int) *clustercache.Node {
 	capacity := map[v1.ResourceName]resource.Quantity{}
 	if gpus > 0 {
 		capacity["nvidia.com/gpu"] = resource.MustParse(fmt.Sprintf("%d", gpus))
 	}
-	return &v1.Node{
-		Spec: v1.NodeSpec{
-			ProviderID: "ocid.abc",
-		},
+	return &clustercache.Node{
+		SpecProviderID: "ocid.abc",
 		Status: v1.NodeStatus{
 			Capacity: capacity,
 		},

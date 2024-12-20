@@ -170,10 +170,12 @@ func (ai *AthenaIntegration) GetCloudCost(start, end time.Time) (*opencost.Cloud
 
 	// Generate row handling function.
 	rowHandler := func(row types.Row) {
-		err2 := ai.RowToCloudCost(row, aqi, ccsr)
+		cc, err2 := athenaRowToCloudCost(row, aqi)
 		if err2 != nil {
 			log.Errorf("AthenaIntegration: GetCloudCost: error while parsing row: %s", err2.Error())
+			return
 		}
+		ccsr.LoadCloudCost(cc)
 	}
 	log.Debugf("AthenaIntegration[%s]: GetCloudCost: querying: %s", ai.Key(), aqi.Query)
 	// Query CUR data and fill out CCSR
@@ -334,9 +336,9 @@ func (ai *AthenaIntegration) GetPartitionWhere(start, end time.Time) string {
 	return str
 }
 
-func (ai *AthenaIntegration) RowToCloudCost(row types.Row, aqi AthenaQueryIndexes, ccsr *opencost.CloudCostSetRange) error {
+func athenaRowToCloudCost(row types.Row, aqi AthenaQueryIndexes) (*opencost.CloudCost, error) {
 	if len(row.Data) < len(aqi.ColumnIndexes) {
-		return fmt.Errorf("rowToCloudCost: row with fewer than %d columns (has only %d)", len(aqi.ColumnIndexes), len(row.Data))
+		return nil, fmt.Errorf("rowToCloudCost: row with fewer than %d columns (has only %d)", len(aqi.ColumnIndexes), len(row.Data))
 	}
 
 	// Iterate through the slice of tag columns, assigning
@@ -379,22 +381,22 @@ func (ai *AthenaIntegration) RowToCloudCost(row types.Row, aqi AthenaQueryIndexe
 
 	listCost, err := GetAthenaRowValueFloat(row, aqi.ColumnIndexes, aqi.ListCostColumn)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	netCost, err := GetAthenaRowValueFloat(row, aqi.ColumnIndexes, aqi.NetCostColumn)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	amortizedNetCost, err := GetAthenaRowValueFloat(row, aqi.ColumnIndexes, aqi.AmortizedNetCostColumn)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	amortizedCost, err := GetAthenaRowValueFloat(row, aqi.ColumnIndexes, aqi.AmortizedCostColumn)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Identify resource category in the CUR
@@ -429,7 +431,7 @@ func (ai *AthenaIntegration) RowToCloudCost(row types.Row, aqi AthenaQueryIndexe
 
 	start, err := time.Parse(AthenaDateLayout, startStr)
 	if err != nil {
-		return fmt.Errorf("unable to parse %s: '%s'", AthenaDateTruncColumn, err.Error())
+		return nil, fmt.Errorf("unable to parse %s: '%s'", AthenaDateTruncColumn, err.Error())
 	}
 	end := start.AddDate(0, 0, 1)
 
@@ -458,8 +460,7 @@ func (ai *AthenaIntegration) RowToCloudCost(row types.Row, aqi AthenaQueryIndexe
 		},
 	}
 
-	ccsr.LoadCloudCost(cc)
-	return nil
+	return cc, nil
 }
 
 func (ai *AthenaIntegration) GetConnectionStatusFromResult(result cloud.EmptyChecker, currentStatus cloud.ConnectionStatus) cloud.ConnectionStatus {

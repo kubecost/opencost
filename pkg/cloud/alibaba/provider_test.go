@@ -8,6 +8,7 @@ import (
 	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/auth/credentials"
 	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/auth/signers"
 	"github.com/opencost/opencost/pkg/cloud/models"
+	"github.com/opencost/opencost/pkg/clustercache"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
@@ -637,7 +638,7 @@ func TestDetermineKeyForPricing(t *testing.T) {
 }
 
 func TestGenerateSlimK8sNodeFromV1Node(t *testing.T) {
-	testv1Node := &v1.Node{}
+	testv1Node := &clustercache.Node{}
 	testv1Node.Labels = make(map[string]string)
 	testv1Node.Labels["topology.kubernetes.io/region"] = "us-east-1"
 	testv1Node.Labels["beta.kubernetes.io/os"] = "linux"
@@ -647,7 +648,7 @@ func TestGenerateSlimK8sNodeFromV1Node(t *testing.T) {
 	}
 	cases := []struct {
 		name             string
-		testNode         *v1.Node
+		testNode         *clustercache.Node
 		expectedSlimNode *SlimK8sNode
 	}{
 		{
@@ -690,7 +691,7 @@ func TestGenerateSlimK8sNodeFromV1Node(t *testing.T) {
 }
 
 func TestGenerateSlimK8sDiskFromV1PV(t *testing.T) {
-	testv1PV := &v1.PersistentVolume{}
+	testv1PV := &clustercache.PersistentVolume{}
 	testv1PV.Spec.Capacity = v1.ResourceList{
 		v1.ResourceStorage: *resource.NewQuantity(16*1024*1024*1024, resource.BinarySI),
 	}
@@ -704,7 +705,7 @@ func TestGenerateSlimK8sDiskFromV1PV(t *testing.T) {
 	testv1PV.Spec.StorageClassName = "testStorageClass"
 	cases := []struct {
 		name             string
-		testPV           *v1.PersistentVolume
+		testPV           *clustercache.PersistentVolume
 		expectedSlimDisk *SlimK8sDisk
 		inpRegionID      string
 	}{
@@ -805,7 +806,7 @@ func TestDeterminePVRegion(t *testing.T) {
 	}
 
 	// testPV1 contains the Label with region information as well as node affinity in spec
-	testPV1 := &v1.PersistentVolume{}
+	testPV1 := &clustercache.PersistentVolume{}
 	testPV1.Name = "testPV1"
 	testPV1.Labels = make(map[string]string)
 	testPV1.Labels[ALIBABA_DISK_TOPOLOGY_REGION_LABEL] = "us-east-1"
@@ -816,13 +817,13 @@ func TestDeterminePVRegion(t *testing.T) {
 	}
 
 	// testPV2 contains the only zone label
-	testPV2 := &v1.PersistentVolume{}
+	testPV2 := &clustercache.PersistentVolume{}
 	testPV2.Name = "testPV2"
 	testPV2.Labels = make(map[string]string)
 	testPV2.Labels[ALIBABA_DISK_TOPOLOGY_ZONE_LABEL] = "us-east-1a"
 
 	// testPV3 contains only node affinity in spec
-	testPV3 := &v1.PersistentVolume{}
+	testPV3 := &clustercache.PersistentVolume{}
 	testPV3.Name = "testPV3"
 	testPV3.Spec.NodeAffinity = &v1.VolumeNodeAffinity{
 		Required: &v1.NodeSelector{
@@ -831,12 +832,12 @@ func TestDeterminePVRegion(t *testing.T) {
 	}
 
 	// testPV4 contains no label/annotation or any node affinity
-	testPV4 := &v1.PersistentVolume{}
+	testPV4 := &clustercache.PersistentVolume{}
 	testPV4.Name = "testPV4"
 
 	cases := []struct {
 		name           string
-		inputPV        *v1.PersistentVolume
+		inputPV        *clustercache.PersistentVolume
 		expectedRegion string
 	}{
 		{
