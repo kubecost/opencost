@@ -1066,7 +1066,7 @@ func TestAssetCustompricing(t *testing.T) {
 			expectedPricing: map[string]float64{
 				"CPU":     0.027397,              // 20.0 / 730
 				"RAM":     5.102716386318207e-12, // 4.0 / 730 / 1024^3
-				"GPU":     1.369864,              // 500.0 / 730 * 2
+				"GPU":     1.0,                   // gpu costs cannot be set by a custom provider
 				"Storage": 0.000137,              // 0.1 / 730 * (1073741824.0 / 1024 / 1024 / 1024) * (60 / 60) => 0.1 / 730 * 1 * 1
 			},
 		},

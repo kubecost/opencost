@@ -40,8 +40,8 @@ func TestConfigWatcherSingleHandler(t *testing.T) {
 	// triggered
 	var didRun bool = false
 
-	w := NewConfigMapWatchers(newTestWatcher(t, TestConfigMapName, "single", &didRun))
-	f := w.ToWatchFunc()
+	w := NewConfigMapWatchers(nil, "", newTestWatcher(t, TestConfigMapName, "single", &didRun))
+	f := w.toWatchFunc()
 
 	// Execute watch func with a 'test-config' configmap
 	f(newConfigMap(TestConfigMapName, "testing 1 2 3"))
@@ -57,10 +57,12 @@ func TestConfigWatcherMultipleHandlers(t *testing.T) {
 	var secondDidRun bool = false
 
 	w := NewConfigMapWatchers(
+		nil,
+		"",
 		newTestWatcher(t, TestConfigMapName, "single", &firstDidRun),
 		newTestWatcher(t, AlternateTestConfigMapName, "alternate", &secondDidRun))
 
-	f := w.ToWatchFunc()
+	f := w.toWatchFunc()
 
 	// Execute watch func with a 'alternate-test-config' configmap
 	f(newConfigMap(AlternateTestConfigMapName, "oof!"))
@@ -82,13 +84,15 @@ func TestConfigWatcherMultipleHandlersForSameConfig(t *testing.T) {
 	var thirdDidRun bool = false
 
 	w := NewConfigMapWatchers(
+		nil,
+		"",
 		newTestWatcher(t, TestConfigMapName, "first", &firstDidRun),
 		newTestWatcher(t, AlternateTestConfigMapName, "alternate", &secondDidRun),
 		// third watcher watches for the same configmap as "first"
 		newTestWatcher(t, TestConfigMapName, "third", &thirdDidRun),
 	)
 
-	f := w.ToWatchFunc()
+	f := w.toWatchFunc()
 
 	// Execute watch func with a 'test-config' configmap
 	f(newConfigMap(TestConfigMapName, "double trouble"))
@@ -118,12 +122,12 @@ func TestConfigMapWatcherWithAdd(t *testing.T) {
 		// third watcher watches for the same configmap as "first"
 		newTestWatcher(t, TestConfigMapName, "third", &thirdDidRun)
 
-	w := NewConfigMapWatchers()
+	w := NewConfigMapWatchers(nil, "")
 	w.AddWatcher(a)
 	w.AddWatcher(b)
 	w.Add(c.ConfigMapName, c.WatchFunc)
 
-	f := w.ToWatchFunc()
+	f := w.toWatchFunc()
 
 	// Execute watch func with a 'test-config' configmap
 	f(newConfigMap(TestConfigMapName, "double trouble"))

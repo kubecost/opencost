@@ -13,15 +13,14 @@ import (
 
 	"github.com/opencost/opencost/core/pkg/util"
 	"github.com/opencost/opencost/pkg/cloud/models"
+	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/opencost/opencost/pkg/env"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/opencost/opencost/core/pkg/log"
-	v1 "k8s.io/api/core/v1"
-
 	"github.com/jszwec/csvutil"
+	"github.com/opencost/opencost/core/pkg/log"
 )
 
 const refreshMinutes = 60
@@ -40,6 +39,7 @@ type CSVProvider struct {
 	PricingPV               map[string]*price
 	PVMapField              string
 	GPUClassPricing         map[string]*price
+	GPULabelPricing         map[string]*price
 	GPUMapFields            []string // Fields in a node's labels that represent the GPU class.
 	UsesRegion              bool
 	DownloadPricingDataLock sync.RWMutex
@@ -68,6 +68,7 @@ func (c *CSVProvider) DownloadPricingData() error {
 	nodeclasscount := make(map[string]float64)
 	pvpricing := make(map[string]*price)
 	gpupricing := make(map[string]*price)
+	gpulabelpricing := make(map[string]*price)
 	c.GPUMapFields = make([]string, 0, 1)
 	header, err := csvutil.Header(price{}, "csv")
 	if err != nil {
@@ -98,6 +99,7 @@ func (c *CSVProvider) DownloadPricingData() error {
 			c.NodeClassCount = nodeclasscount
 			c.PricingPV = pvpricing
 			c.GPUClassPricing = gpupricing
+			c.GPULabelPricing = gpulabelpricing
 			return fmt.Errorf("Invalid s3 URI: %s", c.CSVLocation)
 		}
 	} else {
@@ -110,6 +112,7 @@ func (c *CSVProvider) DownloadPricingData() error {
 		c.NodeClassCount = nodeclasscount
 		c.PricingPV = pvpricing
 		c.GPUClassPricing = gpupricing
+		c.GPULabelPricing = gpulabelpricing
 		return nil
 	}
 	csvReader := csv.NewReader(csvr)
@@ -123,6 +126,7 @@ func (c *CSVProvider) DownloadPricingData() error {
 		c.NodeClassCount = nodeclasscount
 		c.PricingPV = pvpricing
 		c.GPUClassPricing = gpupricing
+		c.GPULabelPricing = gpulabelpricing
 		return err
 	}
 	for {
@@ -179,18 +183,22 @@ func (c *CSVProvider) DownloadPricingData() error {
 		} else if p.AssetClass == "gpu" {
 			gpupricing[key] = &p
 			c.GPUMapFields = append(c.GPUMapFields, strings.ToLower(p.InstanceIDField))
+		} else if p.AssetClass == "gpulabel" {
+			labelKeyValue := p.InstanceIDField + "=" + p.InstanceID
+			gpulabelpricing[labelKeyValue] = &p
 		} else {
 			log.Infof("Unrecognized asset class %s, defaulting to node", p.AssetClass)
 			pricing[key] = &p
 			c.NodeMapField = p.InstanceIDField
 		}
 	}
-	if len(pricing) > 0 {
+	if len(pricing) > 0 || len(gpupricing) > 0 || len(gpulabelpricing) > 0 {
 		c.Pricing = pricing
 		c.NodeClassPricing = nodeclasspricing
 		c.NodeClassCount = nodeclasscount
 		c.PricingPV = pvpricing
 		c.GPUClassPricing = gpupricing
+		c.GPULabelPricing = gpulabelpricing
 	} else {
 		log.DedupedWarningf(5, "No data received from csv at %s", c.CSVLocation)
 	}
@@ -289,7 +297,17 @@ func (c *CSVProvider) NodePricing(key models.Key) (*models.Node, models.PricingM
 	return node, models.PricingMetadata{}, nil
 }
 
-func NodeValueFromMapField(m string, n *v1.Node, useRegion bool) string {
+func (c *CSVProvider) GpuPricing(nodeLabels map[string]string) (string, error) {
+	for key, value := range nodeLabels {
+		labelKeyValue := key + "=" + value
+		if p, ok := c.GPULabelPricing[labelKeyValue]; ok {
+			return p.MarketPriceHourly, nil
+		}
+	}
+	return "", nil
+}
+
+func NodeValueFromMapField(m string, n *clustercache.Node, useRegion bool) string {
 	mf := strings.Split(m, ".")
 	toReturn := ""
 	if useRegion {
@@ -300,16 +318,16 @@ func NodeValueFromMapField(m string, n *v1.Node, useRegion bool) string {
 		}
 	}
 	if len(mf) == 2 && mf[0] == "spec" && mf[1] == "providerID" {
-		for matchNum, group := range provIdRx.FindStringSubmatch(n.Spec.ProviderID) {
+		for matchNum, group := range provIdRx.FindStringSubmatch(n.SpecProviderID) {
 			if matchNum == 2 {
 				return toReturn + group
 			}
 		}
-		if strings.HasPrefix(n.Spec.ProviderID, "azure://") {
-			vmOrScaleSet := strings.ToLower(strings.TrimPrefix(n.Spec.ProviderID, "azure://"))
+		if strings.HasPrefix(n.SpecProviderID, "azure://") {
+			vmOrScaleSet := strings.ToLower(strings.TrimPrefix(n.SpecProviderID, "azure://"))
 			return toReturn + vmOrScaleSet
 		}
-		return toReturn + n.Spec.ProviderID
+		return toReturn + n.SpecProviderID
 	} else if len(mf) > 1 && mf[0] == "metadata" {
 		if mf[1] == "name" {
 			return toReturn + n.Name
@@ -329,7 +347,7 @@ func NodeValueFromMapField(m string, n *v1.Node, useRegion bool) string {
 	}
 }
 
-func PVValueFromMapField(m string, n *v1.PersistentVolume) string {
+func PVValueFromMapField(m string, n *clustercache.PersistentVolume) string {
 	mf := strings.Split(m, ".")
 	if len(mf) > 1 && mf[0] == "metadata" {
 		if mf[1] == "name" {
@@ -365,7 +383,7 @@ func PVValueFromMapField(m string, n *v1.PersistentVolume) string {
 	}
 }
 
-func (c *CSVProvider) GetKey(l map[string]string, n *v1.Node) models.Key {
+func (c *CSVProvider) GetKey(l map[string]string, n *clustercache.Node) models.Key {
 	id := NodeValueFromMapField(c.NodeMapField, n, c.UsesRegion)
 	var gpuCount int64
 	gpuCount = 0
@@ -401,7 +419,7 @@ func (key *csvPVKey) Features() string {
 	return key.ProviderID
 }
 
-func (c *CSVProvider) GetPVKey(pv *v1.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
+func (c *CSVProvider) GetPVKey(pv *clustercache.PersistentVolume, parameters map[string]string, defaultRegion string) models.PVKey {
 	id := PVValueFromMapField(c.PVMapField, pv)
 	return &csvPVKey{
 		Labels:                 pv.Labels,
