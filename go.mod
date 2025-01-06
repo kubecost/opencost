@@ -49,7 +49,7 @@ require (
 	github.com/scaleway/scaleway-sdk-go v1.0.0-beta.9
 	github.com/spf13/cobra v1.2.1
 	github.com/spf13/viper v1.8.1
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	go.etcd.io/bbolt v1.3.5
 	go.opentelemetry.io/otel v1.24.0
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d
