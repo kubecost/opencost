@@ -18,7 +18,9 @@ There are three driving data components of the OpenCost project:
 
 The interactions between these components are what drive the cost calculation process. However, the current implementation of OpenCost does not provide a clear separation of concerns between these components. Nor does it allow for substitution of these components without significant refactoring.
 
-![alt text](image-1.png)
+![](image-1.png)
+
+**This image represents the current architecture of OpenCost. The Prometheus data source is tightly coupled with the model generation and metric emission process. This makes it difficult to substitute Prometheus with other metric sources, including a low retention metric source to allow for better unit testing.**
 
 ### Prometheus Data Source 
 
