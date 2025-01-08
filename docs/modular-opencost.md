@@ -1,6 +1,6 @@
 # Modular OpenCost 
 
-This document proposes major architectural restructuring of the OpenCost project to include a more modular approach to collecting and emitting metrics, associating cost data, and providing a more extensible platform for development. It does not propose 
+This document proposes major architectural restructuring of the OpenCost project to include a more modular approach to collecting and emitting metrics, associating cost data, and providing a more extensible platform for development.
 
 
 ## Purpose 
