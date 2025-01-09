@@ -94,7 +94,7 @@ func getUnmountedPodKey(cluster string) podKey {
 // as the podKey's Cluster field. If a given field does not exist on the
 // result, an error is returned. (The only exception to that is clusterLabel,
 // which we expect may not exist, but has a default value.)
-func resultPodKey(res *prom.QueryResult, clusterLabel, namespaceLabel string) (podKey, error) {
+func resultPodKey(res *prom.QueryResult, clusterLabel, namespaceLabel, podLabel string) (podKey, error) {
 	key := podKey{}
 
 	cluster, err := res.GetString(clusterLabel)
@@ -105,15 +105,21 @@ func resultPodKey(res *prom.QueryResult, clusterLabel, namespaceLabel string) (p
 
 	namespace, err := res.GetString(namespaceLabel)
 	if err != nil {
-		return key, err
+		namespace, err = res.GetString("namespace")
+		if err != nil {
+			return key, err
+		}
 	}
 	key.Namespace = namespace
 
-	pod, err := res.GetString("pod")
+	pod, err := res.GetString(podLabel)
 	if pod == "" || err != nil {
-		pod, err = res.GetString("pod_name")
-		if err != nil {
-			return key, err
+		pod, err = res.GetString("pod")
+		if pod == "" || err != nil {
+			pod, err = res.GetString("pod_name")
+			if err != nil {
+				return key, err
+			}
 		}
 	}
 	key.Pod = pod
@@ -154,7 +160,10 @@ func resultNamespaceKey(res *prom.QueryResult, clusterLabel, namespaceLabel stri
 
 	namespace, err := res.GetString(namespaceLabel)
 	if err != nil {
-		return key, err
+		namespace, err = res.GetString("namespace")
+		if err != nil {
+			return key, err
+		}
 	}
 	key.Namespace = namespace
 
@@ -198,7 +207,10 @@ func resultControllerKey(controllerKind string, res *prom.QueryResult, clusterLa
 
 	namespace, err := res.GetString(namespaceLabel)
 	if err != nil {
-		return key, err
+		namespace, err = res.GetString("namespace")
+		if err != nil {
+			return key, err
+		}
 	}
 	key.Namespace = namespace
 
@@ -284,7 +296,10 @@ func resultServiceKey(res *prom.QueryResult, clusterLabel, namespaceLabel, servi
 
 	namespace, err := res.GetString(namespaceLabel)
 	if err != nil {
-		return key, err
+		namespace, err = res.GetString("namespace")
+		if err != nil {
+			return key, err
+		}
 	}
 	key.Namespace = namespace
 
@@ -372,7 +387,10 @@ func resultPVCKey(res *prom.QueryResult, clusterLabel, namespaceLabel, pvcLabel 
 
 	namespace, err := res.GetString(namespaceLabel)
 	if err != nil {
-		return key, err
+		namespace, err = res.GetString("namespace")
+		if err != nil {
+			return key, err
+		}
 	}
 	key.Namespace = namespace
 
