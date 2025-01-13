@@ -39,8 +39,6 @@ options = {
     'port_prometheus': cfg.get('port-prometheus', '9080'),
     'port_ui': cfg.get('port-ui', '9090'),
     'service_key': cfg.get('service-key', ''),
-    'prometheus_deploy': cfg.get('prometheus_deploy', True),
-    'execute_test': cfg.get('execute-test', True),
 }
 
 run_opencost(options)

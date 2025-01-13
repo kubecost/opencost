@@ -195,10 +195,9 @@ type CustomPricing struct {
 	KubecostToken                string `json:"kubecostToken"`
 	GoogleAnalyticsTag           string `json:"googleAnalyticsTag"`
 	ExcludeProviderID            string `json:"excludeProviderID"`
-	LinodeTokenSecret            string `json:"linodeTokenSecret"`
 	DefaultLBPrice               string `json:"defaultLBPrice"`
 	ControlPlaneCosts            string `json:"controlPlaneCosts"`
-	HAControlPlaneCosts          string `json:"HaControlPlaneCosts"`
+	HAControlPlaneCosts          string `json:"haControlPlaneCosts"`
 }
 
 // GetSharedOverheadCostPerMonth parses and returns a float64 representation

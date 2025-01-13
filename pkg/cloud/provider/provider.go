@@ -33,9 +33,6 @@ import (
 	"github.com/opencost/opencost/pkg/config"
 	"github.com/opencost/opencost/pkg/env"
 	"github.com/opencost/opencost/pkg/util/watcher"
-
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/client-go/kubernetes"
 )
 
 // ClusterName returns the name defined in cluster info, defaulting to the
@@ -265,7 +262,6 @@ func NewProvider(cache clustercache.ClusterCache, apiKey string, config *config.
 	case opencost.LinodeProvider:
 		log.Info("Found ProviderID starting with \"linode\", using Linode Provider")
 		return &linode.Linode{
-			KubeClient:       kubeClientset,
 			Clientset:        cache,
 			ClusterRegion:    cp.region,
 			ClusterAccountID: cp.accountID,
@@ -352,6 +348,7 @@ func getClusterProperties(node *clustercache.Node) clusterProperties {
 		cp.provider = opencost.ScalewayProvider
 		cp.configFileName = "scaleway.json"
 	} else if strings.HasPrefix(providerID, "linode") { // the linode provider ID looks like linode://<instance_id>
+		log.Debug("using Linode provider")
 		cp.provider = opencost.LinodeProvider
 		cp.configFileName = "linode.json"
 		cp.projectID = strings.Split(node.Name, "-")[0] // the default name looks like lke<cluster_id>-<random>

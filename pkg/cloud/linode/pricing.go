@@ -84,7 +84,7 @@ func (l *Linode) NetworkPricing() (*models.Network, error) {
 	}, nil
 }
 
-func (l *Linode) DownloadPricingData() (err error) {
+func (l *Linode) DownloadPricingData() error {
 	return l.init()
 }
 
@@ -99,15 +99,19 @@ func (l *Linode) NodePricing(key models.Key) (*models.Node, models.PricingMetada
 			price := info.Price.Hourly / float32(info.VCPUs)
 
 			return &models.Node{
-				Cost:         "0.0",
-				PricingType:  models.DefaultPrices,
-				VCPU:         fmt.Sprintf("%d", info.VCPUs),
-				VCPUCost:     fmt.Sprintf("%f", price/2),
-				RAM:          fmt.Sprintf("%d", info.Memory),
-				RAMBytes:     fmt.Sprintf("%d", info.Memory*1024),
-				RAMCost:      fmt.Sprintf("%f", price/2),
-				Storage:      fmt.Sprintf("%d", info.Disk),
-				StorageCost:  "0.0",
+				Cost:        "0.0",
+				PricingType: models.DefaultPrices,
+				// CPU
+				VCPU:     fmt.Sprintf("%d", info.VCPUs),
+				VCPUCost: fmt.Sprintf("%f", price/2),
+				// Memory
+				RAM:      fmt.Sprintf("%d", info.Memory),
+				RAMBytes: fmt.Sprintf("%d", info.Memory*1024),
+				RAMCost:  fmt.Sprintf("%f", price/2),
+				// Storage
+				Storage:     fmt.Sprintf("%d", info.Disk),
+				StorageCost: "0.0",
+				// Metadata
 				InstanceType: split[1],
 				Region:       split[0],
 			}, meta, nil
@@ -117,6 +121,10 @@ func (l *Linode) NodePricing(key models.Key) (*models.Node, models.PricingMetada
 	log.Debugf("Node pricing not found for %s", key.Features())
 
 	return nil, meta, fmt.Errorf("unable to find node pricing matching the features `%s`", key.Features())
+}
+
+func (l *Linode) GpuPricing(nodeLabels map[string]string) (string, error) {
+	return "", nil
 }
 
 func (l *Linode) PVPricing(pvk models.PVKey) (*models.PV, error) {
@@ -137,11 +145,10 @@ func (l *Linode) PVPricing(pvk models.PVKey) (*models.PV, error) {
 // The summary represents what was _parsed_ from the pricing source, not
 // everything that was _available_ in the pricing source.
 func (l *Linode) PricingSourceSummary() interface{} {
-	pricing := map[string]*linodego.LinodeType{}
+	pricing := make(LinodePricing)
 
 	l.linodePricing.Range(func(key, value any) bool {
 		pricing[key.(string)] = value.(*linodego.LinodeType)
-
 		return true
 	})
 
@@ -199,25 +206,21 @@ func (l *Linode) refreshPricing(clusterID int) error {
 	regionList := []string{}
 	for _, region := range regions {
 		regionList = append(regionList, region.ID)
-
 		l.linodePricing.LoadOrStore(region.ID, LinodePricing{})
 	}
 
 	for _, t := range linodeTypes {
 		l.linodePricing.Range(func(_ any, prices any) bool {
 			prices.(LinodePricing)[t.ID] = &t
-
 			return true
 		})
 
 		for i := range t.RegionPrices {
 			pricing, _ := l.linodePricing.LoadOrStore(t.RegionPrices[i].ID, LinodePricing{})
-
 			pricing.(LinodePricing)[t.ID] = &t
 		}
 	}
 
 	l.regions.Store(regionList)
-
 	return nil
 }

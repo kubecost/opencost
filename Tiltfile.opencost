@@ -27,8 +27,6 @@ def run_opencost(options):
     go_arch = get_go_arch(options["arch"])
     is_cloud_integration = options["cloud_integration"] != '' and os.path.exists(options["cloud_integration"])
     is_service_key = options["service_key"] != '' and os.path.exists(options["service_key"])
-    is_prometheus_deploy = options["prometheus_deploy"] == True
-    is_test_execution = options["execute_test"] == True
     continue_flag = '--continue'
     if options["delve_continue"] == False:
         continue_flag = ''
@@ -153,22 +151,20 @@ def run_opencost(options):
     ]
     k8s_resource(workload='opencost', port_forwards=port_forwards)
 
-    if is_prometheus_deploy:
-        helm_repo('prometheus-community', 'https://prometheus-community.github.io/helm-charts')
-        helm_resource(
-            name='prometheus',
-            chart='prometheus-community/prometheus',
-            resource_deps=['prometheus-community'])
-        k8s_resource(workload='prometheus', port_forwards=[options['port_prometheus']+':9090'])
+    helm_repo('prometheus-community', 'https://prometheus-community.github.io/helm-charts')
+    helm_resource(
+        name='prometheus',
+        chart='prometheus-community/prometheus',
+        resource_deps=['prometheus-community'])
+    k8s_resource(workload='prometheus', port_forwards=[options['port_prometheus']+':9090'])
 
-    if is_test_execution:
-        local_resource(
-            name='costmodel-test',
-            dir='../opencost',
-            cmd='go test ./...',
-            deps=[
-                './pkg',
-            ],
-            allow_parallel=True,
-            resource_deps=['opencost'],  # run tests after build to speed up deployment
-        )
+    local_resource(
+        name='costmodel-test',
+        dir='../opencost',
+        cmd='go test ./...',
+        deps=[
+            './pkg',
+        ],
+        allow_parallel=True,
+        resource_deps=['opencost'],  # run tests after build to speed up deployment
+    )

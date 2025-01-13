@@ -5,7 +5,7 @@ import (
 
 	"github.com/opencost/opencost/core/pkg/util"
 	"github.com/opencost/opencost/pkg/cloud/models"
-	v1 "k8s.io/api/core/v1"
+	"github.com/opencost/opencost/pkg/clustercache"
 )
 
 type linodeKey struct {
@@ -52,14 +52,14 @@ func (k *linodePVKey) Features() string {
 	return k.Region
 }
 
-func (l *Linode) GetKey(labels map[string]string, n *v1.Node) models.Key {
+func (l *Linode) GetKey(labels map[string]string, n *clustercache.Node) models.Key {
 	return &linodeKey{
 		Labels: labels,
 		Name:   n.Name,
 	}
 }
 
-func (l *Linode) GetPVKey(pv *v1.PersistentVolume, parameters map[string]string, _ string) models.PVKey {
+func (l *Linode) GetPVKey(pv *clustercache.PersistentVolume, parameters map[string]string, _ string) models.PVKey {
 	return &linodePVKey{
 		Labels:                 pv.Labels,
 		StorageClassName:       pv.Spec.StorageClassName,

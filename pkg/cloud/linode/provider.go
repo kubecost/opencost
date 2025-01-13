@@ -1,8 +1,8 @@
 package linode
 
 import (
-	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
@@ -18,23 +18,21 @@ import (
 	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/opencost/opencost/pkg/env"
 	"golang.org/x/oauth2"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 )
 
 const (
 	InstanceAPIPricing = "Instance API Pricing"
-
-	kubeAPITimeout   = 30 * time.Second
-	linodeAPITimeout = 30 * time.Second
+	linodeTokenEnv     = "LINODE_TOKEN"
+	linodeAPITimeout   = 30 * time.Second
 )
+
+var ErrTokenNotFound = errors.New("token for Linode API not found")
 
 var initOnce = &sync.Once{}
 
 type LinodePricing map[string]*linodego.LinodeType
 
 type Linode struct {
-	KubeClient       kubernetes.Interface
 	Clientset        clustercache.ClusterCache
 	Config           models.ProviderConfig
 	ClusterRegion    string
@@ -47,19 +45,28 @@ type Linode struct {
 	linodePricing sync.Map
 }
 
+var _ models.Provider = (*Linode)(nil)
+
 func (l *Linode) init() error {
-	cpricing, err := l.Config.GetCustomPricingData()
-	if err != nil {
-		log.Errorf("Could not get Linode custom pricing: %+v", err)
-
-		return err
-	}
-
 	clusterID, err := strconv.Atoi(strings.TrimLeft(l.ClusterProjectID, "lke"))
 	if err != nil {
 		log.Errorf("Could not parse LKE cluster ID (%s): %+v", l.ClusterProjectID, err)
 
 		return err
+	}
+
+	linodeToken := os.Getenv(linodeTokenEnv)
+	if linodeToken == "" {
+		log.Errorf("Could not get Linode token from environment variables")
+
+		return fmt.Errorf("%w: env:%s", err, linodeTokenEnv)
+	}
+
+	httpClient := http.Client{Timeout: linodeAPITimeout}
+	if linodeToken != "" {
+		httpClient.Transport = &oauth2.Transport{
+			Source: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: linodeToken}),
+		}
 	}
 
 	initOnce.Do(func() {
@@ -69,31 +76,6 @@ func (l *Linode) init() error {
 			first := true
 
 			for {
-				linodeToken := os.Getenv("LINODE_TOKEN")
-				if cpricing.LinodeTokenSecret != "" && linodeToken == "" {
-					namespace := "default"
-					name := cpricing.LinodeTokenSecret
-					if secretName := strings.Split(cpricing.LinodeTokenSecret, "/"); len(secretName) > 1 {
-						namespace = secretName[0]
-						name = secretName[1]
-					}
-
-					ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
-					if apiToken, err := l.KubeClient.CoreV1().Secrets(namespace).Get(ctx, name, v1.GetOptions{}); err != nil {
-						log.Errorf("Could not fetch token via secret (%s): %+v", cpricing.LinodeTokenSecret, err)
-					} else {
-						linodeToken = string(apiToken.Data["token"])
-					}
-					cancel()
-				}
-
-				httpClient := http.Client{Timeout: linodeAPITimeout}
-				if linodeToken != "" {
-					httpClient.Transport = &oauth2.Transport{
-						Source: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: linodeToken}),
-					}
-				}
-
 				lc := linodego.NewClient(&httpClient)
 				l.linodeClient.Store(lc)
 
@@ -160,10 +142,10 @@ func (l *Linode) GetManagementPlatform() (string, error) {
 	if len(nodes) > 0 {
 		n := nodes[0]
 		if _, ok := n.Labels["topology.linode.com/region"]; ok {
-			return "linode", nil
+			return "Linode", nil
 		}
 		if _, ok := n.Labels["lke.linode.com/pool-id"]; ok {
-			return "linode", nil
+			return "Linode", nil
 		}
 	}
 
