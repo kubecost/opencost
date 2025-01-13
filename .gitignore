@@ -13,9 +13,11 @@ pkg/cloud/oracle/cloud-integration.json
 
 # VS Code
 .vscode
+__debug_bin*
 
 #Apple
 *.DS_Store
 
 # tilt
 tilt_config.json
+ui

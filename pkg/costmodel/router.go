@@ -1260,7 +1260,7 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 	k8sCache.Run()
 
 	cloudProviderKey := env.GetCloudProviderAPIKey()
-	cloudProvider, err := provider.NewProvider(k8sCache, cloudProviderKey, confManager)
+	cloudProvider, err := provider.NewProvider(kubeClientset, k8sCache, cloudProviderKey, confManager)
 	if err != nil {
 		panic(err.Error())
 	}

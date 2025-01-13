@@ -158,7 +158,7 @@ func Execute(opts *AgentOpts) error {
 	})
 
 	cloudProviderKey := env.GetCloudProviderAPIKey()
-	cloudProvider, err := provider.NewProvider(clusterCache, cloudProviderKey, confManager)
+	cloudProvider, err := provider.NewProvider(k8sClient, clusterCache, cloudProviderKey, confManager)
 	if err != nil {
 		panic(err.Error())
 	}

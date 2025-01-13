@@ -16,6 +16,7 @@ import (
 	"github.com/opencost/opencost/pkg/cloud/aws"
 	"github.com/opencost/opencost/pkg/cloud/azure"
 	"github.com/opencost/opencost/pkg/cloud/gcp"
+	"github.com/opencost/opencost/pkg/cloud/linode"
 	"github.com/opencost/opencost/pkg/cloud/models"
 	"github.com/opencost/opencost/pkg/cloud/oracle"
 	"github.com/opencost/opencost/pkg/cloud/otc"
@@ -32,6 +33,9 @@ import (
 	"github.com/opencost/opencost/pkg/config"
 	"github.com/opencost/opencost/pkg/env"
 	"github.com/opencost/opencost/pkg/util/watcher"
+
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
 // ClusterName returns the name defined in cluster info, defaulting to the
@@ -258,6 +262,16 @@ func NewProvider(cache clustercache.ClusterCache, apiKey string, config *config.
 			ClusterAccountID: cp.accountID,
 			Config:           NewProviderConfig(config, cp.configFileName),
 		}, nil
+	case opencost.LinodeProvider:
+		log.Info("Found ProviderID starting with \"linode\", using Linode Provider")
+		return &linode.Linode{
+			KubeClient:       kubeClientset,
+			Clientset:        cache,
+			ClusterRegion:    cp.region,
+			ClusterAccountID: cp.accountID,
+			ClusterProjectID: cp.projectID,
+			Config:           NewProviderConfig(config, cp.configFileName),
+		}, nil
 	case opencost.OracleProvider:
 		log.Info("Found ProviderID starting with \"oracle\", using Oracle Provider")
 		return &oracle.Oracle{
@@ -337,6 +351,10 @@ func getClusterProperties(node *clustercache.Node) clusterProperties {
 		log.Debug("using Scaleway provider")
 		cp.provider = opencost.ScalewayProvider
 		cp.configFileName = "scaleway.json"
+	} else if strings.HasPrefix(providerID, "linode") { // the linode provider ID looks like linode://<instance_id>
+		cp.provider = opencost.LinodeProvider
+		cp.configFileName = "linode.json"
+		cp.projectID = strings.Split(node.Name, "-")[0] // the default name looks like lke<cluster_id>-<random>
 	} else if strings.Contains(node.Status.NodeInfo.KubeletVersion, "aliyun") { // provider ID is not prefix with any distinct keyword like other providers
 		log.Debug("using Alibaba provider")
 		cp.provider = opencost.AlibabaProvider
