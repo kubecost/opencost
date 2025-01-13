@@ -13,6 +13,7 @@ import (
 	"github.com/opencost/opencost/pkg/cloud/aws"
 	"github.com/opencost/opencost/pkg/cloud/azure"
 	"github.com/opencost/opencost/pkg/cloud/gcp"
+	"github.com/opencost/opencost/pkg/cloud/linode"
 	"github.com/opencost/opencost/pkg/cloud/models"
 	"github.com/opencost/opencost/pkg/cloud/oracle"
 	"github.com/opencost/opencost/pkg/cloud/otc"
@@ -322,6 +323,8 @@ func ExtractConfigFromProviders(prov models.Provider) models.ProviderConfig {
 	case *oracle.Oracle:
 		return p.Config
 	case *otc.OTC:
+		return p.Config
+	case *linode.Linode:
 		return p.Config
 	default:
 		log.Errorf("failed to extract config from provider")
