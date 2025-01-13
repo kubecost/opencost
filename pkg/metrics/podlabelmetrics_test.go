@@ -4,27 +4,21 @@ import (
 	"testing"
 
 	"github.com/opencost/opencost/pkg/clustercache"
-	appsv1 "k8s.io/api/apps/v1"
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestWhitelist(t *testing.T) {
-	sampleServices := []*v1.Service{&v1.Service{
-		Spec: v1.ServiceSpec{
-			Selector: map[string]string{"servicewhitelistlabel": "foo"},
-		},
+	sampleServices := []*clustercache.Service{{
+		SpecSelector: map[string]string{"servicewhitelistlabel": "foo"},
 	}}
 	replicaSetLabelSelector := metav1.LabelSelector{
 		MatchLabels: map[string]string{"replicasetwhitelistlabel1": "bar"},
 	}
-	sampleReplicaSets := []*appsv1.ReplicaSet{{
-		Spec: appsv1.ReplicaSetSpec{
-			Selector: &replicaSetLabelSelector,
-		},
+	sampleReplicaSets := []*clustercache.ReplicaSet{{
+		SpecSelector: &replicaSetLabelSelector,
 	}}
 
-	sampleStatefulSets := []*appsv1.StatefulSet{}
+	sampleStatefulSets := []*clustercache.StatefulSet{}
 
 	kc := NewFakeCache(sampleReplicaSets, sampleStatefulSets, sampleServices)
 	wl := map[string]bool{
@@ -51,24 +45,24 @@ func TestWhitelist(t *testing.T) {
 
 type FakeCache struct {
 	clustercache.ClusterCache
-	replicasets  []*appsv1.ReplicaSet
-	statefulsets []*appsv1.StatefulSet
-	services     []*v1.Service
+	replicasets  []*clustercache.ReplicaSet
+	statefulsets []*clustercache.StatefulSet
+	services     []*clustercache.Service
 }
 
-func (f FakeCache) GetAllReplicaSets() []*appsv1.ReplicaSet {
+func (f FakeCache) GetAllReplicaSets() []*clustercache.ReplicaSet {
 	return f.replicasets
 }
 
-func (f FakeCache) GetAllStatefulSets() []*appsv1.StatefulSet {
+func (f FakeCache) GetAllStatefulSets() []*clustercache.StatefulSet {
 	return f.statefulsets
 }
 
-func (f FakeCache) GetAllServices() []*v1.Service {
+func (f FakeCache) GetAllServices() []*clustercache.Service {
 	return f.services
 }
 
-func NewFakeCache(replicasets []*appsv1.ReplicaSet, statefulsets []*appsv1.StatefulSet, services []*v1.Service) FakeCache {
+func NewFakeCache(replicasets []*clustercache.ReplicaSet, statefulsets []*clustercache.StatefulSet, services []*clustercache.Service) FakeCache {
 	return FakeCache{
 		replicasets:  replicasets,
 		statefulsets: statefulsets,

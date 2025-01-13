@@ -42,8 +42,8 @@ func (kpmc KubecostPodCollector) Collect(ch chan<- prometheus.Metric) {
 
 	pods := kpmc.KubeClusterCache.GetAllPods()
 	for _, pod := range pods {
-		podName := pod.GetName()
-		podNS := pod.GetNamespace()
+		podName := pod.Name
+		podNS := pod.Namespace
 
 		// Pod Annotations
 		labels, values := promutil.KubeAnnotationsToLabels(pod.Annotations)
@@ -107,9 +107,9 @@ func (kpmc KubePodCollector) Collect(ch chan<- prometheus.Metric) {
 	disabledMetrics := kpmc.metricsConfig.GetDisabledMetricsMap()
 
 	for _, pod := range pods {
-		podName := pod.GetName()
-		podNS := pod.GetNamespace()
-		podUID := string(pod.GetUID())
+		podName := pod.Name
+		podNS := pod.Namespace
+		podUID := string(pod.UID)
 		node := pod.Spec.NodeName
 		phase := pod.Status.Phase
 
@@ -135,7 +135,7 @@ func (kpmc KubePodCollector) Collect(ch chan<- prometheus.Metric) {
 
 		// Pod Labels
 		if _, disabled := disabledMetrics["kube_pod_labels"]; !disabled {
-			labelNames, labelValues := promutil.KubePrependQualifierToLabels(promutil.SanitizeLabels(pod.GetLabels()), "label_")
+			labelNames, labelValues := promutil.KubePrependQualifierToLabels(promutil.SanitizeLabels(pod.Labels), "label_")
 			ch <- newKubePodLabelsMetric("kube_pod_labels", podNS, podName, podUID, labelNames, labelValues)
 		}
 

@@ -39,7 +39,7 @@ func (nsac KubecostNamespaceCollector) Collect(ch chan<- prometheus.Metric) {
 
 	namespaces := nsac.KubeClusterCache.GetAllNamespaces()
 	for _, namespace := range namespaces {
-		nsName := namespace.GetName()
+		nsName := namespace.Name
 
 		labels, values := promutil.KubeAnnotationsToLabels(namespace.Annotations)
 		if len(labels) > 0 {
@@ -137,7 +137,7 @@ func (nsac KubeNamespaceCollector) Collect(ch chan<- prometheus.Metric) {
 
 	namespaces := nsac.KubeClusterCache.GetAllNamespaces()
 	for _, namespace := range namespaces {
-		nsName := namespace.GetName()
+		nsName := namespace.Name
 
 		labels, values := promutil.KubeLabelsToLabels(promutil.SanitizeLabels(namespace.Labels))
 		if len(labels) > 0 {
