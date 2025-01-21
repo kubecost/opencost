@@ -1628,8 +1628,8 @@ func pruneDuplicates(s []string) []string {
 	for _, v := range s {
 		if strings.Contains(v, "_") {
 			name := strings.Replace(v, "_", "-", -1)
-			if !m[name] {
-				m[name] = true
+			if _, found := m[name]; !found {
+				m[name] = struct{}{}
 			}
 			delete(m, v)
 		}
@@ -1638,16 +1638,16 @@ func pruneDuplicates(s []string) []string {
 	return setToSlice(m)
 }
 
-// Creates a map[string]bool containing the slice values as keys
-func sliceToSet(s []string) map[string]bool {
-	m := make(map[string]bool)
+// Creates a map[string]struct{} containing the slice values as keys
+func sliceToSet(s []string) map[string]struct{} {
+	m := make(map[string]struct{}, len(s))
 	for _, v := range s {
-		m[v] = true
+		m[v] = struct{}{}
 	}
 	return m
 }
 
-func setToSlice(m map[string]bool) []string {
+func setToSlice(m map[string]struct{}) []string {
 	var result []string
 	for k := range m {
 		result = append(result, k)
