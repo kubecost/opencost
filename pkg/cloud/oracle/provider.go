@@ -5,7 +5,6 @@ import (
 	"io"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/opencost/opencost/core/pkg/log"
 	"github.com/opencost/opencost/core/pkg/opencost"
@@ -296,10 +295,6 @@ func (o *Oracle) GetDisks() ([]byte, error) {
 
 func (o *Oracle) GetOrphanedResources() ([]models.OrphanedResource, error) {
 	return nil, nil
-}
-
-func (o *Oracle) GetLocalStorageQuery(duration time.Duration, duration2 time.Duration, b bool, b2 bool) string {
-	return ""
 }
 
 func (o *Oracle) ApplyReservedInstancePricing(m map[string]*models.Node) {}

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/source"
 	"github.com/opencost/opencost/core/pkg/util/timeutil"
 
 	"github.com/opencost/opencost/core/pkg/log"
@@ -124,7 +125,7 @@ func (cm *CostModel) Name() string {
 func (cm *CostModel) ComputeAllocation(start, end time.Time, resolution time.Duration) (*opencost.AllocationSet, error) {
 
 	// If the duration is short enough, compute the AllocationSet directly
-	if end.Sub(start) <= cm.MaxPrometheusQueryDuration {
+	if end.Sub(start) <= cm.BatchDuration {
 		as, _, err := cm.computeAllocation(start, end, resolution)
 		return as, err
 	}
@@ -145,8 +146,8 @@ func (cm *CostModel) ComputeAllocation(start, end time.Time, resolution time.Dur
 		// any individual query duration exceed the configured max Prometheus
 		// query duration.
 		duration := end.Sub(e)
-		if duration > cm.MaxPrometheusQueryDuration {
-			duration = cm.MaxPrometheusQueryDuration
+		if duration > cm.BatchDuration {
+			duration = cm.BatchDuration
 		}
 
 		// Set start and end parameters (s, e) for next individual computation.
@@ -514,7 +515,7 @@ func (cm *CostModel) computeAllocation(start, end time.Time, resolution time.Dur
 	queryGetGPUInfo := fmt.Sprintf(queryFmtGetGPuInfo, env.GetPromClusterFilter(), durStr)
 	resChGetGPUInfo := ctx.QueryAtTime(queryGetGPUInfo, end)
 
-	var resChNodeLabels prom.QueryResultsChan
+	var resChNodeLabels source.QueryResultsChan
 	if env.GetAllocationNodeLabelsEnabled() {
 		queryNodeLabels := fmt.Sprintf(queryFmtNodeLabels, env.GetPromClusterFilter(), durStr)
 		resChNodeLabels = ctx.QueryAtTime(queryNodeLabels, end)
@@ -601,7 +602,7 @@ func (cm *CostModel) computeAllocation(start, end time.Time, resolution time.Dur
 	resNetInternetGiB, _ := resChNetInternetGiB.Await()
 	resNetInternetCostPerGiB, _ := resChNetInternetCostPerGiB.Await()
 
-	var resNodeLabels []*prom.QueryResult
+	var resNodeLabels []*source.QueryResult
 	if env.GetAllocationNodeLabelsEnabled() {
 		if env.GetAllocationNodeLabelsEnabled() {
 			resNodeLabels, _ = resChNodeLabels.Await()

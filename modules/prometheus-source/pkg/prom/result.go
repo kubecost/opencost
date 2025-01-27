@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/source"
 	"github.com/opencost/opencost/core/pkg/util"
 )
 
@@ -33,7 +34,7 @@ func MetricFieldFormatErr(query string) error {
 }
 
 func NoDataErr(query string) error {
-	return NewNoDataError(query)
+	return source.NewNoDataError(query)
 }
 
 func PromUnexpectedResponseErr(query string) error {
@@ -41,7 +42,7 @@ func PromUnexpectedResponseErr(query string) error {
 }
 
 func QueryResultNilErr(query string) error {
-	return NewCommError(query)
+	return source.NewCommError(query)
 }
 
 func ResultFieldDoesNotExistErr(query string) error {
@@ -64,40 +65,17 @@ func ValueFieldFormatErr(query string) error {
 	return fmt.Errorf("Values field is improperly formatted fetching query '%s'", query)
 }
 
-// QueryResultsChan is a channel of query results
-type QueryResultsChan chan *QueryResults
-
-// Await returns query results, blocking until they are made available, and
-// deferring the closure of the underlying channel
-func (qrc QueryResultsChan) Await() ([]*QueryResult, error) {
-	defer close(qrc)
-
-	results := <-qrc
-	if results.Error != nil {
-		return nil, results.Error
-	}
-
-	return results.Results, nil
-}
-
-// QueryResults contains all of the query results and the source query string.
-type QueryResults struct {
-	Query   string
-	Error   error
-	Results []*QueryResult
-}
-
-// QueryResult contains a single result from a prometheus query. It's common
-// to refer to query results as a slice of QueryResult
-type QueryResult struct {
-	Metric map[string]interface{} `json:"metric"`
-	Values []*util.Vector         `json:"values"`
+// NewQueryResultError returns a QueryResults object with an error set and does not parse a result.
+func NewQueryResultError(query string, err error) *source.QueryResults {
+	qrs := source.NewQueryResults(query)
+	qrs.Error = err
+	return qrs
 }
 
 // NewQueryResults accepts the raw prometheus query result and returns an array of
 // QueryResult objects
-func NewQueryResults(query string, queryResult interface{}) *QueryResults {
-	qrs := &QueryResults{Query: query}
+func NewQueryResults(query string, queryResult interface{}, resultKeys *source.ResultKeys) *source.QueryResults {
+	qrs := source.NewQueryResults(query)
 
 	if queryResult == nil {
 		qrs.Error = QueryResultNilErr(query)
@@ -133,7 +111,7 @@ func NewQueryResults(query string, queryResult interface{}) *QueryResults {
 	}
 
 	// Result vectors from the query
-	var results []*QueryResult
+	var results []*source.QueryResult
 
 	// Parse raw results and into QueryResults
 	for _, val := range resultsData {
@@ -205,96 +183,11 @@ func NewQueryResults(query string, queryResult interface{}) *QueryResults {
 			}
 		}
 
-		results = append(results, &QueryResult{
-			Metric: metricMap,
-			Values: vectors,
-		})
+		results = append(results, source.NewQueryResult(metricMap, vectors, resultKeys))
 	}
 
 	qrs.Results = results
 	return qrs
-}
-
-// GetString returns the requested field, or an error if it does not exist
-func (qr *QueryResult) GetString(field string) (string, error) {
-	f, ok := qr.Metric[field]
-	if !ok {
-		return "", fmt.Errorf("'%s' field does not exist in data result vector", field)
-	}
-
-	strField, ok := f.(string)
-	if !ok {
-		return "", fmt.Errorf("'%s' field is improperly formatted and cannot be converted to string", field)
-	}
-
-	return strField, nil
-}
-
-// GetStrings returns the requested fields, or an error if it does not exist
-func (qr *QueryResult) GetStrings(fields ...string) (map[string]string, error) {
-	values := map[string]string{}
-
-	for _, field := range fields {
-		f, ok := qr.Metric[field]
-		if !ok {
-			return nil, fmt.Errorf("'%s' field does not exist in data result vector", field)
-		}
-
-		value, ok := f.(string)
-		if !ok {
-			return nil, fmt.Errorf("'%s' field is improperly formatted and cannot be converted to string", field)
-		}
-
-		values[field] = value
-	}
-
-	return values, nil
-}
-
-// GetLabels returns all labels and their values from the query result
-func (qr *QueryResult) GetLabels() map[string]string {
-	result := make(map[string]string)
-
-	// Find All keys with prefix label_, remove prefix, add to labels
-	for k, v := range qr.Metric {
-		if !strings.HasPrefix(k, "label_") {
-			continue
-		}
-
-		label := strings.TrimPrefix(k, "label_")
-		value, ok := v.(string)
-		if !ok {
-			log.Warnf("Failed to parse label value for label: '%s'", label)
-			continue
-		}
-
-		result[label] = value
-	}
-
-	return result
-}
-
-// GetAnnotations returns all annotations and their values from the query result
-func (qr *QueryResult) GetAnnotations() map[string]string {
-	result := make(map[string]string)
-
-	// Find All keys with prefix annotation_, remove prefix, add to annotations
-	for k, v := range qr.Metric {
-		if !strings.HasPrefix(k, "annotation_") {
-			continue
-		}
-
-		annotations := strings.TrimPrefix(k, "annotation_")
-		value, ok := v.(string)
-		if !ok {
-			log.Warnf("Failed to parse label value for label: '%s'", annotations)
-			continue
-		}
-
-		result[annotations] = value
-	}
-
-	return result
 }
 
 // parseDataPoint parses a data point from raw prometheus query results and returns

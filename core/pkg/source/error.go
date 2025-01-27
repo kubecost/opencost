@@ -1,6 +1,7 @@
-package prom
+package source
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -23,7 +24,33 @@ func IsNoStoreAPIWarning(warning string) bool {
 }
 
 //--------------------------------------------------------------------------
-//  Prometheus Error Collection
+//  Help Retry Error
+//--------------------------------------------------------------------------
+
+// HelpRetryError is a wrapper error type which indicates an error should induce a retry, and
+// is non-fatal
+type HelpRetryError struct {
+	wrapped error
+}
+
+func (h *HelpRetryError) Unwrap() error {
+	return h.wrapped
+}
+
+func (h *HelpRetryError) Error() string {
+	return h.wrapped.Error()
+}
+
+func NewHelpRetryError(cause error) error {
+	return &HelpRetryError{wrapped: cause}
+}
+
+func IsRetryable(err error) bool {
+	return errors.Is(err, &HelpRetryError{})
+}
+
+//--------------------------------------------------------------------------
+//  Error Collection
 //--------------------------------------------------------------------------
 
 type QueryError struct {
@@ -87,6 +114,22 @@ type QueryErrorCollector struct {
 	m        sync.RWMutex
 	errors   []*QueryError
 	warnings []*QueryWarning
+}
+
+// Appends a QueryError to the errors list
+func (ec *QueryErrorCollector) AppendError(err *QueryError) {
+	ec.m.Lock()
+	defer ec.m.Unlock()
+
+	ec.errors = append(ec.errors, err)
+}
+
+// Appends a QueryWarning to the warnings list
+func (ec *QueryErrorCollector) AppendWarning(warn *QueryWarning) {
+	ec.m.Lock()
+	defer ec.m.Unlock()
+
+	ec.warnings = append(ec.warnings, warn)
 }
 
 // Reports an error to the collector. Ignores if the error is nil and the warnings
@@ -273,7 +316,7 @@ func IsCommError(err error) bool {
 
 // Error prints the error as a string
 func (pce CommError) Error() string {
-	return fmt.Sprintf("Prometheus communication error: %s", strings.Join(pce.messages, ": "))
+	return fmt.Sprintf("Communication error: %s", strings.Join(pce.messages, ": "))
 }
 
 // Wrap wraps the error with the given message, but persists the error type.

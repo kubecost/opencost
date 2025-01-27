@@ -11,6 +11,7 @@ import (
 
 	"github.com/opencost/opencost/core/pkg/clusters"
 	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/source"
 	"github.com/opencost/opencost/core/pkg/util/retry"
 	"github.com/opencost/opencost/pkg/prom"
 	"github.com/opencost/opencost/pkg/thanos"
@@ -91,7 +92,7 @@ func (pcm *PrometheusClusterMap) loadClusters() (map[string]*clusters.ClusterInf
 	// Retry on failure
 	result, err := retry.Retry(context.Background(), tryQuery, uint(LoadRetries), LoadRetryDelay)
 
-	qr, ok := result.([]*prom.QueryResult)
+	qr, ok := result.([]*source.QueryResult)
 	if !ok || err != nil {
 		return nil, err
 	}

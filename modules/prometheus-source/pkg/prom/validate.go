@@ -3,15 +3,10 @@ package prom
 import (
 	"fmt"
 
-	"github.com/opencost/opencost/pkg/env"
-
 	prometheus "github.com/prometheus/client_golang/api"
 )
 
-var (
-	prometheusValidateQuery string = "up"
-	thanosValidateQuery     string = fmt.Sprintf("up offset %s", env.GetThanosOffset())
-)
+const UpQuery = "up"
 
 // PrometheusMetadata represents a validation result for prometheus/thanos running
 // opencost.
@@ -21,17 +16,25 @@ type PrometheusMetadata struct {
 }
 
 // Validate tells the model what data prometheus has on it.
-func Validate(cli prometheus.Client) (*PrometheusMetadata, error) {
+func Validate(cli prometheus.Client, config *OpenCostPrometheusConfig) (*PrometheusMetadata, error) {
 	if IsThanos(cli) {
-		return validate(cli, thanosValidateQuery)
+		return validate(cli, validationQueryFor(config), config)
 	}
 
-	return validate(cli, prometheusValidateQuery)
+	return validate(cli, validationQueryFor(config), config)
+}
+
+func validationQueryFor(config *OpenCostPrometheusConfig) string {
+	if config.Offset != "" {
+		return fmt.Sprintf("%s offset %s", UpQuery, config.Offset)
+	}
+
+	return UpQuery
 }
 
 // validate executes the prometheus query against the provided client.
-func validate(cli prometheus.Client, q string) (*PrometheusMetadata, error) {
-	ctx := NewContext(cli)
+func validate(cli prometheus.Client, q string, config *OpenCostPrometheusConfig) (*PrometheusMetadata, error) {
+	ctx := NewContext(cli, config)
 
 	resUp, _, err := ctx.QuerySync(q)
 	if err != nil {
@@ -57,7 +60,7 @@ func validate(cli prometheus.Client, q string) (*PrometheusMetadata, error) {
 			}, fmt.Errorf("up query does not have job names")
 		}
 
-		if job == "kubecost" {
+		if job == config.JobName {
 			return &PrometheusMetadata{
 				Running:            true,
 				KubecostDataExists: true,

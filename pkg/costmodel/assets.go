@@ -156,15 +156,15 @@ func (cm *CostModel) ComputeAssets(start, end time.Time) (*opencost.AssetSet, er
 }
 
 func (cm *CostModel) ClusterDisks(start, end time.Time) (map[DiskIdentifier]*Disk, error) {
-	return ClusterDisks(cm.PrometheusClient, cm.Provider, start, end)
+	return ClusterDisks(cm.DataSource, cm.Provider, start, end)
 }
 
 func (cm *CostModel) ClusterLoadBalancers(start, end time.Time) (map[LoadBalancerIdentifier]*LoadBalancer, error) {
-	return ClusterLoadBalancers(cm.PrometheusClient, start, end)
+	return ClusterLoadBalancers(cm.DataSource, start, end)
 }
 
 func (cm *CostModel) ClusterNodes(start, end time.Time) (map[NodeIdentifier]*Node, error) {
-	return ClusterNodes(cm.Provider, cm.PrometheusClient, start, end)
+	return ClusterNodes(cm.DataSource, cm.Provider, start, end)
 }
 
 // propertiesFromCluster populates static cluster properties to individual asset properties

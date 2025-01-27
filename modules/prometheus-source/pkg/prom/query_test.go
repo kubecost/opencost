@@ -1,10 +1,12 @@
 package prom
 
 import (
-	"github.com/prometheus/client_golang/api"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/opencost/opencost/core/pkg/source"
+	"github.com/prometheus/client_golang/api"
 )
 
 func TestWarningsFrom(t *testing.T) {
@@ -35,7 +37,7 @@ func TestContext_isRequestStepAligned(t *testing.T) {
 	type fields struct {
 		Client         api.Client
 		name           string
-		errorCollector *QueryErrorCollector
+		errorCollector *source.QueryErrorCollector
 	}
 	type args struct {
 		start time.Time
@@ -107,7 +109,7 @@ func TestContext_alignWindow(t *testing.T) {
 	type fields struct {
 		Client         api.Client
 		name           string
-		errorCollector *QueryErrorCollector
+		errorCollector *source.QueryErrorCollector
 	}
 	type args struct {
 		start time.Time

@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/source"
 	"github.com/opencost/opencost/pkg/clustercache"
-	"github.com/opencost/opencost/pkg/env"
 )
 
 var (
@@ -155,51 +155,34 @@ func NewContainerMetricsFromPod(pod *clustercache.Pod, clusterID string) ([]*Con
 	return cs, nil
 }
 
-// NewContainerMetricFromPrometheus accepts the metrics map from a QueryResult and returns a new ContainerMetric
+// NewContainerMetricFromResult accepts the metrics map from a QueryResult and returns a new ContainerMetric
 // instance
-func NewContainerMetricFromPrometheus(metrics map[string]interface{}, defaultClusterID string) (*ContainerMetric, error) {
-	// TODO: Can we use *prom.QueryResult.GetString() here?
-	cName, ok := metrics["container_name"]
-	if !ok {
+func NewContainerMetricFromResult(result *source.QueryResult, defaultClusterID string) (*ContainerMetric, error) {
+	containerName, err := result.GetContainer()
+	if err != nil {
 		return nil, NoContainerErr
 	}
-	containerName, ok := cName.(string)
-	if !ok {
-		return nil, NoContainerNameErr
-	}
-	pName, ok := metrics["pod_name"]
-	if !ok {
-		return nil, NoPodErr
-	}
-	podName, ok := pName.(string)
-	if !ok {
+
+	podName, err := result.GetPod()
+	if err != nil {
 		return nil, NoPodNameErr
 	}
-	ns, ok := metrics["namespace"]
-	if !ok {
-		return nil, NoNamespaceErr
-	}
-	namespace, ok := ns.(string)
-	if !ok {
+
+	namespace, err := result.GetNamespace()
+	if err != nil {
 		return nil, NoNamespaceNameErr
 	}
-	node, ok := metrics["node"]
-	if !ok {
+
+	nodeName, err := result.GetNode()
+	if err != nil {
 		log.Debugf("Prometheus vector does not have node name")
-		node = ""
+		nodeName = ""
 	}
-	nodeName, ok := node.(string)
-	if !ok {
-		return nil, NoNodeNameErr
-	}
-	cid, ok := metrics[env.GetPromClusterLabel()]
-	if !ok {
+
+	clusterID, err := result.GetCluster()
+	if err != nil {
 		log.Debugf("Prometheus vector does not have cluster id")
-		cid = defaultClusterID
-	}
-	clusterID, ok := cid.(string)
-	if !ok {
-		return nil, NoClusterIDErr
+		clusterID = defaultClusterID
 	}
 
 	return &ContainerMetric{

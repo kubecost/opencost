@@ -9,6 +9,7 @@ import (
 
 	"github.com/opencost/opencost/core/pkg/log"
 	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/source"
 	"github.com/opencost/opencost/core/pkg/util/promutil"
 	"github.com/opencost/opencost/core/pkg/util/timeutil"
 	"github.com/opencost/opencost/pkg/cloud/provider"
@@ -64,7 +65,7 @@ func (cm *CostModel) buildPodMap(window opencost.Window, resolution, maxBatchSiz
 			batchEnd = end
 		}
 
-		var resPods []*prom.QueryResult
+		var resPods []*source.QueryResult
 		var err error
 		maxTries := 3
 		numTries := 0
@@ -75,7 +76,7 @@ func (cm *CostModel) buildPodMap(window opencost.Window, resolution, maxBatchSiz
 			durStr := timeutil.DurationString(batchEnd.Sub(batchStart))
 			if durStr == "" {
 				// Negative duration, so set empty results and don't query
-				resPods = []*prom.QueryResult{}
+				resPods = []*source.QueryResult{}
 				err = nil
 				break
 			}
@@ -107,7 +108,7 @@ func (cm *CostModel) buildPodMap(window opencost.Window, resolution, maxBatchSiz
 		// default setup of Kubecost having replicated kube_pod_container_status_running and
 		// included KSM kube_pod_container_status_running. Querying w/ UID will return both.
 		if ingestPodUID {
-			var resPodsUID []*prom.QueryResult
+			var resPodsUID []*source.QueryResult
 
 			for _, res := range resPods {
 				_, err := res.GetString("uid")
@@ -132,14 +133,14 @@ func (cm *CostModel) buildPodMap(window opencost.Window, resolution, maxBatchSiz
 	return nil
 }
 
-func applyPodResults(window opencost.Window, resolution time.Duration, podMap map[podKey]*pod, clusterStart, clusterEnd map[string]time.Time, resPods []*prom.QueryResult, ingestPodUID bool, podUIDKeyMap map[podKey][]podKey) {
+func applyPodResults(window opencost.Window, resolution time.Duration, podMap map[podKey]*pod, clusterStart, clusterEnd map[string]time.Time, resPods []*source.QueryResult, ingestPodUID bool, podUIDKeyMap map[podKey][]podKey) {
 	for _, res := range resPods {
 		if len(res.Values) == 0 {
 			log.Warnf("CostModel.ComputeAllocation: empty minutes result")
 			continue
 		}
 
-		cluster, err := res.GetString(env.GetPromClusterLabel())
+		cluster, err := res.GetCluster()
 		if err != nil {
 			cluster = env.GetClusterID()
 		}
@@ -210,7 +211,7 @@ func applyPodResults(window opencost.Window, resolution time.Duration, podMap ma
 	}
 }
 
-func applyCPUCoresAllocated(podMap map[podKey]*pod, resCPUCoresAllocated []*prom.QueryResult, podUIDKeyMap map[podKey][]podKey) {
+func applyCPUCoresAllocated(podMap map[podKey]*pod, resCPUCoresAllocated []*source.QueryResult, podUIDKeyMap map[podKey][]podKey) {
 	for _, res := range resCPUCoresAllocated {
 		key, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
 		if err != nil {
@@ -254,7 +255,7 @@ func applyCPUCoresAllocated(podMap map[podKey]*pod, resCPUCoresAllocated []*prom
 			hours := thisPod.Allocations[container].Minutes() / 60.0
 			thisPod.Allocations[container].CPUCoreHours = cpuCores * hours
 
-			node, err := res.GetString("node")
+			node, err := res.GetNode()
 			if err != nil {
 				log.Warnf("CostModel.ComputeAllocation: CPU allocation query result missing 'node': %s", key)
 				continue
@@ -265,7 +266,7 @@ func applyCPUCoresAllocated(podMap map[podKey]*pod, resCPUCoresAllocated []*prom
 	}
 }
 
-func applyCPUCoresRequested(podMap map[podKey]*pod, resCPUCoresRequested []*prom.QueryResult, podUIDKeyMap map[podKey][]podKey) {
+func applyCPUCoresRequested(podMap map[podKey]*pod, resCPUCoresRequested []*source.QueryResult, podUIDKeyMap map[podKey][]podKey) {
 	for _, res := range resCPUCoresRequested {
 		key, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
 		if err != nil {
@@ -312,7 +313,7 @@ func applyCPUCoresRequested(podMap map[podKey]*pod, resCPUCoresRequested []*prom
 				log.Infof("[WARNING] Very large cpu allocation, clamping! to %f", res.Values[0].Value*(thisPod.Allocations[container].Minutes()/60.0))
 				thisPod.Allocations[container].CPUCoreHours = res.Values[0].Value * (thisPod.Allocations[container].Minutes() / 60.0)
 			}
-			node, err := res.GetString("node")
+			node, err := res.GetNode()
 			if err != nil {
 				log.Warnf("CostModel.ComputeAllocation: CPU request query result missing 'node': %s", key)
 				continue
@@ -323,7 +324,7 @@ func applyCPUCoresRequested(podMap map[podKey]*pod, resCPUCoresRequested []*prom
 	}
 }
 
-func applyCPUCoresUsedAvg(podMap map[podKey]*pod, resCPUCoresUsedAvg []*prom.QueryResult, podUIDKeyMap map[podKey][]podKey) {
+func applyCPUCoresUsedAvg(podMap map[podKey]*pod, resCPUCoresUsedAvg []*source.QueryResult, podUIDKeyMap map[podKey][]podKey) {
 	for _, res := range resCPUCoresUsedAvg {
 		key, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
 		if err != nil {
@@ -371,7 +372,7 @@ func applyCPUCoresUsedAvg(podMap map[podKey]*pod, resCPUCoresUsedAvg []*prom.Que
 	}
 }
 
-func applyCPUCoresUsedMax(podMap map[podKey]*pod, resCPUCoresUsedMax []*prom.QueryResult, podUIDKeyMap map[podKey][]podKey) {
+func applyCPUCoresUsedMax(podMap map[podKey]*pod, resCPUCoresUsedMax []*source.QueryResult, podUIDKeyMap map[podKey][]podKey) {
 	for _, res := range resCPUCoresUsedMax {
 		key, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
 		if err != nil {
@@ -421,7 +422,7 @@ func applyCPUCoresUsedMax(podMap map[podKey]*pod, resCPUCoresUsedMax []*prom.Que
 	}
 }
 
-func applyRAMBytesAllocated(podMap map[podKey]*pod, resRAMBytesAllocated []*prom.QueryResult, podUIDKeyMap map[podKey][]podKey) {
+func applyRAMBytesAllocated(podMap map[podKey]*pod, resRAMBytesAllocated []*source.QueryResult, podUIDKeyMap map[podKey][]podKey) {
 	for _, res := range resRAMBytesAllocated {
 		key, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
 		if err != nil {
@@ -461,7 +462,7 @@ func applyRAMBytesAllocated(podMap map[podKey]*pod, resRAMBytesAllocated []*prom
 			hours := thisPod.Allocations[container].Minutes() / 60.0
 			thisPod.Allocations[container].RAMByteHours = ramBytes * hours
 
-			node, err := res.GetString("node")
+			node, err := res.GetNode()
 			if err != nil {
 				log.Warnf("CostModel.ComputeAllocation: RAM allocation query result missing 'node': %s", key)
 				continue
@@ -472,7 +473,7 @@ func applyRAMBytesAllocated(podMap map[podKey]*pod, resRAMBytesAllocated []*prom
 	}
 }
 
-func applyRAMBytesRequested(podMap map[podKey]*pod, resRAMBytesRequested []*prom.QueryResult, podUIDKeyMap map[podKey][]podKey) {
+func applyRAMBytesRequested(podMap map[podKey]*pod, resRAMBytesRequested []*source.QueryResult, podUIDKeyMap map[podKey][]podKey) {
 	for _, res := range resRAMBytesRequested {
 		key, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
 		if err != nil {
@@ -516,7 +517,7 @@ func applyRAMBytesRequested(podMap map[podKey]*pod, resRAMBytesRequested []*prom
 				pod.Allocations[container].RAMByteHours = res.Values[0].Value * (pod.Allocations[container].Minutes() / 60.0)
 			}
 
-			node, err := res.GetString("node")
+			node, err := res.GetNode()
 			if err != nil {
 				log.Warnf("CostModel.ComputeAllocation: RAM request query result missing 'node': %s", key)
 				continue
@@ -527,7 +528,7 @@ func applyRAMBytesRequested(podMap map[podKey]*pod, resRAMBytesRequested []*prom
 	}
 }
 
-func applyRAMBytesUsedAvg(podMap map[podKey]*pod, resRAMBytesUsedAvg []*prom.QueryResult, podUIDKeyMap map[podKey][]podKey) {
+func applyRAMBytesUsedAvg(podMap map[podKey]*pod, resRAMBytesUsedAvg []*source.QueryResult, podUIDKeyMap map[podKey][]podKey) {
 	for _, res := range resRAMBytesUsedAvg {
 		key, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
 		if err != nil {
@@ -571,7 +572,7 @@ func applyRAMBytesUsedAvg(podMap map[podKey]*pod, resRAMBytesUsedAvg []*prom.Que
 	}
 }
 
-func applyRAMBytesUsedMax(podMap map[podKey]*pod, resRAMBytesUsedMax []*prom.QueryResult, podUIDKeyMap map[podKey][]podKey) {
+func applyRAMBytesUsedMax(podMap map[podKey]*pod, resRAMBytesUsedMax []*source.QueryResult, podUIDKeyMap map[podKey][]podKey) {
 	for _, res := range resRAMBytesUsedMax {
 		key, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
 		if err != nil {
@@ -622,7 +623,7 @@ func applyRAMBytesUsedMax(podMap map[podKey]*pod, resRAMBytesUsedMax []*prom.Que
 }
 
 // same func is used for both GPUUsageAvg and GPUUsageMax
-func applyGPUUsage(podMap map[podKey]*pod, resGPUUsageAvgOrMax []*prom.QueryResult, podUIDKeyMap map[podKey][]podKey, mode string) {
+func applyGPUUsage(podMap map[podKey]*pod, resGPUUsageAvgOrMax []*source.QueryResult, podUIDKeyMap map[podKey][]podKey, mode string) {
 	// Example PromQueryResult: {container="dcgmproftester12", namespace="gpu", pod="dcgmproftester3-deployment-fc89c8dd6-ph7z5"} 0.997307
 	for _, res := range resGPUUsageAvgOrMax {
 		key, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
@@ -720,7 +721,7 @@ func applyGPUUsage(podMap map[podKey]*pod, resGPUUsageAvgOrMax []*prom.QueryResu
 	}
 }
 
-func applyGPUsAllocated(podMap map[podKey]*pod, resGPUsRequested []*prom.QueryResult, resGPUsAllocated []*prom.QueryResult, podUIDKeyMap map[podKey][]podKey) {
+func applyGPUsAllocated(podMap map[podKey]*pod, resGPUsRequested []*source.QueryResult, resGPUsAllocated []*source.QueryResult, podUIDKeyMap map[podKey][]podKey) {
 	if len(resGPUsAllocated) > 0 { // Use the new query, when it's become available in a window
 		resGPUsRequested = resGPUsAllocated
 	}
@@ -779,7 +780,7 @@ func applyGPUsAllocated(podMap map[podKey]*pod, resGPUsRequested []*prom.QueryRe
 	}
 }
 
-func applyNetworkTotals(podMap map[podKey]*pod, resNetworkTransferBytes []*prom.QueryResult, resNetworkReceiveBytes []*prom.QueryResult, podUIDKeyMap map[podKey][]podKey) {
+func applyNetworkTotals(podMap map[podKey]*pod, resNetworkTransferBytes []*source.QueryResult, resNetworkReceiveBytes []*source.QueryResult, podUIDKeyMap map[podKey][]podKey) {
 	for _, res := range resNetworkTransferBytes {
 		podKey, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
 		if err != nil {
@@ -842,11 +843,11 @@ func applyNetworkTotals(podMap map[podKey]*pod, resNetworkTransferBytes []*prom.
 	}
 }
 
-func applyNetworkAllocation(podMap map[podKey]*pod, resNetworkGiB []*prom.QueryResult, resNetworkCostPerGiB []*prom.QueryResult, podUIDKeyMap map[podKey][]podKey, networkCostSubType string) {
+func applyNetworkAllocation(podMap map[podKey]*pod, resNetworkGiB []*source.QueryResult, resNetworkCostPerGiB []*source.QueryResult, podUIDKeyMap map[podKey][]podKey, networkCostSubType string) {
 	costPerGiBByCluster := map[string]float64{}
 
 	for _, res := range resNetworkCostPerGiB {
-		cluster, err := res.GetString(env.GetPromClusterLabel())
+		cluster, err := res.GetCluster()
 		if err != nil {
 			cluster = env.GetClusterID()
 		}
@@ -899,7 +900,7 @@ func applyNetworkAllocation(podMap map[podKey]*pod, resNetworkGiB []*prom.QueryR
 	}
 }
 
-func resToNodeLabels(resNodeLabels []*prom.QueryResult) map[nodeKey]map[string]string {
+func resToNodeLabels(resNodeLabels []*source.QueryResult) map[nodeKey]map[string]string {
 	nodeLabels := map[nodeKey]map[string]string{}
 
 	for _, res := range resNodeLabels {
@@ -935,7 +936,7 @@ func resToNodeLabels(resNodeLabels []*prom.QueryResult) map[nodeKey]map[string]s
 	return nodeLabels
 }
 
-func resToNamespaceLabels(resNamespaceLabels []*prom.QueryResult) map[namespaceKey]map[string]string {
+func resToNamespaceLabels(resNamespaceLabels []*source.QueryResult) map[namespaceKey]map[string]string {
 	namespaceLabels := map[namespaceKey]map[string]string{}
 
 	for _, res := range resNamespaceLabels {
@@ -956,7 +957,7 @@ func resToNamespaceLabels(resNamespaceLabels []*prom.QueryResult) map[namespaceK
 	return namespaceLabels
 }
 
-func resToPodLabels(resPodLabels []*prom.QueryResult, podUIDKeyMap map[podKey][]podKey, ingestPodUID bool) map[podKey]map[string]string {
+func resToPodLabels(resPodLabels []*source.QueryResult, podUIDKeyMap map[podKey][]podKey, ingestPodUID bool) map[podKey]map[string]string {
 	podLabels := map[podKey]map[string]string{}
 
 	for _, res := range resPodLabels {
@@ -991,11 +992,11 @@ func resToPodLabels(resPodLabels []*prom.QueryResult, podUIDKeyMap map[podKey][]
 	return podLabels
 }
 
-func resToNamespaceAnnotations(resNamespaceAnnotations []*prom.QueryResult) map[string]map[string]string {
+func resToNamespaceAnnotations(resNamespaceAnnotations []*source.QueryResult) map[string]map[string]string {
 	namespaceAnnotations := map[string]map[string]string{}
 
 	for _, res := range resNamespaceAnnotations {
-		namespace, err := res.GetString("namespace")
+		namespace, err := res.GetNamespace()
 		if err != nil {
 			continue
 		}
@@ -1012,7 +1013,7 @@ func resToNamespaceAnnotations(resNamespaceAnnotations []*prom.QueryResult) map[
 	return namespaceAnnotations
 }
 
-func resToPodAnnotations(resPodAnnotations []*prom.QueryResult, podUIDKeyMap map[podKey][]podKey, ingestPodUID bool) map[podKey]map[string]string {
+func resToPodAnnotations(resPodAnnotations []*source.QueryResult, podUIDKeyMap map[podKey][]podKey, ingestPodUID bool) map[podKey]map[string]string {
 	podAnnotations := map[podKey]map[string]string{}
 
 	for _, res := range resPodAnnotations {
@@ -1127,7 +1128,7 @@ func applyAnnotations(podMap map[podKey]*pod, namespaceAnnotations map[string]ma
 	}
 }
 
-func resToDeploymentLabels(resDeploymentLabels []*prom.QueryResult) map[controllerKey]map[string]string {
+func resToDeploymentLabels(resDeploymentLabels []*source.QueryResult) map[controllerKey]map[string]string {
 	deploymentLabels := map[controllerKey]map[string]string{}
 
 	for _, res := range resDeploymentLabels {
@@ -1160,7 +1161,7 @@ func resToDeploymentLabels(resDeploymentLabels []*prom.QueryResult) map[controll
 	return deploymentLabels
 }
 
-func resToStatefulSetLabels(resStatefulSetLabels []*prom.QueryResult) map[controllerKey]map[string]string {
+func resToStatefulSetLabels(resStatefulSetLabels []*source.QueryResult) map[controllerKey]map[string]string {
 	statefulSetLabels := map[controllerKey]map[string]string{}
 
 	for _, res := range resStatefulSetLabels {
@@ -1222,7 +1223,7 @@ func labelsToPodControllerMap(podLabels map[podKey]map[string]string, controller
 	return podControllerMap
 }
 
-func resToPodDaemonSetMap(resDaemonSetLabels []*prom.QueryResult, podUIDKeyMap map[podKey][]podKey, ingestPodUID bool) map[podKey]controllerKey {
+func resToPodDaemonSetMap(resDaemonSetLabels []*source.QueryResult, podUIDKeyMap map[podKey][]podKey, ingestPodUID bool) map[podKey]controllerKey {
 	daemonSetLabels := map[podKey]controllerKey{}
 
 	for _, res := range resDaemonSetLabels {
@@ -1258,7 +1259,7 @@ func resToPodDaemonSetMap(resDaemonSetLabels []*prom.QueryResult, podUIDKeyMap m
 	return daemonSetLabels
 }
 
-func resToPodJobMap(resJobLabels []*prom.QueryResult, podUIDKeyMap map[podKey][]podKey, ingestPodUID bool) map[podKey]controllerKey {
+func resToPodJobMap(resJobLabels []*source.QueryResult, podUIDKeyMap map[podKey][]podKey, ingestPodUID bool) map[podKey]controllerKey {
 	jobLabels := map[podKey]controllerKey{}
 
 	for _, res := range resJobLabels {
@@ -1301,7 +1302,7 @@ func resToPodJobMap(resJobLabels []*prom.QueryResult, podUIDKeyMap map[podKey][]
 	return jobLabels
 }
 
-func resToPodReplicaSetMap(resPodsWithReplicaSetOwner []*prom.QueryResult, resReplicaSetsWithoutOwners []*prom.QueryResult, resReplicaSetsWithRolloutOwner []*prom.QueryResult, podUIDKeyMap map[podKey][]podKey, ingestPodUID bool) map[podKey]controllerKey {
+func resToPodReplicaSetMap(resPodsWithReplicaSetOwner []*source.QueryResult, resReplicaSetsWithoutOwners []*source.QueryResult, resReplicaSetsWithRolloutOwner []*source.QueryResult, podUIDKeyMap map[podKey][]podKey, ingestPodUID bool) map[podKey]controllerKey {
 	// Build out set of ReplicaSets that have no owners, themselves, such that
 	// the ReplicaSet should be used as the owner of the Pods it controls.
 	// (This should exclude, for example, ReplicaSets that are controlled by
@@ -1388,7 +1389,7 @@ func applyControllersToPods(podMap map[podKey]*pod, podControllerMap map[podKey]
 
 /* Service Helpers */
 
-func getServiceLabels(resServiceLabels []*prom.QueryResult) map[serviceKey]map[string]string {
+func getServiceLabels(resServiceLabels []*source.QueryResult) map[serviceKey]map[string]string {
 	serviceLabels := map[serviceKey]map[string]string{}
 
 	for _, res := range resServiceLabels {
@@ -1464,7 +1465,7 @@ func applyServicesToPods(podMap map[podKey]*pod, podLabels map[podKey]map[string
 	}
 }
 
-func getLoadBalancerCosts(lbMap map[serviceKey]*lbCost, resLBCost, resLBActiveMins []*prom.QueryResult, resolution time.Duration, window opencost.Window) {
+func getLoadBalancerCosts(lbMap map[serviceKey]*lbCost, resLBCost, resLBActiveMins []*source.QueryResult, resolution time.Duration, window opencost.Window) {
 	for _, res := range resLBActiveMins {
 		serviceKey, err := resultServiceKey(res, env.GetPromClusterLabel(), "namespace", "service_name")
 		if err != nil || len(res.Values) == 0 {
@@ -1598,14 +1599,14 @@ func applyLoadBalancersToPods(window opencost.Window, podMap map[podKey]*pod, lb
 
 /* Node Helpers */
 
-func applyNodeCostPerCPUHr(nodeMap map[nodeKey]*nodePricing, resNodeCostPerCPUHr []*prom.QueryResult) {
+func applyNodeCostPerCPUHr(nodeMap map[nodeKey]*nodePricing, resNodeCostPerCPUHr []*source.QueryResult) {
 	for _, res := range resNodeCostPerCPUHr {
-		cluster, err := res.GetString(env.GetPromClusterLabel())
+		cluster, err := res.GetCluster()
 		if err != nil {
 			cluster = env.GetClusterID()
 		}
 
-		node, err := res.GetString("node")
+		node, err := res.GetNode()
 		if err != nil {
 			log.Warnf("CostModel.ComputeAllocation: Node CPU cost query result missing field: \"%s\" for node \"%s\"", err, node)
 			continue
@@ -1616,7 +1617,7 @@ func applyNodeCostPerCPUHr(nodeMap map[nodeKey]*nodePricing, resNodeCostPerCPUHr
 			log.Warnf("CostModel.ComputeAllocation: Node CPU cost query result missing field: \"%s\" for node \"%s\"", err, node)
 		}
 
-		providerID, err := res.GetString("provider_id")
+		providerID, err := res.GetProviderID()
 		if err != nil {
 			log.Warnf("CostModel.ComputeAllocation: Node CPU cost query result missing field: \"%s\" for node \"%s\"", err, node)
 		}
@@ -1634,14 +1635,14 @@ func applyNodeCostPerCPUHr(nodeMap map[nodeKey]*nodePricing, resNodeCostPerCPUHr
 	}
 }
 
-func applyNodeCostPerRAMGiBHr(nodeMap map[nodeKey]*nodePricing, resNodeCostPerRAMGiBHr []*prom.QueryResult) {
+func applyNodeCostPerRAMGiBHr(nodeMap map[nodeKey]*nodePricing, resNodeCostPerRAMGiBHr []*source.QueryResult) {
 	for _, res := range resNodeCostPerRAMGiBHr {
-		cluster, err := res.GetString(env.GetPromClusterLabel())
+		cluster, err := res.GetCluster()
 		if err != nil {
 			cluster = env.GetClusterID()
 		}
 
-		node, err := res.GetString("node")
+		node, err := res.GetNode()
 		if err != nil {
 			log.Warnf("CostModel.ComputeAllocation: Node RAM cost query result missing field: \"%s\" for node \"%s\"", err, node)
 			continue
@@ -1652,7 +1653,7 @@ func applyNodeCostPerRAMGiBHr(nodeMap map[nodeKey]*nodePricing, resNodeCostPerRA
 			log.Warnf("CostModel.ComputeAllocation: Node RAM cost query result missing field: \"%s\" for node \"%s\"", err, node)
 		}
 
-		providerID, err := res.GetString("provider_id")
+		providerID, err := res.GetProviderID()
 		if err != nil {
 			log.Warnf("CostModel.ComputeAllocation: Node RAM cost query result missing field: \"%s\" for node \"%s\"", err, node)
 		}
@@ -1670,14 +1671,14 @@ func applyNodeCostPerRAMGiBHr(nodeMap map[nodeKey]*nodePricing, resNodeCostPerRA
 	}
 }
 
-func applyNodeCostPerGPUHr(nodeMap map[nodeKey]*nodePricing, resNodeCostPerGPUHr []*prom.QueryResult) {
+func applyNodeCostPerGPUHr(nodeMap map[nodeKey]*nodePricing, resNodeCostPerGPUHr []*source.QueryResult) {
 	for _, res := range resNodeCostPerGPUHr {
-		cluster, err := res.GetString(env.GetPromClusterLabel())
+		cluster, err := res.GetCluster()
 		if err != nil {
 			cluster = env.GetClusterID()
 		}
 
-		node, err := res.GetString("node")
+		node, err := res.GetNode()
 		if err != nil {
 			log.Warnf("CostModel.ComputeAllocation: Node GPU cost query result missing field: \"%s\" for node \"%s\"", err, node)
 			continue
@@ -1688,7 +1689,7 @@ func applyNodeCostPerGPUHr(nodeMap map[nodeKey]*nodePricing, resNodeCostPerGPUHr
 			log.Warnf("CostModel.ComputeAllocation: Node GPU cost query result missing field: \"%s\" for node \"%s\"", err, node)
 		}
 
-		providerID, err := res.GetString("provider_id")
+		providerID, err := res.GetProviderID()
 		if err != nil {
 			log.Warnf("CostModel.ComputeAllocation: Node GPU cost query result missing field: \"%s\" for node \"%s\"", err, node)
 		}
@@ -1706,14 +1707,14 @@ func applyNodeCostPerGPUHr(nodeMap map[nodeKey]*nodePricing, resNodeCostPerGPUHr
 	}
 }
 
-func applyNodeSpot(nodeMap map[nodeKey]*nodePricing, resNodeIsSpot []*prom.QueryResult) {
+func applyNodeSpot(nodeMap map[nodeKey]*nodePricing, resNodeIsSpot []*source.QueryResult) {
 	for _, res := range resNodeIsSpot {
-		cluster, err := res.GetString(env.GetPromClusterLabel())
+		cluster, err := res.GetCluster()
 		if err != nil {
 			cluster = env.GetClusterID()
 		}
 
-		node, err := res.GetString("node")
+		node, err := res.GetNode()
 		if err != nil {
 			log.Warnf("CostModel.ComputeAllocation: Node spot query result missing field: %s", err)
 			continue
@@ -1917,7 +1918,7 @@ func (cm *CostModel) getNodePricing(nodeMap map[nodeKey]*nodePricing, nodeKey no
 
 /* PV/PVC Helpers */
 
-func buildPVMap(resolution time.Duration, pvMap map[pvKey]*pv, resPVCostPerGiBHour, resPVActiveMins, resPVMeta []*prom.QueryResult, window opencost.Window) {
+func buildPVMap(resolution time.Duration, pvMap map[pvKey]*pv, resPVCostPerGiBHour, resPVActiveMins, resPVMeta []*source.QueryResult, window opencost.Window) {
 	for _, result := range resPVActiveMins {
 		key, err := resultPVKey(result, env.GetPromClusterLabel(), "persistentvolume")
 		if err != nil {
@@ -1964,7 +1965,7 @@ func buildPVMap(resolution time.Duration, pvMap map[pvKey]*pv, resPVCostPerGiBHo
 
 		// only add metadata for disks that exist in the other metrics
 		if _, ok := pvMap[key]; ok {
-			provId, err := result.GetString("provider_id")
+			provId, err := result.GetProviderID()
 			if err != nil {
 				log.Warnf("error getting provider id for PV %v: %v", key, err)
 				continue
@@ -1975,7 +1976,7 @@ func buildPVMap(resolution time.Duration, pvMap map[pvKey]*pv, resPVCostPerGiBHo
 	}
 }
 
-func applyPVBytes(pvMap map[pvKey]*pv, resPVBytes []*prom.QueryResult) {
+func applyPVBytes(pvMap map[pvKey]*pv, resPVBytes []*source.QueryResult) {
 	for _, res := range resPVBytes {
 		key, err := resultPVKey(res, env.GetPromClusterLabel(), "persistentvolume")
 		if err != nil {
@@ -1998,9 +1999,9 @@ func applyPVBytes(pvMap map[pvKey]*pv, resPVBytes []*prom.QueryResult) {
 	}
 }
 
-func buildPVCMap(resolution time.Duration, pvcMap map[pvcKey]*pvc, pvMap map[pvKey]*pv, resPVCInfo []*prom.QueryResult, window opencost.Window) {
+func buildPVCMap(resolution time.Duration, pvcMap map[pvcKey]*pvc, pvMap map[pvKey]*pv, resPVCInfo []*source.QueryResult, window opencost.Window) {
 	for _, res := range resPVCInfo {
-		cluster, err := res.GetString(env.GetPromClusterLabel())
+		cluster, err := res.GetCluster()
 		if err != nil {
 			cluster = env.GetClusterID()
 		}
@@ -2043,7 +2044,7 @@ func buildPVCMap(resolution time.Duration, pvcMap map[pvcKey]*pvc, pvMap map[pvK
 	}
 }
 
-func applyPVCBytesRequested(pvcMap map[pvcKey]*pvc, resPVCBytesRequested []*prom.QueryResult) {
+func applyPVCBytesRequested(pvcMap map[pvcKey]*pvc, resPVCBytesRequested []*source.QueryResult) {
 	for _, res := range resPVCBytesRequested {
 		key, err := resultPVCKey(res, env.GetPromClusterLabel(), "namespace", "persistentvolumeclaim")
 		if err != nil {
@@ -2058,9 +2059,9 @@ func applyPVCBytesRequested(pvcMap map[pvcKey]*pvc, resPVCBytesRequested []*prom
 	}
 }
 
-func buildPodPVCMap(podPVCMap map[podKey][]*pvc, pvMap map[pvKey]*pv, pvcMap map[pvcKey]*pvc, podMap map[podKey]*pod, resPodPVCAllocation []*prom.QueryResult, podUIDKeyMap map[podKey][]podKey, ingestPodUID bool) {
+func buildPodPVCMap(podPVCMap map[podKey][]*pvc, pvMap map[pvKey]*pv, pvcMap map[pvcKey]*pvc, podMap map[podKey]*pod, resPodPVCAllocation []*source.QueryResult, podUIDKeyMap map[podKey][]podKey, ingestPodUID bool) {
 	for _, res := range resPodPVCAllocation {
-		cluster, err := res.GetString(env.GetPromClusterLabel())
+		cluster, err := res.GetCluster()
 		if err != nil {
 			cluster = env.GetClusterID()
 		}
@@ -2364,7 +2365,7 @@ func getUnmountedPodForNamespace(window opencost.Window, podMap map[podKey]*pod,
 	return thisPod
 }
 
-func calculateStartAndEnd(result *prom.QueryResult, resolution time.Duration, window opencost.Window) (time.Time, time.Time) {
+func calculateStartAndEnd(result *source.QueryResult, resolution time.Duration, window opencost.Window) (time.Time, time.Time) {
 	// Start and end for a range vector are pulled from the timestamps of the
 	// first and final values in the range. There is no "offsetting" required
 	// of the start or the end, as we used to do. If you query for a duration

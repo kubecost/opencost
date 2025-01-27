@@ -9,52 +9,73 @@ import (
 	"time"
 
 	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/source"
 	"github.com/opencost/opencost/core/pkg/util/httputil"
 	"github.com/opencost/opencost/core/pkg/util/json"
-	"github.com/opencost/opencost/pkg/env"
+
 	"github.com/opencost/opencost/pkg/errors"
 	prometheus "github.com/prometheus/client_golang/api"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 )
 
 const (
-	apiPrefix    = "/api/v1"
 	epQuery      = apiPrefix + "/query"
 	epQueryRange = apiPrefix + "/query_range"
 )
 
-// prometheus query offset to apply to each non-range query
-// package scope to prevent calling duration parse each use
-var promQueryOffset time.Duration = env.GetPrometheusQueryOffset()
+// ContextFactory is a factory for creating new Contexts for prometheus queries.
+type ContextFactory struct {
+	client prometheus.Client
+	config *OpenCostPrometheusConfig
+}
+
+// NewContextFactory creates a new ContextFactory with the provided prometheus client.
+func NewContextFactory(client prometheus.Client, promConfig *OpenCostPrometheusConfig) *ContextFactory {
+	return &ContextFactory{
+		client: client,
+	}
+}
+
+// NewContext creates a new prometheus query context.
+func (cf *ContextFactory) NewContext() *Context {
+	return NewContext(cf.client, cf.config)
+}
+
+// NewContext creates a new named prometheus query context.
+func (cf *ContextFactory) NewNamedContext(name string) *Context {
+	return NewNamedContext(cf.client, cf.config, name)
+}
 
 // Context wraps a Prometheus client and provides methods for querying and
 // parsing query responses and errors.
 type Context struct {
 	Client         prometheus.Client
+	config         *OpenCostPrometheusConfig
 	name           string
-	errorCollector *QueryErrorCollector
+	errorCollector *source.QueryErrorCollector
 }
 
 // NewContext creates a new Prometheus querying context from the given client
-func NewContext(client prometheus.Client) *Context {
-	var ec QueryErrorCollector
+func NewContext(client prometheus.Client, config *OpenCostPrometheusConfig) *Context {
+	var ec source.QueryErrorCollector
 
 	return &Context{
 		Client:         client,
+		config:         config,
 		name:           "",
 		errorCollector: &ec,
 	}
 }
 
 // NewNamedContext creates a new named Prometheus querying context from the given client
-func NewNamedContext(client prometheus.Client, name string) *Context {
-	ctx := NewContext(client)
+func NewNamedContext(client prometheus.Client, config *OpenCostPrometheusConfig, name string) *Context {
+	ctx := NewContext(client, config)
 	ctx.name = name
 	return ctx
 }
 
 // Warnings returns the warnings collected from the Context's ErrorCollector
-func (ctx *Context) Warnings() []*QueryWarning {
+func (ctx *Context) Warnings() []*source.QueryWarning {
 	return ctx.errorCollector.Warnings()
 }
 
@@ -64,7 +85,7 @@ func (ctx *Context) HasWarnings() bool {
 }
 
 // Errors returns the errors collected from the Context's ErrorCollector.
-func (ctx *Context) Errors() []*QueryError {
+func (ctx *Context) Errors() []*source.QueryError {
 	return ctx.errorCollector.Errors()
 }
 
@@ -87,8 +108,8 @@ func (ctx *Context) ErrorCollection() error {
 // Query returns a QueryResultsChan, then runs the given query and sends the
 // results on the provided channel. Receiver is responsible for closing the
 // channel, preferably using the Read method.
-func (ctx *Context) Query(query string) QueryResultsChan {
-	resCh := make(QueryResultsChan)
+func (ctx *Context) Query(query string) source.QueryResultsChan {
+	resCh := make(source.QueryResultsChan)
 
 	go runQuery(query, ctx, resCh, time.Now(), "")
 
@@ -99,8 +120,8 @@ func (ctx *Context) Query(query string) QueryResultsChan {
 // given time (see time parameter here: https://prometheus.io/docs/prometheus/latest/querying/api/#instant-queries)
 // and sends the results on the provided channel. Receiver is responsible for
 // closing the channel, preferably using the Read method.
-func (ctx *Context) QueryAtTime(query string, t time.Time) QueryResultsChan {
-	resCh := make(QueryResultsChan)
+func (ctx *Context) QueryAtTime(query string, t time.Time) source.QueryResultsChan {
+	resCh := make(source.QueryResultsChan)
 
 	go runQuery(query, ctx, resCh, t, "")
 
@@ -110,8 +131,8 @@ func (ctx *Context) QueryAtTime(query string, t time.Time) QueryResultsChan {
 // ProfileQuery returns a QueryResultsChan, then runs the given query with a profile
 // label and sends the results on the provided channel. Receiver is responsible for closing the
 // channel, preferably using the Read method.
-func (ctx *Context) ProfileQuery(query string, profileLabel string) QueryResultsChan {
-	resCh := make(QueryResultsChan)
+func (ctx *Context) ProfileQuery(query string, profileLabel string) source.QueryResultsChan {
+	resCh := make(source.QueryResultsChan)
 
 	go runQuery(query, ctx, resCh, time.Now(), profileLabel)
 
@@ -122,8 +143,8 @@ func (ctx *Context) ProfileQuery(query string, profileLabel string) QueryResults
 // each query concurrently and returns results on each channel, respectively,
 // in the order they were provided; i.e. the response to queries[1] will be
 // sent on channel resChs[1].
-func (ctx *Context) QueryAll(queries ...string) []QueryResultsChan {
-	resChs := []QueryResultsChan{}
+func (ctx *Context) QueryAll(queries ...string) []source.QueryResultsChan {
+	resChs := []source.QueryResultsChan{}
 
 	for _, q := range queries {
 		resChs = append(resChs, ctx.Query(q))
@@ -136,8 +157,8 @@ func (ctx *Context) QueryAll(queries ...string) []QueryResultsChan {
 // each ProfileQuery concurrently and returns results on each channel, respectively,
 // in the order they were provided; i.e. the response to queries[1] will be
 // sent on channel resChs[1].
-func (ctx *Context) ProfileQueryAll(queries ...string) []QueryResultsChan {
-	resChs := []QueryResultsChan{}
+func (ctx *Context) ProfileQueryAll(queries ...string) []source.QueryResultsChan {
+	resChs := []source.QueryResultsChan{}
 
 	for _, q := range queries {
 		resChs = append(resChs, ctx.ProfileQuery(q, fmt.Sprintf("Query #%d", len(resChs)+1)))
@@ -146,13 +167,16 @@ func (ctx *Context) ProfileQueryAll(queries ...string) []QueryResultsChan {
 	return resChs
 }
 
-func (ctx *Context) QuerySync(query string) ([]*QueryResult, v1.Warnings, error) {
+func (ctx *Context) QuerySync(query string) ([]*source.QueryResult, v1.Warnings, error) {
 	raw, warnings, err := ctx.query(query, time.Now())
 	if err != nil {
 		return nil, warnings, err
 	}
 
-	results := NewQueryResults(query, raw)
+	// create result keys from custom cluster label
+	resultKeys := source.ClusterKeyWithDefaults(ctx.config.ClusterLabel)
+
+	results := NewQueryResults(query, raw, resultKeys)
 	if results.Error != nil {
 		return nil, warnings, results.Error
 	}
@@ -167,15 +191,27 @@ func (ctx *Context) QueryURL() *url.URL {
 
 // runQuery executes the prometheus query asynchronously, collects results and
 // errors, and passes them through the results channel.
-func runQuery(query string, ctx *Context, resCh QueryResultsChan, t time.Time, profileLabel string) {
+func runQuery(query string, ctx *Context, resCh source.QueryResultsChan, t time.Time, profileLabel string) {
 	defer errors.HandlePanic()
 	startQuery := time.Now()
 
 	raw, warnings, requestError := ctx.query(query, t)
-	results := NewQueryResults(query, raw)
+
+	var parseError error
+
+	var results *source.QueryResults
+	if requestError != nil {
+		results = NewQueryResultError(query, requestError)
+	} else {
+		// create result keys from custom cluster label
+		resultKeys := source.ClusterKeyWithDefaults(ctx.config.ClusterLabel)
+		results = NewQueryResults(query, raw, resultKeys)
+
+		parseError = results.Error
+	}
 
 	// report all warnings, request, and parse errors (nils will be ignored)
-	ctx.errorCollector.Report(query, warnings, requestError, results.Error)
+	ctx.errorCollector.Report(query, warnings, requestError, parseError)
 
 	if profileLabel != "" {
 		log.Profile(startQuery, profileLabel)
@@ -225,7 +261,7 @@ func (ctx *Context) RawQuery(query string, t time.Time) ([]byte, error) {
 	statusCode := resp.StatusCode
 	statusText := http.StatusText(statusCode)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, CommErrorf("%d (%s) URL: '%s', Body: '%s' Query: '%s'", statusCode, statusText, req.URL, body, query)
+		return nil, source.CommErrorf("%d (%s) URL: '%s', Body: '%s' Query: '%s'", statusCode, statusText, req.URL, body, query)
 	}
 
 	return body, err
@@ -248,8 +284,8 @@ func (ctx *Context) query(query string, t time.Time) (interface{}, v1.Warnings, 
 		// NoStoreAPIWarning is a warning that we would consider an error. It returns partial data relating only to the
 		// store apis which were reachable. In order to ensure integrity of data across all clusters, we'll need to identify
 		// this warning and convert it to an error.
-		if IsNoStoreAPIWarning(w) {
-			return nil, warnings, CommErrorf("Error: %s, Body: %s, Query: %s", w, body, query)
+		if source.IsNoStoreAPIWarning(w) {
+			return nil, warnings, source.CommErrorf("Error: %s, Body: %s, Query: %s", w, body, query)
 		}
 
 		log.Warnf("fetching query '%s': %s", query, w)
@@ -266,8 +302,8 @@ func (ctx *Context) isRequestStepAligned(start, end time.Time, step time.Duratio
 	return startInUnix%stepInSeconds == 0 && endInUnix%stepInSeconds == 0
 }
 
-func (ctx *Context) QueryRange(query string, start, end time.Time, step time.Duration) QueryResultsChan {
-	resCh := make(QueryResultsChan)
+func (ctx *Context) QueryRange(query string, start, end time.Time, step time.Duration) source.QueryResultsChan {
+	resCh := make(source.QueryResultsChan)
 
 	if !ctx.isRequestStepAligned(start, end, step) {
 		start, end = ctx.alignWindow(start, end, step)
@@ -278,21 +314,23 @@ func (ctx *Context) QueryRange(query string, start, end time.Time, step time.Dur
 	return resCh
 }
 
-func (ctx *Context) ProfileQueryRange(query string, start, end time.Time, step time.Duration, profileLabel string) QueryResultsChan {
-	resCh := make(QueryResultsChan)
+func (ctx *Context) ProfileQueryRange(query string, start, end time.Time, step time.Duration, profileLabel string) source.QueryResultsChan {
+	resCh := make(source.QueryResultsChan)
 
 	go runQueryRange(query, start, end, step, ctx, resCh, profileLabel)
 
 	return resCh
 }
 
-func (ctx *Context) QueryRangeSync(query string, start, end time.Time, step time.Duration) ([]*QueryResult, v1.Warnings, error) {
+func (ctx *Context) QueryRangeSync(query string, start, end time.Time, step time.Duration) ([]*source.QueryResult, v1.Warnings, error) {
 	raw, warnings, err := ctx.queryRange(query, start, end, step)
 	if err != nil {
 		return nil, warnings, err
 	}
 
-	results := NewQueryResults(query, raw)
+	// create result keys from custom cluster label
+	resultKeys := source.ClusterKeyWithDefaults(ctx.config.ClusterLabel)
+	results := NewQueryResults(query, raw, resultKeys)
 	if results.Error != nil {
 		return nil, warnings, results.Error
 	}
@@ -307,15 +345,27 @@ func (ctx *Context) QueryRangeURL() *url.URL {
 
 // runQueryRange executes the prometheus queryRange asynchronously, collects results and
 // errors, and passes them through the results channel.
-func runQueryRange(query string, start, end time.Time, step time.Duration, ctx *Context, resCh QueryResultsChan, profileLabel string) {
+func runQueryRange(query string, start, end time.Time, step time.Duration, ctx *Context, resCh source.QueryResultsChan, profileLabel string) {
 	defer errors.HandlePanic()
 	startQuery := time.Now()
 
 	raw, warnings, requestError := ctx.queryRange(query, start, end, step)
-	results := NewQueryResults(query, raw)
+
+	var parseError error
+
+	var results *source.QueryResults
+	if requestError != nil {
+		results = NewQueryResultError(query, requestError)
+	} else {
+		// create result keys from custom cluster label
+		resultKeys := source.ClusterKeyWithDefaults(ctx.config.ClusterLabel)
+		results = NewQueryResults(query, raw, resultKeys)
+
+		parseError = results.Error
+	}
 
 	// report all warnings, request, and parse errors (nils will be ignored)
-	ctx.errorCollector.Report(query, warnings, requestError, results.Error)
+	ctx.errorCollector.Report(query, warnings, requestError, parseError)
 
 	if profileLabel != "" {
 		log.Profile(startQuery, profileLabel)
@@ -361,7 +411,7 @@ func (ctx *Context) RawQueryRange(query string, start, end time.Time, step time.
 	statusCode := resp.StatusCode
 	statusText := http.StatusText(statusCode)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, CommErrorf("%d (%s) Body: %s Query: %s", statusCode, statusText, body, query)
+		return nil, source.CommErrorf("%d (%s) Body: %s Query: %s", statusCode, statusText, body, query)
 	}
 
 	return body, err
@@ -385,8 +435,8 @@ func (ctx *Context) queryRange(query string, start, end time.Time, step time.Dur
 		// NoStoreAPIWarning is a warning that we would consider an error. It returns partial data relating only to the
 		// store apis which were reachable. In order to ensure integrity of data across all clusters, we'll need to identify
 		// this warning and convert it to an error.
-		if IsNoStoreAPIWarning(w) {
-			return nil, warnings, CommErrorf("Error: %s, Body: %s, Query: %s", w, body, query)
+		if source.IsNoStoreAPIWarning(w) {
+			return nil, warnings, source.CommErrorf("Error: %s, Body: %s, Query: %s", w, body, query)
 		}
 
 		log.Warnf("fetching query '%s': %s", query, w)

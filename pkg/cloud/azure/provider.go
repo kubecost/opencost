@@ -1609,10 +1609,6 @@ func (az *Azure) PVPricing(pvk models.PVKey) (*models.PV, error) {
 	return pricing.PV, nil
 }
 
-func (az *Azure) GetLocalStorageQuery(window, offset time.Duration, rate bool, used bool) string {
-	return ""
-}
-
 func (az *Azure) ServiceAccountStatus() *models.ServiceAccountStatus {
 	return az.ServiceAccountChecks.GetStatus()
 }
