@@ -136,37 +136,6 @@ type multiKeyGCPAllocation struct {
 	Cost    float64
 }
 
-// GetLocalStorageQuery returns the cost of local storage for the given window. Setting rate=true
-// returns hourly spend. Setting used=true only tracks used storage, not total.
-func (gcp *GCP) GetLocalStorageQuery(window, offset time.Duration, rate bool, used bool) string {
-	// TODO Set to the price for the appropriate storage class. It's not trivial to determine the local storage disk type
-	// See https://cloud.google.com/compute/disks-image-pricing#persistentdisk
-	localStorageCost := 0.04
-
-	baseMetric := "container_fs_limit_bytes"
-	if used {
-		baseMetric = "container_fs_usage_bytes"
-	}
-
-	fmtOffset := timeutil.DurationToPromOffsetString(offset)
-
-	fmtCumulativeQuery := `sum(
-		sum_over_time(%s{device!="tmpfs", id="/", %s}[%s:1m]%s)
-	) by (%s) / 60 / 730 / 1024 / 1024 / 1024 * %f`
-
-	fmtMonthlyQuery := `sum(
-		avg_over_time(%s{device!="tmpfs", id="/", %s}[%s:1m]%s)
-	) by (%s) / 1024 / 1024 / 1024 * %f`
-
-	fmtQuery := fmtCumulativeQuery
-	if rate {
-		fmtQuery = fmtMonthlyQuery
-	}
-	fmtWindow := timeutil.DurationString(window)
-
-	return fmt.Sprintf(fmtQuery, baseMetric, env.GetPromClusterFilter(), fmtWindow, fmtOffset, env.GetPromClusterLabel(), localStorageCost)
-}
-
 func (gcp *GCP) GetConfig() (*models.CustomPricing, error) {
 	c, err := gcp.Config.GetCustomPricingData()
 	if err != nil {

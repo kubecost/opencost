@@ -2,10 +2,9 @@ package costmodel
 
 import (
 	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/source"
 	"github.com/opencost/opencost/core/pkg/util"
 	costAnalyzerCloud "github.com/opencost/opencost/pkg/cloud/models"
-	"github.com/opencost/opencost/pkg/env"
-	"github.com/opencost/opencost/pkg/prom"
 )
 
 // NetworkUsageVNetworkUsageDataector contains the network usage values for egress network traffic
@@ -28,7 +27,7 @@ type NetworkUsageVector struct {
 
 // GetNetworkUsageData performs a join of the the results of zone, region, and internet usage queries to return a single
 // map containing network costs for each namespace+pod
-func GetNetworkUsageData(zr []*prom.QueryResult, rr []*prom.QueryResult, ir []*prom.QueryResult, defaultClusterID string) (map[string]*NetworkUsageData, error) {
+func GetNetworkUsageData(zr []*source.QueryResult, rr []*source.QueryResult, ir []*source.QueryResult, defaultClusterID string) (map[string]*NetworkUsageData, error) {
 	zoneNetworkMap, err := getNetworkUsage(zr, defaultClusterID)
 	if err != nil {
 		return nil, err
@@ -138,7 +137,7 @@ func GetNetworkCost(usage *NetworkUsageData, cloud costAnalyzerCloud.Provider) (
 	return results, nil
 }
 
-func getNetworkUsage(qrs []*prom.QueryResult, defaultClusterID string) (map[string]*NetworkUsageVector, error) {
+func getNetworkUsage(qrs []*source.QueryResult, defaultClusterID string) (map[string]*NetworkUsageVector, error) {
 	ncdmap := make(map[string]*NetworkUsageVector)
 
 	for _, val := range qrs {
@@ -147,12 +146,12 @@ func getNetworkUsage(qrs []*prom.QueryResult, defaultClusterID string) (map[stri
 			return nil, err
 		}
 
-		namespace, err := val.GetString("namespace")
+		namespace, err := val.GetNamespace()
 		if err != nil {
 			return nil, err
 		}
 
-		clusterID, err := val.GetString(env.GetPromClusterLabel())
+		clusterID, err := val.GetCluster()
 		if clusterID == "" {
 			log.Debugf("Prometheus vector does not have cluster id")
 			clusterID = defaultClusterID

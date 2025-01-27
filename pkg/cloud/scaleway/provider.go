@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/opencost/opencost/pkg/cloud/models"
 	"github.com/opencost/opencost/pkg/cloud/utils"
@@ -356,10 +355,6 @@ func (scw *Scaleway) GetConfig() (*models.CustomPricing, error) {
 		c.CurrencyCode = "EUR"
 	}
 	return c, nil
-}
-
-func (*Scaleway) GetLocalStorageQuery(window, offset time.Duration, rate bool, used bool) string {
-	return ""
 }
 
 func (scw *Scaleway) GetManagementPlatform() (string, error) {

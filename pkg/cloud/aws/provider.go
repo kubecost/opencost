@@ -352,10 +352,6 @@ var volTypes = map[string]string{
 var loadedAWSSecret bool = false
 var awsSecret *AWSAccessKey = nil
 
-func (aws *AWS) GetLocalStorageQuery(window, offset time.Duration, rate bool, used bool) string {
-	return ""
-}
-
 // KubeAttrConversion maps the k8s labels for region to an AWS key
 func (aws *AWS) KubeAttrConversion(region, instanceType, operatingSystem string) string {
 	operatingSystem = strings.ToLower(operatingSystem)

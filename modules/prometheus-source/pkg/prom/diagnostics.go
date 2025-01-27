@@ -2,9 +2,9 @@ package prom
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/source"
 	"github.com/opencost/opencost/pkg/env"
 	prometheus "github.com/prometheus/client_golang/api"
 )
@@ -139,6 +139,13 @@ var diagnosticDefinitions map[string]*diagnosticDefinition = map[string]*diagnos
 	},
 }
 
+// RequestCounter is used to determine if the prometheus client keeps track of
+// the concurrent outbound requests
+type RequestCounter interface {
+	TotalQueuedRequests() int
+	TotalOutboundRequests() int
+}
+
 // QueuedPromRequest is a representation of a request waiting to be sent by the prometheus
 // client.
 type QueuedPromRequest struct {
@@ -158,7 +165,7 @@ type PrometheusQueueState struct {
 
 // GetPrometheusQueueState is a diagnostic function that probes the prometheus request queue and gathers
 // query, context, and queue statistics.
-func GetPrometheusQueueState(client prometheus.Client) (*PrometheusQueueState, error) {
+func GetPrometheusQueueState(client prometheus.Client, config *OpenCostPrometheusConfig) (*PrometheusQueueState, error) {
 	rlpc, ok := client.(*RateLimitedPrometheusClient)
 	if !ok {
 		return nil, fmt.Errorf("Failed to get prometheus queue state for the provided client. Must be of type RateLimitedPrometheusClient.")
@@ -167,11 +174,11 @@ func GetPrometheusQueueState(client prometheus.Client) (*PrometheusQueueState, e
 	outbound := rlpc.TotalOutboundRequests()
 
 	requests := []*QueuedPromRequest{}
-	rlpc.queue.Each(func(_ int, req *workRequest) {
+	rlpc.EachQueuedRequest(func(ctx string, query string, queueTimeMs int64) {
 		requests = append(requests, &QueuedPromRequest{
-			Context:   req.contextName,
-			Query:     req.query,
-			QueueTime: time.Since(req.start).Milliseconds(),
+			Context:   ctx,
+			Query:     query,
+			QueueTime: queueTimeMs,
 		})
 	})
 
@@ -179,14 +186,14 @@ func GetPrometheusQueueState(client prometheus.Client) (*PrometheusQueueState, e
 		QueuedRequests:      requests,
 		OutboundRequests:    outbound,
 		TotalRequests:       outbound + len(requests),
-		MaxQueryConcurrency: env.GetMaxQueryConcurrency(),
+		MaxQueryConcurrency: config.ClientConfig.QueryConcurrency,
 	}, nil
 }
 
 // LogPrometheusClientState logs the current state, with respect to outbound requests, if that
 // information is available.
 func LogPrometheusClientState(client prometheus.Client) {
-	if rc, ok := client.(requestCounter); ok {
+	if rc, ok := client.(RequestCounter); ok {
 		queued := rc.TotalQueuedRequests()
 		outbound := rc.TotalOutboundRequests()
 		total := queued + outbound
@@ -196,8 +203,8 @@ func LogPrometheusClientState(client prometheus.Client) {
 }
 
 // GetPrometheusMetrics returns a list of the state of Prometheus metric used by kubecost using the provided client
-func GetPrometheusMetrics(client prometheus.Client, offset string) PrometheusDiagnostics {
-	ctx := NewNamedContext(client, DiagnosticContextName)
+func GetPrometheusMetrics(client prometheus.Client, config *OpenCostPrometheusConfig, offset string) PrometheusDiagnostics {
+	ctx := NewNamedContext(client, config, DiagnosticContextName)
 
 	var result []*PrometheusDiagnostic
 	for _, definition := range diagnosticDefinitions {
@@ -215,8 +222,8 @@ func GetPrometheusMetrics(client prometheus.Client, offset string) PrometheusDia
 }
 
 // GetPrometheusMetricsByID returns a list of the state of specific Prometheus metrics by identifier.
-func GetPrometheusMetricsByID(ids []string, client prometheus.Client, offset string) PrometheusDiagnostics {
-	ctx := NewNamedContext(client, DiagnosticContextName)
+func GetPrometheusMetricsByID(ids []string, client prometheus.Client, config *OpenCostPrometheusConfig, offset string) PrometheusDiagnostics {
+	ctx := NewNamedContext(client, config, DiagnosticContextName)
 
 	var result []*PrometheusDiagnostic
 	for _, id := range ids {
@@ -284,13 +291,13 @@ func (pdd *diagnosticDefinition) NewDiagnostic(offset string) *PrometheusDiagnos
 
 // PrometheusDiagnostic holds information about a metric and the query to ensure it is functional
 type PrometheusDiagnostic struct {
-	ID          string         `json:"id"`
-	Query       string         `json:"query"`
-	Label       string         `json:"label"`
-	Description string         `json:"description"`
-	DocLink     string         `json:"docLink"`
-	Result      []*QueryResult `json:"result"`
-	Passed      bool           `json:"passed"`
+	ID          string                `json:"id"`
+	Query       string                `json:"query"`
+	Label       string                `json:"label"`
+	Description string                `json:"description"`
+	DocLink     string                `json:"docLink"`
+	Result      []*source.QueryResult `json:"result"`
+	Passed      bool                  `json:"passed"`
 }
 
 // executePrometheusDiagnosticQuery executes a PrometheusDiagnostic query using the given context
@@ -301,7 +308,7 @@ func (pd *PrometheusDiagnostic) executePrometheusDiagnosticQuery(ctx *Context) e
 		return fmt.Errorf("prometheus diagnostic %s failed with error: %s", pd.ID, err)
 	}
 	if result == nil {
-		result = []*QueryResult{}
+		result = []*source.QueryResult{}
 	}
 	pd.Result = result
 	pd.Passed = len(result) == 0

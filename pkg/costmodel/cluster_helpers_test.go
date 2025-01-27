@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/source"
 	"github.com/opencost/opencost/core/pkg/util"
 	"github.com/opencost/opencost/pkg/cloud/provider"
 	"github.com/opencost/opencost/pkg/config"
-	"github.com/opencost/opencost/pkg/prom"
 
 	"github.com/davecgh/go-spew/spew"
 )
@@ -731,13 +731,13 @@ func TestBuildNodeMap(t *testing.T) {
 func TestBuildGPUCostMap(t *testing.T) {
 	cases := []struct {
 		name       string
-		promResult []*prom.QueryResult
+		promResult []*source.QueryResult
 		countMap   map[NodeIdentifier]float64
 		expected   map[NodeIdentifier]float64
 	}{
 		{
 			name: "All Zeros",
-			promResult: []*prom.QueryResult{
+			promResult: []*source.QueryResult{
 				{
 					Metric: map[string]interface{}{
 						"cluster_id":    "cluster1",
@@ -770,7 +770,7 @@ func TestBuildGPUCostMap(t *testing.T) {
 		},
 		{
 			name: "Zero Node Count",
-			promResult: []*prom.QueryResult{
+			promResult: []*source.QueryResult{
 				{
 					Metric: map[string]interface{}{
 						"cluster_id":    "cluster1",
@@ -803,7 +803,7 @@ func TestBuildGPUCostMap(t *testing.T) {
 		},
 		{
 			name: "Missing Node Count",
-			promResult: []*prom.QueryResult{
+			promResult: []*source.QueryResult{
 				{
 					Metric: map[string]interface{}{
 						"cluster_id":    "cluster1",
@@ -830,7 +830,7 @@ func TestBuildGPUCostMap(t *testing.T) {
 		},
 		{
 			name: "missing cost data",
-			promResult: []*prom.QueryResult{
+			promResult: []*source.QueryResult{
 				{},
 			},
 			countMap: map[NodeIdentifier]float64{
@@ -844,7 +844,7 @@ func TestBuildGPUCostMap(t *testing.T) {
 		},
 		{
 			name: "All values present",
-			promResult: []*prom.QueryResult{
+			promResult: []*source.QueryResult{
 				{
 					Metric: map[string]interface{}{
 						"cluster_id":    "cluster1",
@@ -899,7 +899,7 @@ func TestAssetCustompricing(t *testing.T) {
 
 	startTimestamp := float64(windowStart.Unix())
 
-	nodePromResult := []*prom.QueryResult{
+	nodePromResult := []*source.QueryResult{
 		{
 			Metric: map[string]interface{}{
 				"cluster_id":    "cluster1",
@@ -916,7 +916,7 @@ func TestAssetCustompricing(t *testing.T) {
 		},
 	}
 
-	pvCostPromResult := []*prom.QueryResult{
+	pvCostPromResult := []*source.QueryResult{
 		{
 			Metric: map[string]interface{}{
 				"cluster_id":       "cluster1",
@@ -932,7 +932,7 @@ func TestAssetCustompricing(t *testing.T) {
 		},
 	}
 
-	pvSizePromResult := []*prom.QueryResult{
+	pvSizePromResult := []*source.QueryResult{
 		{
 			Metric: map[string]interface{}{
 				"cluster_id":       "cluster1",
@@ -948,7 +948,7 @@ func TestAssetCustompricing(t *testing.T) {
 		},
 	}
 
-	pvMinsPromResult := []*prom.QueryResult{
+	pvMinsPromResult := []*source.QueryResult{
 		{
 			Metric: map[string]interface{}{
 				"cluster_id":       "cluster1",
@@ -968,7 +968,7 @@ func TestAssetCustompricing(t *testing.T) {
 		},
 	}
 
-	pvAvgUsagePromResult := []*prom.QueryResult{
+	pvAvgUsagePromResult := []*source.QueryResult{
 		{
 			Metric: map[string]interface{}{
 				"cluster_id":            "cluster1",
@@ -988,7 +988,7 @@ func TestAssetCustompricing(t *testing.T) {
 		},
 	}
 
-	pvMaxUsagePromResult := []*prom.QueryResult{
+	pvMaxUsagePromResult := []*source.QueryResult{
 		{
 			Metric: map[string]interface{}{
 				"cluster_id":            "cluster1",
@@ -1008,7 +1008,7 @@ func TestAssetCustompricing(t *testing.T) {
 		},
 	}
 
-	pvInfoPromResult := []*prom.QueryResult{
+	pvInfoPromResult := []*source.QueryResult{
 		{
 			Metric: map[string]interface{}{
 				"cluster_id":            "cluster1",
@@ -1122,7 +1122,7 @@ func TestBuildLabelsMap(t *testing.T) {
 
 	startTimestamp := float64(windowStart.Unix())
 
-	nodePromResult := []*prom.QueryResult{
+	nodePromResult := []*source.QueryResult{
 		{
 			Metric: map[string]interface{}{
 				"cluster_id":             "cluster1",

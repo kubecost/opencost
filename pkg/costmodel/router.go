@@ -15,7 +15,9 @@ import (
 
 	"github.com/microcosm-cc/bluemonday"
 	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/source"
 	"github.com/opencost/opencost/core/pkg/util/httputil"
+	"github.com/opencost/opencost/core/pkg/util/retry"
 	"github.com/opencost/opencost/core/pkg/util/timeutil"
 	"github.com/opencost/opencost/core/pkg/version"
 	"github.com/opencost/opencost/pkg/cloud/aws"
@@ -39,16 +41,14 @@ import (
 	sysenv "github.com/opencost/opencost/core/pkg/env"
 	"github.com/opencost/opencost/core/pkg/log"
 	"github.com/opencost/opencost/core/pkg/util/json"
+	"github.com/opencost/opencost/modules/prometheus-source/pkg/prom"
 	"github.com/opencost/opencost/pkg/cloud/azure"
 	"github.com/opencost/opencost/pkg/cloud/models"
 	"github.com/opencost/opencost/pkg/cloud/utils"
 	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/opencost/opencost/pkg/env"
 	"github.com/opencost/opencost/pkg/errors"
-	"github.com/opencost/opencost/pkg/prom"
-	"github.com/opencost/opencost/pkg/thanos"
 	prometheus "github.com/prometheus/client_golang/api"
-	prometheusAPI "github.com/prometheus/client_golang/api/prometheus/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/patrickmn/go-cache"
@@ -66,7 +66,6 @@ const (
 	maxCacheMinutes30d   = 137
 	CustomPricingSetting = "CustomPricing"
 	DiscountSetting      = "Discount"
-	epRules              = apiPrefix + "/rules"
 )
 
 var (
@@ -77,8 +76,9 @@ var (
 // Accesses defines a singleton application instance, providing access to
 // Prometheus, Kubernetes, the cloud provider, and caches.
 type Accesses struct {
-	PrometheusClient    prometheus.Client
-	ThanosClient        prometheus.Client
+	//PrometheusClient    prometheus.Client
+	//ThanosClient        prometheus.Client
+	DataSource          source.OpenCostDataSource
 	KubeClientSet       kubernetes.Interface
 	ClusterCache        clustercache.ClusterCache
 	ClusterMap          clusters.ClusterMap
@@ -105,6 +105,7 @@ type Accesses struct {
 
 // GetPrometheusClient decides whether the default Prometheus client or the Thanos client
 // should be used.
+/*
 func (a *Accesses) GetPrometheusClient(remote bool) prometheus.Client {
 	// Use Thanos Client if it exists (enabled) and remote flag set
 	var pc prometheus.Client
@@ -117,6 +118,7 @@ func (a *Accesses) GetPrometheusClient(remote bool) prometheus.Client {
 
 	return pc
 }
+*/
 
 // GetCacheExpiration looks up and returns custom cache expiration for the given duration.
 // If one does not exists, it returns the default cache expiration, which is defined by
@@ -147,14 +149,14 @@ func (a *Accesses) ClusterCostsFromCacheHandler(w http.ResponseWriter, r *http.R
 	offset := time.Minute
 	durationHrs := "24h"
 	fmtOffset := "1m"
-	pClient := a.GetPrometheusClient(true)
+	dataSource := a.DataSource
 
 	key := fmt.Sprintf("%s:%s", durationHrs, fmtOffset)
 	if data, valid := a.ClusterCostsCache.Get(key); valid {
 		clusterCosts := data.(map[string]*ClusterCosts)
 		w.Write(WrapDataWithMessage(clusterCosts, nil, "clusterCosts cache hit"))
 	} else {
-		data, err := a.ComputeClusterCosts(pClient, a.CloudProvider, duration, offset, true)
+		data, err := a.ComputeClusterCosts(dataSource, a.CloudProvider, duration, offset, true)
 		w.Write(WrapDataWithMessage(data, err, fmt.Sprintf("clusterCosts cache miss: %s", key)))
 	}
 }
@@ -396,7 +398,7 @@ func (a *Accesses) CostDataModel(w http.ResponseWriter, r *http.Request, ps http
 		offset = "offset " + offset
 	}
 
-	data, err := a.Model.ComputeCostData(a.PrometheusClient, a.CloudProvider, window, offset, namespace)
+	data, err := a.Model.ComputeCostData(window, offset, namespace)
 
 	if fields != "" {
 		filteredData := filterFields(fields, data)
@@ -433,24 +435,26 @@ func (a *Accesses) ClusterCosts(w http.ResponseWriter, r *http.Request, ps httpr
 			return
 		}
 	}
+	/*
+		useThanos, _ := strconv.ParseBool(r.URL.Query().Get("multi"))
 
-	useThanos, _ := strconv.ParseBool(r.URL.Query().Get("multi"))
+		if useThanos && !thanos.IsEnabled() {
+			w.Write(WrapData(nil, fmt.Errorf("Multi=true while Thanos is not enabled.")))
+			return
+		}
 
-	if useThanos && !thanos.IsEnabled() {
-		w.Write(WrapData(nil, fmt.Errorf("Multi=true while Thanos is not enabled.")))
-		return
-	}
 
-	var client prometheus.Client
-	if useThanos {
-		client = a.ThanosClient
-		offsetDur = thanos.OffsetDuration()
+		var client prometheus.Client
+		if useThanos {
+			client = a.ThanosClient
+			offsetDur = thanos.OffsetDuration()
 
-	} else {
-		client = a.PrometheusClient
-	}
+		} else {
+			client = a.PrometheusClient
+		}
+	*/
 
-	data, err := a.ComputeClusterCosts(client, a.CloudProvider, windowDur, offsetDur, true)
+	data, err := a.ComputeClusterCosts(a.DataSource, a.CloudProvider, windowDur, offsetDur, true)
 	w.Write(WrapData(data, err))
 }
 
@@ -458,8 +462,8 @@ func (a *Accesses) ClusterCostsOverTime(w http.ResponseWriter, r *http.Request, 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	start := r.URL.Query().Get("start")
-	end := r.URL.Query().Get("end")
+	startString := r.URL.Query().Get("start")
+	endString := r.URL.Query().Get("end")
 	window := r.URL.Query().Get("window")
 	offset := r.URL.Query().Get("offset")
 
@@ -483,7 +487,23 @@ func (a *Accesses) ClusterCostsOverTime(w http.ResponseWriter, r *http.Request, 
 		}
 	}
 
-	data, err := ClusterCostsOverTime(a.PrometheusClient, a.CloudProvider, start, end, windowDur, offsetDur)
+	const layout = "2006-01-02T15:04:05.000Z"
+
+	start, err := time.Parse(layout, startString)
+	if err != nil {
+		log.Errorf("Error parsing time %s. Error: %s", startString, err.Error())
+		w.Write(WrapData(nil, fmt.Errorf("error parsing 'start': %s: %w", startString, err)))
+		return
+	}
+
+	end, err := time.Parse(layout, endString)
+	if err != nil {
+		log.Errorf("Error parsing time %s. Error: %s", endString, err.Error())
+		w.Write(WrapData(nil, fmt.Errorf("error parsing 'end': %s: %w", endString, err)))
+		return
+	}
+
+	data, err := ClusterCostsOverTime(a.DataSource, a.CloudProvider, start, end, windowDur, offsetDur)
 	w.Write(WrapData(data, err))
 }
 
@@ -524,14 +544,16 @@ func (a *Accesses) CostDataModelRange(w http.ResponseWriter, r *http.Request, ps
 	}
 
 	// Use Thanos Client if it exists (enabled) and remote flag set
-	var pClient prometheus.Client
-	if remote != "false" && a.ThanosClient != nil {
-		pClient = a.ThanosClient
-	} else {
-		pClient = a.PrometheusClient
-	}
+	/*
+		var pClient prometheus.Client
+		if remote != "false" && a.ThanosClient != nil {
+			pClient = a.ThanosClient
+		} else {
+			pClient = a.PrometheusClient
+		}
+	*/
 
-	data, err := a.Model.ComputeCostDataRange(pClient, a.CloudProvider, window, resolution, namespace, cluster, remoteEnabled)
+	data, err := a.Model.ComputeCostDataRange(window, resolution, namespace, cluster)
 	if err != nil {
 		w.Write(WrapData(nil, err))
 	}
@@ -702,151 +724,6 @@ func (a *Accesses) GetPricingSourceSummary(w http.ResponseWriter, r *http.Reques
 	w.Write(WrapData(data, nil))
 }
 
-func (a *Accesses) GetPrometheusMetadata(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	w.Write(WrapData(prom.Validate(a.PrometheusClient)))
-}
-
-func (a *Accesses) PrometheusQuery(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	qp := httputil.NewQueryParams(r.URL.Query())
-	query := qp.Get("query", "")
-	if query == "" {
-		w.Write(WrapData(nil, fmt.Errorf("Query Parameter 'query' is unset'")))
-		return
-	}
-
-	// Attempt to parse time as either a unix timestamp or as an RFC3339 value
-	var timeVal time.Time
-	timeStr := qp.Get("time", "")
-	if len(timeStr) > 0 {
-		if t, err := strconv.ParseInt(timeStr, 10, 64); err == nil {
-			timeVal = time.Unix(t, 0)
-		} else if t, err := time.Parse(time.RFC3339, timeStr); err == nil {
-			timeVal = t
-		}
-
-		// If time is given, but not parse-able, return an error
-		if timeVal.IsZero() {
-			http.Error(w, fmt.Sprintf("time must be a unix timestamp or RFC3339 value; illegal value given: %s", timeStr), http.StatusBadRequest)
-		}
-	}
-
-	ctx := prom.NewNamedContext(a.PrometheusClient, prom.FrontendContextName)
-	body, err := ctx.RawQuery(query, timeVal)
-	if err != nil {
-		w.Write(WrapData(nil, fmt.Errorf("Error running query %s. Error: %s", query, err)))
-		return
-	}
-
-	w.Write(body)
-}
-
-func (a *Accesses) PrometheusQueryRange(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	qp := httputil.NewQueryParams(r.URL.Query())
-	query := qp.Get("query", "")
-	if query == "" {
-		fmt.Fprintf(w, "Error parsing query from request parameters.")
-		return
-	}
-
-	start, end, duration, err := toStartEndStep(qp)
-	if err != nil {
-		fmt.Fprintf(w, err.Error())
-		return
-	}
-
-	ctx := prom.NewNamedContext(a.PrometheusClient, prom.FrontendContextName)
-	body, err := ctx.RawQueryRange(query, start, end, duration)
-	if err != nil {
-		fmt.Fprintf(w, "Error running query %s. Error: %s", query, err)
-		return
-	}
-
-	w.Write(body)
-}
-
-func (a *Accesses) ThanosQuery(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	if !thanos.IsEnabled() {
-		w.Write(WrapData(nil, fmt.Errorf("ThanosDisabled")))
-		return
-	}
-
-	qp := httputil.NewQueryParams(r.URL.Query())
-	query := qp.Get("query", "")
-	if query == "" {
-		w.Write(WrapData(nil, fmt.Errorf("Query Parameter 'query' is unset'")))
-		return
-	}
-
-	// Attempt to parse time as either a unix timestamp or as an RFC3339 value
-	var timeVal time.Time
-	timeStr := qp.Get("time", "")
-	if len(timeStr) > 0 {
-		if t, err := strconv.ParseInt(timeStr, 10, 64); err == nil {
-			timeVal = time.Unix(t, 0)
-		} else if t, err := time.Parse(time.RFC3339, timeStr); err == nil {
-			timeVal = t
-		}
-
-		// If time is given, but not parse-able, return an error
-		if timeVal.IsZero() {
-			http.Error(w, fmt.Sprintf("time must be a unix timestamp or RFC3339 value; illegal value given: %s", timeStr), http.StatusBadRequest)
-		}
-	}
-
-	ctx := prom.NewNamedContext(a.ThanosClient, prom.FrontendContextName)
-	body, err := ctx.RawQuery(query, timeVal)
-	if err != nil {
-		w.Write(WrapData(nil, fmt.Errorf("Error running query %s. Error: %s", query, err)))
-		return
-	}
-
-	w.Write(body)
-}
-
-func (a *Accesses) ThanosQueryRange(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	if !thanos.IsEnabled() {
-		w.Write(WrapData(nil, fmt.Errorf("ThanosDisabled")))
-		return
-	}
-
-	qp := httputil.NewQueryParams(r.URL.Query())
-	query := qp.Get("query", "")
-	if query == "" {
-		fmt.Fprintf(w, "Error parsing query from request parameters.")
-		return
-	}
-
-	start, end, duration, err := toStartEndStep(qp)
-	if err != nil {
-		fmt.Fprintf(w, err.Error())
-		return
-	}
-
-	ctx := prom.NewNamedContext(a.ThanosClient, prom.FrontendContextName)
-	body, err := ctx.RawQueryRange(query, start, end, duration)
-	if err != nil {
-		fmt.Fprintf(w, "Error running query %s. Error: %s", query, err)
-		return
-	}
-
-	w.Write(body)
-}
-
 // helper for query range proxy requests
 func toStartEndStep(qp httputil.QueryParams) (start, end time.Time, step time.Duration, err error) {
 	var e error
@@ -874,105 +751,6 @@ func toStartEndStep(qp httputil.QueryParams) (start, end time.Time, step time.Du
 	err = nil
 
 	return
-}
-
-func (a *Accesses) GetPrometheusQueueState(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	promQueueState, err := prom.GetPrometheusQueueState(a.PrometheusClient)
-	if err != nil {
-		w.Write(WrapData(nil, err))
-		return
-	}
-
-	result := map[string]*prom.PrometheusQueueState{
-		"prometheus": promQueueState,
-	}
-
-	if thanos.IsEnabled() {
-		thanosQueueState, err := prom.GetPrometheusQueueState(a.ThanosClient)
-		if err != nil {
-			log.Warnf("Error getting Thanos queue state: %s", err)
-		} else {
-			result["thanos"] = thanosQueueState
-		}
-	}
-
-	w.Write(WrapData(result, nil))
-}
-
-// GetPrometheusMetrics retrieves availability of Prometheus and Thanos metrics
-func (a *Accesses) GetPrometheusMetrics(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	promMetrics := prom.GetPrometheusMetrics(a.PrometheusClient, "")
-
-	result := map[string][]*prom.PrometheusDiagnostic{
-		"prometheus": promMetrics,
-	}
-
-	if thanos.IsEnabled() {
-		thanosMetrics := prom.GetPrometheusMetrics(a.ThanosClient, thanos.QueryOffset())
-		result["thanos"] = thanosMetrics
-	}
-
-	w.Write(WrapData(result, nil))
-}
-
-func (a *Accesses) PrometheusRecordingRules(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	u := a.PrometheusClient.URL(epRules, nil)
-
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
-	if err != nil {
-		fmt.Fprintf(w, "Error creating Prometheus rule request: "+err.Error())
-	}
-
-	_, body, err := a.PrometheusClient.Do(r.Context(), req)
-	if err != nil {
-		fmt.Fprintf(w, "Error making Prometheus rule request: "+err.Error())
-	} else {
-		w.Write(body)
-	}
-}
-
-func (a *Accesses) PrometheusConfig(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	pConfig := map[string]string{
-		"address": env.GetPrometheusServerEndpoint(),
-	}
-
-	body, err := json.Marshal(pConfig)
-	if err != nil {
-		fmt.Fprintf(w, "Error marshalling prometheus config")
-	} else {
-		w.Write(body)
-	}
-}
-
-func (a *Accesses) PrometheusTargets(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	u := a.PrometheusClient.URL(epTargets, nil)
-
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
-	if err != nil {
-		fmt.Fprintf(w, "Error creating Prometheus rule request: "+err.Error())
-	}
-
-	_, body, err := a.PrometheusClient.Do(r.Context(), req)
-	if err != nil {
-		fmt.Fprintf(w, "Error making Prometheus rule request: "+err.Error())
-	} else {
-		w.Write(body)
-	}
 }
 
 func (a *Accesses) GetOrphanedPods(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -1111,21 +889,10 @@ func (a *Accesses) GetHelmValues(w http.ResponseWriter, r *http.Request, ps http
 	w.Write(result)
 }
 
-func (a *Accesses) Status(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+// FIXME: Prometheus Status EP
+/*
 
-	promServer := env.GetPrometheusServerEndpoint()
-
-	api := prometheusAPI.NewAPI(a.PrometheusClient)
-	result, err := api.Buildinfo(r.Context())
-	if err != nil {
-		fmt.Fprintf(w, "Using Prometheus at "+promServer+". Error: "+err.Error())
-	} else {
-
-		fmt.Fprintf(w, "Using Prometheus at "+promServer+". Version: "+result.Version)
-	}
-}
+ */
 
 // captures the panic event in sentry
 func capturePanicEvent(err string, stack string) {
@@ -1171,75 +938,106 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 		}
 	}
 
-	address := env.GetPrometheusServerEndpoint()
-	if address == "" {
-		log.Fatalf("No address for prometheus set in $%s. Aborting.", env.PrometheusServerEndpointEnvVar)
-	}
+	const maxRetries = 10
+	const retryInterval = 10 * time.Second
 
-	queryConcurrency := env.GetMaxQueryConcurrency()
-	log.Infof("Prometheus/Thanos Client Max Concurrency set to %d", queryConcurrency)
+	var fatalErr error
 
-	timeout := 120 * time.Second
-	keepAlive := 120 * time.Second
-	tlsHandshakeTimeout := 10 * time.Second
-	scrapeInterval := env.GetKubecostScrapeInterval()
+	ctx, cancel := context.WithCancel(context.Background())
+	dataSource, err := retry.Retry(
+		ctx,
+		func() (source.OpenCostDataSource, error) {
+			ds, e := prom.NewDefaultPrometheusDataSource()
+			if e != nil {
+				if source.IsRetryable(e) {
+					return e
+				}
+				fatalErr = e
+				cancel()
+			}
 
-	var rateLimitRetryOpts *prom.RateLimitRetryOpts = nil
-	if env.IsPrometheusRetryOnRateLimitResponse() {
-		rateLimitRetryOpts = &prom.RateLimitRetryOpts{
-			MaxRetries:       env.GetPrometheusRetryOnRateLimitMaxRetries(),
-			DefaultRetryWait: env.GetPrometheusRetryOnRateLimitDefaultWait(),
-		}
-	}
-
-	promCli, err := prom.NewPrometheusClient(address, &prom.PrometheusClientConfig{
-		Timeout:               timeout,
-		KeepAlive:             keepAlive,
-		TLSHandshakeTimeout:   tlsHandshakeTimeout,
-		TLSInsecureSkipVerify: env.GetInsecureSkipVerify(),
-		RateLimitRetryOpts:    rateLimitRetryOpts,
-		Auth: &prom.ClientAuth{
-			Username:    env.GetDBBasicAuthUsername(),
-			Password:    env.GetDBBasicAuthUserPassword(),
-			BearerToken: env.GetDBBearerToken(),
+			return ds, e
 		},
-		QueryConcurrency:  queryConcurrency,
-		QueryLogFile:      "",
-		HeaderXScopeOrgId: env.GetPrometheusHeaderXScopeOrgId(),
-	})
-	if err != nil {
-		log.Fatalf("Failed to create prometheus client, Error: %v", err)
+		maxRetries,
+		retryInterval,
+	)
+
+	if fatalErr != nil {
+		log.Fatalf("Failed to create Prometheus data source: %s", fatalErr)
+		panic(fatalErr)
 	}
 
-	m, err := prom.Validate(promCli)
-	if err != nil || !m.Running {
+	/*
+		address := env.GetPrometheusServerEndpoint()
+		if address == "" {
+			log.Fatalf("No address for prometheus set in $%s. Aborting.", env.PrometheusServerEndpointEnvVar)
+		}
+
+		queryConcurrency := env.GetMaxQueryConcurrency()
+		log.Infof("Prometheus/Thanos Client Max Concurrency set to %d", queryConcurrency)
+
+		timeout := 120 * time.Second
+		keepAlive := 120 * time.Second
+		tlsHandshakeTimeout := 10 * time.Second
+		scrapeInterval := env.GetKubecostScrapeInterval()
+
+		var rateLimitRetryOpts *prom.RateLimitRetryOpts = nil
+		if env.IsPrometheusRetryOnRateLimitResponse() {
+			rateLimitRetryOpts = &prom.RateLimitRetryOpts{
+				MaxRetries:       env.GetPrometheusRetryOnRateLimitMaxRetries(),
+				DefaultRetryWait: env.GetPrometheusRetryOnRateLimitDefaultWait(),
+			}
+		}
+
+		promCli, err := prom.NewPrometheusClient(address, &prom.PrometheusClientConfig{
+			Timeout:               timeout,
+			KeepAlive:             keepAlive,
+			TLSHandshakeTimeout:   tlsHandshakeTimeout,
+			TLSInsecureSkipVerify: env.GetInsecureSkipVerify(),
+			RateLimitRetryOpts:    rateLimitRetryOpts,
+			Auth: &prom.ClientAuth{
+				Username:    env.GetDBBasicAuthUsername(),
+				Password:    env.GetDBBasicAuthUserPassword(),
+				BearerToken: env.GetDBBearerToken(),
+			},
+			QueryConcurrency:  queryConcurrency,
+			QueryLogFile:      "",
+			HeaderXScopeOrgId: env.GetPrometheusHeaderXScopeOrgId(),
+		})
 		if err != nil {
-			log.Errorf("Failed to query prometheus at %s. Error: %s . Troubleshooting help available at: %s", address, err.Error(), prom.PrometheusTroubleshootingURL)
-		} else if !m.Running {
-			log.Errorf("Prometheus at %s is not running. Troubleshooting help available at: %s", address, prom.PrometheusTroubleshootingURL)
+			log.Fatalf("Failed to create prometheus client, Error: %v", err)
 		}
-	} else {
-		log.Infof("Success: retrieved the 'up' query against prometheus at: " + address)
-	}
 
-	api := prometheusAPI.NewAPI(promCli)
-	_, err = api.Buildinfo(context.Background())
-	if err != nil {
-		log.Infof("No valid prometheus config file at %s. Error: %s . Troubleshooting help available at: %s. Ignore if using cortex/mimir/thanos here.", address, err.Error(), prom.PrometheusTroubleshootingURL)
-	} else {
-		log.Infof("Retrieved a prometheus config file from: %s", address)
-	}
-
-	if scrapeInterval == 0 {
-		scrapeInterval = time.Minute
-		// Lookup scrape interval for kubecost job, update if found
-		si, err := prom.ScrapeIntervalFor(promCli, env.GetKubecostJobName())
-		if err == nil {
-			scrapeInterval = si
+		m, err := prom.Validate(promCli)
+		if err != nil || !m.Running {
+			if err != nil {
+				log.Errorf("Failed to query prometheus at %s. Error: %s . Troubleshooting help available at: %s", address, err.Error(), prom.PrometheusTroubleshootingURL)
+			} else if !m.Running {
+				log.Errorf("Prometheus at %s is not running. Troubleshooting help available at: %s", address, prom.PrometheusTroubleshootingURL)
+			}
+		} else {
+			log.Infof("Success: retrieved the 'up' query against prometheus at: " + address)
 		}
-	}
 
-	log.Infof("Using scrape interval of %f", scrapeInterval.Seconds())
+		api := prometheusAPI.NewAPI(promCli)
+		_, err = api.Buildinfo(context.Background())
+		if err != nil {
+			log.Infof("No valid prometheus config file at %s. Error: %s . Troubleshooting help available at: %s. Ignore if using cortex/mimir/thanos here.", address, err.Error(), prom.PrometheusTroubleshootingURL)
+		} else {
+			log.Infof("Retrieved a prometheus config file from: %s", address)
+		}
+
+		if scrapeInterval == 0 {
+			scrapeInterval = time.Minute
+			// Lookup scrape interval for kubecost job, update if found
+			si, err := prom.ScrapeIntervalFor(promCli, env.GetKubecostJobName())
+			if err == nil {
+				scrapeInterval = si
+			}
+		}
+
+		log.Infof("Using scrape interval of %f", scrapeInterval.Seconds())
+	*/
 
 	// Kubernetes API setup
 	kubeClientset, err := kubeconfig.LoadKubeClient("")
@@ -1286,41 +1084,44 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 		}
 	}
 
-	// Thanos Client
-	var thanosClient prometheus.Client
-	if thanos.IsEnabled() {
-		thanosAddress := thanos.QueryURL()
+	/*
 
-		if thanosAddress != "" {
-			thanosCli, _ := thanos.NewThanosClient(thanosAddress, &prom.PrometheusClientConfig{
-				Timeout:               timeout,
-				KeepAlive:             keepAlive,
-				TLSHandshakeTimeout:   tlsHandshakeTimeout,
-				TLSInsecureSkipVerify: env.GetInsecureSkipVerify(),
-				RateLimitRetryOpts:    rateLimitRetryOpts,
-				Auth: &prom.ClientAuth{
-					Username:    env.GetMultiClusterBasicAuthUsername(),
-					Password:    env.GetMultiClusterBasicAuthPassword(),
-					BearerToken: env.GetMultiClusterBearerToken(),
-				},
-				QueryConcurrency: queryConcurrency,
-				QueryLogFile:     env.GetQueryLoggingFile(),
-			})
+		// Thanos Client
+		var thanosClient prometheus.Client
+		if thanos.IsEnabled() {
+			thanosAddress := thanos.QueryURL()
 
-			_, err = prom.Validate(thanosCli)
-			if err != nil {
-				log.Warnf("Failed to query Thanos at %s. Error: %s.", thanosAddress, err.Error())
-				thanosClient = thanosCli
+			if thanosAddress != "" {
+				thanosCli, _ := thanos.NewThanosClient(thanosAddress, &prom.PrometheusClientConfig{
+					Timeout:               timeout,
+					KeepAlive:             keepAlive,
+					TLSHandshakeTimeout:   tlsHandshakeTimeout,
+					TLSInsecureSkipVerify: env.GetInsecureSkipVerify(),
+					RateLimitRetryOpts:    rateLimitRetryOpts,
+					Auth: &prom.ClientAuth{
+						Username:    env.GetMultiClusterBasicAuthUsername(),
+						Password:    env.GetMultiClusterBasicAuthPassword(),
+						BearerToken: env.GetMultiClusterBearerToken(),
+					},
+					QueryConcurrency: queryConcurrency,
+					QueryLogFile:     env.GetQueryLoggingFile(),
+				})
+
+				_, err = prom.Validate(thanosCli)
+				if err != nil {
+					log.Warnf("Failed to query Thanos at %s. Error: %s.", thanosAddress, err.Error())
+					thanosClient = thanosCli
+				} else {
+					log.Infof("Success: retrieved the 'up' query against Thanos at: " + thanosAddress)
+
+					thanosClient = thanosCli
+				}
+
 			} else {
-				log.Infof("Success: retrieved the 'up' query against Thanos at: " + thanosAddress)
-
-				thanosClient = thanosCli
+				log.Infof("Error resolving environment variable: $%s", env.ThanosQueryUrlEnvVar)
 			}
-
-		} else {
-			log.Infof("Error resolving environment variable: $%s", env.ThanosQueryUrlEnvVar)
 		}
-	}
+	*/
 
 	// ClusterInfo Provider to provide the cluster map with local and remote cluster data
 	var clusterInfoProvider clusters.ClusterInfoProvider
@@ -1365,12 +1166,13 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 		pc = promCli
 	}
 	costModel := NewCostModel(pc, cloudProvider, k8sCache, clusterMap, scrapeInterval)
-	metricsEmitter := NewCostModelMetricsEmitter(promCli, k8sCache, cloudProvider, clusterInfoProvider, costModel)
+	metricsEmitter := NewCostModelMetricsEmitter(dataSource, k8sCache, cloudProvider, clusterInfoProvider, costModel)
 
 	a := &Accesses{
-		httpServices:        services.NewCostModelServices(),
-		PrometheusClient:    promCli,
-		ThanosClient:        thanosClient,
+		httpServices: services.NewCostModelServices(),
+		//PrometheusClient:    promCli,
+		//ThanosClient:        thanosClient,
+		DataSource:          dataSource,
 		KubeClientSet:       kubeClientset,
 		ClusterCache:        k8sCache,
 		ClusterMap:          clusterMap,
@@ -1413,6 +1215,7 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 	}
 
 	a.httpServices.RegisterAll(router)
+	a.DataSource.RegisterEndPoints(router)
 
 	router.GET("/costDataModel", a.CostDataModel)
 	router.GET("/costDataModelRange", a.CostDataModelRange)
@@ -1424,7 +1227,6 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 	router.GET("/clusterCostsOverTime", a.ClusterCostsOverTime)
 	router.GET("/clusterCosts", a.ClusterCosts)
 	router.GET("/clusterCostsFromCache", a.ClusterCostsFromCacheHandler)
-	router.GET("/validatePrometheus", a.GetPrometheusMetadata)
 	router.GET("/managementPlatform", a.ManagementPlatform)
 	router.GET("/clusterInfo", a.ClusterInfo)
 	router.GET("/clusterInfoMap", a.GetClusterInfoMap)
@@ -1432,27 +1234,11 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 	router.GET("/pricingSourceStatus", a.GetPricingSourceStatus)
 	router.GET("/pricingSourceSummary", a.GetPricingSourceSummary)
 	router.GET("/pricingSourceCounts", a.GetPricingSourceCounts)
-
-	// endpoints migrated from server
-	router.GET("/prometheusRecordingRules", a.PrometheusRecordingRules)
-	router.GET("/prometheusConfig", a.PrometheusConfig)
-	router.GET("/prometheusTargets", a.PrometheusTargets)
 	router.GET("/orphanedPods", a.GetOrphanedPods)
 	router.GET("/installNamespace", a.GetInstallNamespace)
 	router.GET("/installInfo", a.GetInstallInfo)
 	router.POST("/serviceKey", a.AddServiceKey)
 	router.GET("/helmValues", a.GetHelmValues)
-	router.GET("/status", a.Status)
-
-	// prom query proxies
-	router.GET("/prometheusQuery", a.PrometheusQuery)
-	router.GET("/prometheusQueryRange", a.PrometheusQueryRange)
-	router.GET("/thanosQuery", a.ThanosQuery)
-	router.GET("/thanosQueryRange", a.ThanosQueryRange)
-
-	// diagnostics
-	router.GET("/diagnostics/requestQueue", a.GetPrometheusQueueState)
-	router.GET("/diagnostics/prometheusMetrics", a.GetPrometheusMetrics)
 
 	return a
 }

@@ -1,7 +1,6 @@
 package env
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/opencost/opencost/core/pkg/env"
@@ -25,13 +24,9 @@ const (
 	AzureDownloadBillingDataToDiskEnvVar = "AZURE_DOWNLOAD_BILLING_DATA_TO_DISK"
 
 	KubecostNamespaceEnvVar        = "KUBECOST_NAMESPACE"
-	KubecostScrapeIntervalEnvVar   = "KUBECOST_SCRAPE_INTERVAL"
 	PodNameEnvVar                  = "POD_NAME"
 	ClusterIDEnvVar                = "CLUSTER_ID"
 	ClusterProfileEnvVar           = "CLUSTER_PROFILE"
-	PrometheusServerEndpointEnvVar = "PROMETHEUS_SERVER_ENDPOINT"
-	MaxQueryConcurrencyEnvVar      = "MAX_QUERY_CONCURRENCY"
-	QueryLoggingFileEnvVar         = "QUERY_LOGGING_FILE"
 	RemoteEnabledEnvVar            = "REMOTE_WRITE_ENABLED"
 	RemotePWEnvVar                 = "REMOTE_WRITE_PASSWORD"
 	SQLAddressEnvVar               = "SQL_ADDRESS"
@@ -51,11 +46,6 @@ const (
 	EmitKsmV1MetricsEnvVar = "EMIT_KSM_V1_METRICS"
 	EmitKsmV1MetricsOnly   = "EMIT_KSM_V1_METRICS_ONLY"
 
-	ThanosEnabledEnvVar      = "THANOS_ENABLED"
-	ThanosQueryUrlEnvVar     = "THANOS_QUERY_URL"
-	ThanosOffsetEnvVar       = "THANOS_QUERY_OFFSET"
-	ThanosMaxSourceResEnvVar = "THANOS_MAX_SOURCE_RESOLUTION"
-
 	PProfEnabledEnvVar = "PPROF_ENABLED"
 
 	LogCollectionEnabledEnvVar    = "LOG_COLLECTION_ENABLED"
@@ -63,29 +53,16 @@ const (
 	ErrorReportingEnabledEnvVar   = "ERROR_REPORTING_ENABLED"
 	ValuesReportingEnabledEnvVar  = "VALUES_REPORTING_ENABLED"
 
-	DBBasicAuthUsername = "DB_BASIC_AUTH_USERNAME"
-	DBBasicAuthPassword = "DB_BASIC_AUTH_PW"
-	DBBearerToken       = "DB_BEARER_TOKEN"
-
-	MultiClusterBasicAuthUsername = "MC_BASIC_AUTH_USERNAME"
-	MultiClusterBasicAuthPassword = "MC_BASIC_AUTH_PW"
-	MultiClusterBearerToken       = "MC_BEARER_TOKEN"
-
-	InsecureSkipVerify = "INSECURE_SKIP_VERIFY"
 	KubeRbacProxyEnabled = "KUBE_RBAC_PROXY_ENABLED"
 
 	KubeConfigPathEnvVar = "KUBECONFIG_PATH"
 
-	UTCOffsetEnvVar                  = "UTC_OFFSET"
-	CurrentClusterIdFilterEnabledVar = "CURRENT_CLUSTER_ID_FILTER_ENABLED"
+	UTCOffsetEnvVar = "UTC_OFFSET"
 
-	CacheWarmingEnabledEnvVar            = "CACHE_WARMING_ENABLED"
-	ETLEnabledEnvVar                     = "ETL_ENABLED"
-	ETLMaxPrometheusQueryDurationMinutes = "ETL_MAX_PROMETHEUS_QUERY_DURATION_MINUTES"
-	ETLResolutionSeconds                 = "ETL_RESOLUTION_SECONDS"
-	LegacyExternalAPIDisabledVar         = "LEGACY_EXTERNAL_API_DISABLED"
-
-	PromClusterIDLabelEnvVar = "PROM_CLUSTER_ID_LABEL"
+	CacheWarmingEnabledEnvVar    = "CACHE_WARMING_ENABLED"
+	ETLEnabledEnvVar             = "ETL_ENABLED"
+	ETLResolutionSeconds         = "ETL_RESOLUTION_SECONDS"
+	LegacyExternalAPIDisabledVar = "LEGACY_EXTERNAL_API_DISABLED"
 
 	PricingConfigmapName  = "PRICING_CONFIGMAP_NAME"
 	MetricsConfigmapName  = "METRICS_CONFIGMAP_NAME"
@@ -94,13 +71,6 @@ const (
 	KubecostConfigBucketEnvVar    = "KUBECOST_CONFIG_BUCKET"
 	ClusterInfoFileEnabledEnvVar  = "CLUSTER_INFO_FILE_ENABLED"
 	ClusterCacheFileEnabledEnvVar = "CLUSTER_CACHE_FILE_ENABLED"
-
-	PrometheusQueryOffsetEnvVar                 = "PROMETHEUS_QUERY_OFFSET"
-	PrometheusRetryOnRateLimitResponseEnvVar    = "PROMETHEUS_RETRY_ON_RATE_LIMIT"
-	PrometheusRetryOnRateLimitMaxRetriesEnvVar  = "PROMETHEUS_RETRY_ON_RATE_LIMIT_MAX_RETRIES"
-	PrometheusRetryOnRateLimitDefaultWaitEnvVar = "PROMETHEUS_RETRY_ON_RATE_LIMIT_DEFAULT_WAIT"
-
-	PrometheusHeaderXScopeOrgIdEnvVar = "PROMETHEUS_HEADER_X_SCOPE_ORGID"
 
 	IngestPodUIDEnvVar = "INGEST_POD_UID"
 
@@ -158,10 +128,6 @@ func GetExportCSVLabelsAll() bool {
 	return env.GetBool(ExportCSVLabelsAll, false)
 }
 
-func GetKubecostScrapeInterval() time.Duration {
-	return env.GetDuration(KubecostScrapeIntervalEnvVar, 0)
-}
-
 func GetExportCSVLabelsList() []string {
 	return env.GetList(ExportCSVLabelsList, ",")
 }
@@ -196,53 +162,6 @@ func IsClusterInfoFileEnabled() bool {
 // kubernetes API.
 func IsClusterCacheFileEnabled() bool {
 	return env.GetBool(ClusterCacheFileEnabledEnvVar, false)
-}
-
-// IsPrometheusRetryOnRateLimitResponse will attempt to retry if a 429 response is received OR a 400 with a body containing
-// ThrottleException (common in AWS services like AMP)
-func IsPrometheusRetryOnRateLimitResponse() bool {
-	return env.GetBool(PrometheusRetryOnRateLimitResponseEnvVar, true)
-}
-
-// GetPrometheusRetryOnRateLimitMaxRetries returns the maximum number of retries that should be attempted prior to failing.
-// Only used if IsPrometheusRetryOnRateLimitResponse() is true.
-func GetPrometheusRetryOnRateLimitMaxRetries() int {
-	return env.GetInt(PrometheusRetryOnRateLimitMaxRetriesEnvVar, 5)
-}
-
-// GetPrometheusRetryOnRateLimitDefaultWait returns the default wait time for a retriable rate limit response without a
-// Retry-After header.
-func GetPrometheusRetryOnRateLimitDefaultWait() time.Duration {
-	return env.GetDuration(PrometheusRetryOnRateLimitDefaultWaitEnvVar, 100*time.Millisecond)
-}
-
-// GetPrometheusHeaderXScopeOrgId returns the default value for X-Scope-OrgID header used for requests in Mimir/Cortex-Tenant API.
-// To use Mimir(or Cortex-Tenant) instead of Prometheus add variable from cluster settings:
-// "PROMETHEUS_HEADER_X_SCOPE_ORGID": "my-cluster-name"
-// Then set Prometheus URL to prometheus API endpoint:
-// "PROMETHEUS_SERVER_ENDPOINT": "http://mimir-url/prometheus/"
-func GetPrometheusHeaderXScopeOrgId() string {
-	return env.Get(PrometheusHeaderXScopeOrgIdEnvVar, "")
-}
-
-// GetPrometheusQueryOffset returns the time.Duration to offset all prometheus queries by. NOTE: This env var is applied
-// to all non-range queries made via our query context. This should only be applied when there is a significant delay in
-// data arriving in the target prom db. For example, if supplying a thanos or cortex querier for the prometheus server, using
-// a 3h offset will ensure that current time = current time - 3h.
-//
-// This offset is NOT the same as the GetThanosOffset() option, as that is only applied to queries made specifically targeting
-// thanos. This offset is applied globally.
-func GetPrometheusQueryOffset() time.Duration {
-	offset := env.Get(PrometheusQueryOffsetEnvVar, "")
-	if offset == "" {
-		return 0
-	}
-
-	dur, err := timeutil.ParseDuration(offset)
-	if err != nil {
-		return 0
-	}
-	return dur
 }
 
 func GetPricingConfigmapName() string {
@@ -366,25 +285,6 @@ func GetClusterID() string {
 	return env.Get(ClusterIDEnvVar, "")
 }
 
-// GetPromClusterFilter returns environment variable value CurrentClusterIdFilterEnabledVar which
-// represents additional prometheus filter for all metrics for current cluster id
-func GetPromClusterFilter() string {
-	if env.GetBool(CurrentClusterIdFilterEnabledVar, false) {
-		return fmt.Sprintf("%s=\"%s\"", GetPromClusterLabel(), GetClusterID())
-	}
-	return ""
-}
-
-// GetPrometheusServerEndpoint returns the environment variable value for PrometheusServerEndpointEnvVar which
-// represents the prometheus server endpoint used to execute prometheus queries.
-func GetPrometheusServerEndpoint() string {
-	return env.Get(PrometheusServerEndpointEnvVar, "")
-}
-
-func GetInsecureSkipVerify() bool {
-	return env.GetBool(InsecureSkipVerify, false)
-}
-
 func IsKubeRbacProxyEnabled() bool {
 	return env.GetBool(KubeRbacProxyEnabled, false)
 }
@@ -461,43 +361,6 @@ func GetCloudProviderAPIKey() string {
 	return env.Get(CloudProviderAPIKeyEnvVar, "")
 }
 
-// IsThanosEnabled returns the environment variable value for ThanosEnabledEnvVar which represents whether
-// or not thanos is enabled.
-func IsThanosEnabled() bool {
-	return env.GetBool(ThanosEnabledEnvVar, false)
-}
-
-// GetThanosQueryUrl returns the environment variable value for ThanosQueryUrlEnvVar which represents the
-// target query endpoint for hitting thanos.
-func GetThanosQueryUrl() string {
-	return env.Get(ThanosQueryUrlEnvVar, "")
-}
-
-// GetThanosOffset returns the environment variable value for ThanosOffsetEnvVar which represents the total
-// amount of time to offset all queries made to thanos.
-func GetThanosOffset() string {
-	return env.Get(ThanosOffsetEnvVar, "3h")
-}
-
-// GetThanosMaxSourceResolution returns the environment variable value for ThanosMaxSourceResEnvVar which represents
-// the max source resolution to use when querying thanos.
-func GetThanosMaxSourceResolution() string {
-	res := env.Get(ThanosMaxSourceResEnvVar, "raw")
-
-	switch res {
-	case "raw":
-		return "0s"
-	case "0s":
-		fallthrough
-	case "5m":
-		fallthrough
-	case "1h":
-		return res
-	default:
-		return "0s"
-	}
-}
-
 // IsLogCollectionEnabled returns the environment variable value for LogCollectionEnabledEnvVar which represents
 // whether or not log collection has been enabled for kubecost deployments.
 func IsLogCollectionEnabled() bool {
@@ -517,43 +380,6 @@ func IsErrorReportingEnabled() bool {
 // IsValuesReportingEnabled returns the environment variable value for ValuesReportingEnabledEnvVar
 func IsValuesReportingEnabled() bool {
 	return env.GetBool(ValuesReportingEnabledEnvVar, true)
-}
-
-// GetMaxQueryConcurrency returns the environment variable value for MaxQueryConcurrencyEnvVar
-func GetMaxQueryConcurrency() int {
-	return env.GetInt(MaxQueryConcurrencyEnvVar, 5)
-}
-
-// GetQueryLoggingFile returns a file location if query logging is enabled. Otherwise, empty string
-func GetQueryLoggingFile() string {
-	return env.Get(QueryLoggingFileEnvVar, "")
-}
-
-func GetDBBasicAuthUsername() string {
-	return env.Get(DBBasicAuthUsername, "")
-}
-
-func GetDBBasicAuthUserPassword() string {
-	return env.Get(DBBasicAuthPassword, "")
-
-}
-
-func GetDBBearerToken() string {
-	return env.Get(DBBearerToken, "")
-}
-
-// GetMultiClusterBasicAuthUsername returns the environment variable value for MultiClusterBasicAuthUsername
-func GetMultiClusterBasicAuthUsername() string {
-	return env.Get(MultiClusterBasicAuthUsername, "")
-}
-
-// GetMultiClusterBasicAuthPassword returns the environment variable value for MultiClusterBasicAuthPassword
-func GetMultiClusterBasicAuthPassword() string {
-	return env.Get(MultiClusterBasicAuthPassword, "")
-}
-
-func GetMultiClusterBearerToken() string {
-	return env.Get(MultiClusterBearerToken, "")
 }
 
 // GetKubeConfigPath returns the environment variable value for KubeConfigPathEnvVar
@@ -589,12 +415,6 @@ func IsETLEnabled() bool {
 	return env.GetBool(ETLEnabledEnvVar, true)
 }
 
-func GetETLMaxPrometheusQueryDuration() time.Duration {
-	dayMins := 60 * 24
-	mins := time.Duration(env.GetInt64(ETLMaxPrometheusQueryDurationMinutes, int64(dayMins)))
-	return mins * time.Minute
-}
-
 // GetETLResolution determines the resolution of ETL queries. The smaller the
 // duration, the higher the resolution; the higher the resolution, the more
 // accurate the query results, but the more computationally expensive.
@@ -607,11 +427,6 @@ func GetETLResolution() time.Duration {
 
 func LegacyExternalCostsAPIDisabled() bool {
 	return env.GetBool(LegacyExternalAPIDisabledVar, false)
-}
-
-// GetPromClusterLabel returns the environment variable value for PromClusterIDLabel
-func GetPromClusterLabel() string {
-	return env.Get(PromClusterIDLabelEnvVar, "cluster_id")
 }
 
 // IsIngestingPodUID returns the env variable from ingestPodUID, which alters the

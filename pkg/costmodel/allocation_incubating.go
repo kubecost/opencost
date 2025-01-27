@@ -8,6 +8,7 @@ import (
 
 	"github.com/opencost/opencost/core/pkg/log"
 	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/source"
 	"github.com/opencost/opencost/pkg/env"
 	"github.com/opencost/opencost/pkg/prom"
 )
@@ -243,9 +244,9 @@ func appendNodeData(nodeMap map[string]*NodeTotals, s, e time.Time, nodeData map
 // feature for extending the node details that can be returned with allocation
 // data
 type extendedNodeQueryResults struct {
-	nodeCPUCoreResults  []*prom.QueryResult
-	nodeRAMByteResults  []*prom.QueryResult
-	nodeGPUCountResults []*prom.QueryResult
+	nodeCPUCoreResults  []*source.QueryResult
+	nodeRAMByteResults  []*source.QueryResult
+	nodeGPUCountResults []*source.QueryResult
 }
 
 // queryExtendedNodeData makes additional prometheus queries for node data to append on
@@ -284,14 +285,14 @@ func applyExtendedNodeData(nodeMap map[nodeKey]*nodePricing, results *extendedNo
 	applyNodeGPUCount(nodeMap, results.nodeGPUCountResults)
 }
 
-func applyNodeCPUCores(nodeMap map[nodeKey]*nodePricing, nodeCPUCoreResults []*prom.QueryResult) {
+func applyNodeCPUCores(nodeMap map[nodeKey]*nodePricing, nodeCPUCoreResults []*source.QueryResult) {
 	for _, res := range nodeCPUCoreResults {
-		cluster, err := res.GetString(env.GetPromClusterLabel())
+		cluster, err := res.GetCluster()
 		if err != nil {
 			cluster = env.GetClusterID()
 		}
 
-		node, err := res.GetString("node")
+		node, err := res.GetNode()
 		if err != nil {
 			log.Warnf("CostModel.ComputeAllocation: Node CPU Cores query result missing field: %s", err)
 			continue
@@ -309,14 +310,14 @@ func applyNodeCPUCores(nodeMap map[nodeKey]*nodePricing, nodeCPUCoreResults []*p
 	}
 }
 
-func applyNodeRAMBytes(nodeMap map[nodeKey]*nodePricing, nodeRAMByteResults []*prom.QueryResult) {
+func applyNodeRAMBytes(nodeMap map[nodeKey]*nodePricing, nodeRAMByteResults []*source.QueryResult) {
 	for _, res := range nodeRAMByteResults {
-		cluster, err := res.GetString(env.GetPromClusterLabel())
+		cluster, err := res.GetCluster()
 		if err != nil {
 			cluster = env.GetClusterID()
 		}
 
-		node, err := res.GetString("node")
+		node, err := res.GetNode()
 		if err != nil {
 			log.Warnf("CostModel.ComputeAllocation: Node CPU Cores query result missing field: %s", err)
 			continue
@@ -334,14 +335,14 @@ func applyNodeRAMBytes(nodeMap map[nodeKey]*nodePricing, nodeRAMByteResults []*p
 	}
 }
 
-func applyNodeGPUCount(nodeMap map[nodeKey]*nodePricing, nodeGPUCountResults []*prom.QueryResult) {
+func applyNodeGPUCount(nodeMap map[nodeKey]*nodePricing, nodeGPUCountResults []*source.QueryResult) {
 	for _, res := range nodeGPUCountResults {
-		cluster, err := res.GetString(env.GetPromClusterLabel())
+		cluster, err := res.GetCluster()
 		if err != nil {
 			cluster = env.GetClusterID()
 		}
 
-		node, err := res.GetString("node")
+		node, err := res.GetNode()
 		if err != nil {
 			log.Warnf("CostModel.ComputeAllocation: Node CPU Cores query result missing field: %s", err)
 			continue

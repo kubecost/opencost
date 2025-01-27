@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/aliyun/alibaba-cloud-sdk-go/sdk"
 	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/auth/credentials"
@@ -745,11 +744,6 @@ func (alibaba *Alibaba) UpdateConfigFromConfigMap(cm map[string]string) (*models
 // Will look at this in Next PR if needed
 func (alibaba *Alibaba) GetManagementPlatform() (string, error) {
 	return "", nil
-}
-
-// Will look at this in Next PR if needed
-func (alibaba *Alibaba) GetLocalStorageQuery(window, offset time.Duration, rate bool, used bool) string {
-	return ""
 }
 
 // Will look at this in Next PR if needed

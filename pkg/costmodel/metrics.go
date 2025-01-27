@@ -9,6 +9,7 @@ import (
 
 	"github.com/opencost/opencost/core/pkg/clusters"
 	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/source"
 	"github.com/opencost/opencost/core/pkg/util"
 	"github.com/opencost/opencost/core/pkg/util/atomic"
 	"github.com/opencost/opencost/core/pkg/util/promutil"
@@ -454,11 +455,11 @@ func (cmme *CostModelMetricsEmitter) Start() bool {
 			}
 
 			// TODO: Pass PrometheusClient and CloudProvider into CostModel on instantiation so this isn't so awkward
-			data, err := cmme.Model.ComputeCostData(cmme.PrometheusClient, cmme.CloudProvider, "2m", "", "")
+			data, err := cmme.Model.ComputeCostData("2m", "", "")
 			if err != nil {
 				// For an error collection, we'll just log the length of the errors (ComputeCostData already logs the
 				// actual errors)
-				if prom.IsErrorCollection(err) {
+				if source.IsErrorCollection(err) {
 					if ec, ok := err.(prom.QueryErrorCollection); ok {
 						log.Errorf("Error in price recording: %d errors occurred", len(ec.Errors()))
 					}

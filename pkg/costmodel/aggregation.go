@@ -13,10 +13,10 @@ import (
 	"github.com/julienschmidt/httprouter"
 	"github.com/opencost/opencost/pkg/cloud/provider"
 	"github.com/patrickmn/go-cache"
-	prometheusClient "github.com/prometheus/client_golang/api"
 
 	"github.com/opencost/opencost/core/pkg/log"
 	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/source"
 	"github.com/opencost/opencost/core/pkg/util"
 	"github.com/opencost/opencost/core/pkg/util/httputil"
 	"github.com/opencost/opencost/core/pkg/util/json"
@@ -25,8 +25,6 @@ import (
 	"github.com/opencost/opencost/pkg/cloud/models"
 	"github.com/opencost/opencost/pkg/env"
 	"github.com/opencost/opencost/pkg/errors"
-	"github.com/opencost/opencost/pkg/prom"
-	"github.com/opencost/opencost/pkg/thanos"
 )
 
 const (
@@ -199,7 +197,7 @@ func GetTotalContainerCost(costData map[string]*CostData, rate string, cp models
 	return totalContainerCost
 }
 
-func (a *Accesses) ComputeIdleCoefficient(costData map[string]*CostData, cli prometheusClient.Client, cp models.Provider, discount float64, customDiscount float64, window, offset time.Duration) (map[string]float64, error) {
+func (a *Accesses) ComputeIdleCoefficient(costData map[string]*CostData, discount float64, customDiscount float64, window, offset time.Duration) (map[string]float64, error) {
 	coefficients := make(map[string]float64)
 
 	profileName := "ComputeIdleCoefficient: ComputeClusterCosts"
@@ -212,7 +210,7 @@ func (a *Accesses) ComputeIdleCoefficient(costData map[string]*CostData, cli pro
 	if data, valid := a.ClusterCostsCache.Get(key); valid {
 		clusterCosts = data.(map[string]*ClusterCosts)
 	} else {
-		clusterCosts, err = a.ComputeClusterCosts(cli, cp, window, offset, false)
+		clusterCosts, err = a.ComputeClusterCosts(a.DataSource, a.CloudProvider, window, offset, false)
 		if err != nil {
 			return nil, err
 		}
@@ -234,7 +232,7 @@ func (a *Accesses) ComputeIdleCoefficient(costData map[string]*CostData, cli pro
 		totalContainerCost := 0.0
 		for _, costDatum := range costData {
 			if costDatum.ClusterID == cid {
-				cpuv, ramv, gpuv, pvvs, _ := getPriceVectors(cp, costDatum, "", discount, customDiscount, 1)
+				cpuv, ramv, gpuv, pvvs, _ := getPriceVectors(a.CloudProvider, costDatum, "", discount, customDiscount, 1)
 				totalContainerCost += totalVectors(cpuv)
 				totalContainerCost += totalVectors(ramv)
 				totalContainerCost += totalVectors(gpuv)
@@ -1051,7 +1049,7 @@ func DefaultAggregateQueryOpts() *AggregateQueryOpts {
 
 // ComputeAggregateCostModel computes cost data for the given window, then aggregates it by the given fields.
 // Data is cached on two levels: the aggregation is cached as well as the underlying cost data.
-func (a *Accesses) ComputeAggregateCostModel(promClient prometheusClient.Client, window opencost.Window, field string, subfields []string, opts *AggregateQueryOpts) (map[string]*Aggregation, string, error) {
+func (a *Accesses) ComputeAggregateCostModel(window opencost.Window, field string, subfields []string, opts *AggregateQueryOpts) (map[string]*Aggregation, string, error) {
 	// Window is the range of the query, i.e. (start, end)
 	// It must be closed, i.e. neither start nor end can be nil
 	if window.IsOpen() {
@@ -1361,16 +1359,18 @@ func (a *Accesses) ComputeAggregateCostModel(promClient prometheusClient.Client,
 	// parametrize cache key by all request parameters
 	aggKey := GenerateAggKey(window, field, subfields, opts)
 
-	thanosOffset := time.Now().Add(-thanos.OffsetDuration())
-	if a.ThanosClient != nil && window.End().After(thanosOffset) {
-		log.Infof("ComputeAggregateCostModel: setting end time backwards to first present data")
+	/*
+		thanosOffset := time.Now().Add(-thanos.OffsetDuration())
+		if a.ThanosClient != nil && window.End().After(thanosOffset) {
+			log.Infof("ComputeAggregateCostModel: setting end time backwards to first present data")
 
-		// Apply offsets to both end and start times to maintain correct time range
-		deltaDuration := window.End().Sub(thanosOffset)
-		s := window.Start().Add(-1 * deltaDuration)
-		e := time.Now().Add(-thanos.OffsetDuration())
-		window.Set(&s, &e)
-	}
+			// Apply offsets to both end and start times to maintain correct time range
+			deltaDuration := window.End().Sub(thanosOffset)
+			s := window.Start().Add(-1 * deltaDuration)
+			e := time.Now().Add(-thanos.OffsetDuration())
+			window.Set(&s, &e)
+		}
+	*/
 
 	dur, off := window.DurationOffsetStrings()
 	key := fmt.Sprintf(`%s:%s:%fh:%t`, dur, off, resolution.Hours(), remoteEnabled)
@@ -1384,7 +1384,7 @@ func (a *Accesses) ComputeAggregateCostModel(promClient prometheusClient.Client,
 		if !ok {
 			// disable cache and recompute if type cast fails
 			log.Errorf("ComputeAggregateCostModel: caching error: failed to cast aggregate data to struct: %s", aggKey)
-			return a.ComputeAggregateCostModel(promClient, window, field, subfields, opts)
+			return a.ComputeAggregateCostModel(window, field, subfields, opts)
 		}
 		return result, fmt.Sprintf("aggregate cache hit: %s", aggKey), nil
 	}
@@ -1412,12 +1412,12 @@ func (a *Accesses) ComputeAggregateCostModel(promClient prometheusClient.Client,
 	} else {
 		log.Infof("ComputeAggregateCostModel: missed cache: %s (found %t, disableAggregateCostModelCache %t, noCache %t)", key, found, disableAggregateCostModelCache, noCache)
 
-		costData, err = a.Model.ComputeCostDataRange(promClient, a.CloudProvider, window, resolution, "", "", remoteEnabled)
+		costData, err = a.Model.ComputeCostDataRange(window, resolution, "", "")
 		if err != nil {
-			if prom.IsErrorCollection(err) {
+			if source.IsErrorCollection(err) {
 				return nil, "", err
 			}
-			if pce, ok := err.(prom.CommError); ok {
+			if pce, ok := err.(source.CommError); ok {
 				return nil, "", pce
 			}
 			if strings.Contains(err.Error(), "data is empty") {
@@ -1470,27 +1470,29 @@ func (a *Accesses) ComputeAggregateCostModel(promClient prometheusClient.Client,
 			return nil, "", err
 		}
 
-		if a.ThanosClient != nil && off < thanos.OffsetDuration() {
-			// Determine difference between the Thanos offset and the requested
-			// offset; e.g. off=1h, thanosOffsetDuration=3h => diff=2h
-			diff := thanos.OffsetDuration() - off
+		/*
+			if a.ThanosClient != nil && off < thanos.OffsetDuration() {
+				// Determine difference between the Thanos offset and the requested
+				// offset; e.g. off=1h, thanosOffsetDuration=3h => diff=2h
+				diff := thanos.OffsetDuration() - off
 
-			// Reduce duration by difference and increase offset by difference
-			// e.g. 24h offset 0h => 21h offset 3h
-			dur = dur - diff
-			off = thanos.OffsetDuration()
+				// Reduce duration by difference and increase offset by difference
+				// e.g. 24h offset 0h => 21h offset 3h
+				dur = dur - diff
+				off = thanos.OffsetDuration()
 
-			log.Infof("ComputeAggregateCostModel: setting duration, offset to %s, %s due to Thanos", dur, off)
+				log.Infof("ComputeAggregateCostModel: setting duration, offset to %s, %s due to Thanos", dur, off)
 
-			// Idle computation cannot be fulfilled for some windows, specifically
-			// those with sum(duration, offset) < Thanos offset, because there is
-			// no data within that window.
-			if dur <= 0 {
-				return nil, "", fmt.Errorf("requested idle coefficients from Thanos for illegal duration, offset: %s, %s (original window %s)", dur, off, window)
+				// Idle computation cannot be fulfilled for some windows, specifically
+				// those with sum(duration, offset) < Thanos offset, because there is
+				// no data within that window.
+				if dur <= 0 {
+					return nil, "", fmt.Errorf("requested idle coefficients from Thanos for illegal duration, offset: %s, %s (original window %s)", dur, off, window)
+				}
 			}
-		}
+		*/
 
-		idleCoefficients, err = a.ComputeIdleCoefficient(costData, promClient, a.CloudProvider, discount, customDiscount, dur, off)
+		idleCoefficients, err = a.ComputeIdleCoefficient(costData, discount, customDiscount, dur, off)
 		if err != nil {
 			durStr, offStr := timeutil.DurationOffsetStrings(dur, off)
 			log.Errorf("ComputeAggregateCostModel: error computing idle coefficient: duration=%s, offset=%s, err=%s", durStr, offStr, err)
@@ -1729,7 +1731,7 @@ func GenerateAggKey(window opencost.Window, field string, subfields []string, op
 // a brutal interface, which should be cleaned up, but it's necessary for
 // being able to swap in an ETL-backed implementation.
 type Aggregator interface {
-	ComputeAggregateCostModel(promClient prometheusClient.Client, window opencost.Window, field string, subfields []string, opts *AggregateQueryOpts) (map[string]*Aggregation, string, error)
+	ComputeAggregateCostModel(window opencost.Window, field string, subfields []string, opts *AggregateQueryOpts) (map[string]*Aggregation, string, error)
 }
 
 func (a *Accesses) warmAggregateCostModelCache() {
@@ -1741,13 +1743,15 @@ func (a *Accesses) warmAggregateCostModelCache() {
 	// if the default parameters change, the old cached defaults with eventually expire. Thus, the
 	// timing of the cache expiry/refresh is the only mechanism ensuring 100% cache warmth.
 	warmFunc := func(duration, offset time.Duration, cacheEfficiencyData bool) (error, error) {
-		if a.ThanosClient != nil {
-			duration = thanos.OffsetDuration()
-			log.Infof("Setting Offset to %s", duration)
-		}
+		/*
+			if a.ThanosClient != nil {
+				duration = thanos.OffsetDuration()
+				log.Infof("Setting Offset to %s", duration)
+			}
+		*/
 		fmtDuration, fmtOffset := timeutil.DurationOffsetStrings(duration, offset)
 		durationHrs, err := timeutil.FormatDurationStringDaysToHours(fmtDuration)
-		promClient := a.GetPrometheusClient(true)
+		//promClient := a.GetPrometheusClient(true)
 
 		windowStr := fmt.Sprintf("%s offset %s", fmtDuration, fmtOffset)
 		window, err := opencost.ParseWindowUTC(windowStr)
@@ -1782,12 +1786,12 @@ func (a *Accesses) warmAggregateCostModelCache() {
 		log.Infof("aggregation: cache warming defaults: %s", aggKey)
 		key := fmt.Sprintf("%s:%s", durationHrs, fmtOffset)
 
-		_, _, aggErr := a.ComputeAggregateCostModel(promClient, window, field, subfields, aggOpts)
+		_, _, aggErr := a.ComputeAggregateCostModel(window, field, subfields, aggOpts)
 		if aggErr != nil {
 			log.Infof("Error building cache %s: %s", window, aggErr)
 		}
 
-		totals, err := a.ComputeClusterCosts(promClient, a.CloudProvider, duration, offset, cacheEfficiencyData)
+		totals, err := a.ComputeClusterCosts(a.DataSource, a.CloudProvider, duration, offset, cacheEfficiencyData)
 		if err != nil {
 			log.Infof("Error building cluster costs cache %s", key)
 		}
@@ -2059,11 +2063,9 @@ func (a *Accesses) AggregateCostModelHandler(w http.ResponseWriter, r *http.Requ
 	// enable remote if it is available and not disabled
 	opts.RemoteEnabled = remote && env.IsRemoteEnabled()
 
-	promClient := a.GetPrometheusClient(remote)
-
 	var data map[string]*Aggregation
 	var message string
-	data, message, err = a.AggAPI.ComputeAggregateCostModel(promClient, window, field, subfields, opts)
+	data, message, err = a.AggAPI.ComputeAggregateCostModel(window, field, subfields, opts)
 
 	// Find any warnings in http request context
 	warning, _ := httputil.GetWarning(r)

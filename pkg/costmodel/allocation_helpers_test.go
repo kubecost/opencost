@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/core/pkg/source"
 	"github.com/opencost/opencost/core/pkg/util"
-	"github.com/opencost/opencost/pkg/prom"
 )
 
 const Ki = 1024
@@ -213,13 +213,13 @@ func TestBuildPVMap(t *testing.T) {
 
 	testCases := map[string]struct {
 		resolution              time.Duration
-		resultsPVCostPerGiBHour []*prom.QueryResult
-		resultsActiveMinutes    []*prom.QueryResult
+		resultsPVCostPerGiBHour []*source.QueryResult
+		resultsActiveMinutes    []*source.QueryResult
 		expected                map[pvKey]*pv
 	}{
 		"pvMap1": {
 			resolution: time.Hour * 6,
-			resultsPVCostPerGiBHour: []*prom.QueryResult{
+			resultsPVCostPerGiBHour: []*source.QueryResult{
 				{
 					Metric: map[string]interface{}{
 						"cluster_id": "cluster1",
@@ -265,7 +265,7 @@ func TestBuildPVMap(t *testing.T) {
 					},
 				},
 			},
-			resultsActiveMinutes: []*prom.QueryResult{
+			resultsActiveMinutes: []*source.QueryResult{
 				{
 					Metric: map[string]interface{}{
 						"cluster_id":       "cluster1",
@@ -354,7 +354,7 @@ func TestBuildPVMap(t *testing.T) {
 	for name, testCase := range testCases {
 		t.Run(name, func(t *testing.T) {
 			pvMap := make(map[pvKey]*pv)
-			buildPVMap(testCase.resolution, pvMap, testCase.resultsPVCostPerGiBHour, testCase.resultsActiveMinutes, []*prom.QueryResult{}, window)
+			buildPVMap(testCase.resolution, pvMap, testCase.resultsPVCostPerGiBHour, testCase.resultsActiveMinutes, []*source.QueryResult{}, window)
 			if len(pvMap) != len(testCase.expected) {
 				t.Errorf("pv map does not have the expected length %d : %d", len(pvMap), len(testCase.expected))
 			}
@@ -460,13 +460,13 @@ func TestCalculateStartAndEnd(t *testing.T) {
 		resolution    time.Duration
 		expectedStart time.Time
 		expectedEnd   time.Time
-		result        *prom.QueryResult
+		result        *source.QueryResult
 	}{
 		"1 hour resolution, 1 hour window": {
 			resolution:    time.Hour,
 			expectedStart: windowStart,
 			expectedEnd:   windowStart.Add(time.Hour),
-			result: &prom.QueryResult{
+			result: &source.QueryResult{
 				Values: []*util.Vector{
 					{
 						Timestamp: startFloat,
@@ -481,7 +481,7 @@ func TestCalculateStartAndEnd(t *testing.T) {
 			resolution:    time.Minute * 30,
 			expectedStart: windowStart,
 			expectedEnd:   windowStart.Add(time.Hour),
-			result: &prom.QueryResult{
+			result: &source.QueryResult{
 				Values: []*util.Vector{
 					{
 						Timestamp: startFloat,
@@ -499,7 +499,7 @@ func TestCalculateStartAndEnd(t *testing.T) {
 			resolution:    time.Minute * 15,
 			expectedStart: windowStart,
 			expectedEnd:   windowStart.Add(time.Minute * 45),
-			result: &prom.QueryResult{
+			result: &source.QueryResult{
 				Values: []*util.Vector{
 					{
 						Timestamp: startFloat + (minute * 0),
@@ -520,7 +520,7 @@ func TestCalculateStartAndEnd(t *testing.T) {
 			resolution:    time.Minute,
 			expectedStart: windowStart.Add(time.Minute * 15),
 			expectedEnd:   windowStart.Add(time.Minute * 20),
-			result: &prom.QueryResult{
+			result: &source.QueryResult{
 				Values: []*util.Vector{
 					{
 						Timestamp: startFloat + (minute * 15),
@@ -547,7 +547,7 @@ func TestCalculateStartAndEnd(t *testing.T) {
 			resolution:    time.Minute,
 			expectedStart: windowStart.Add(time.Minute * 14).Add(time.Second * 30),
 			expectedEnd:   windowStart.Add(time.Minute * 15).Add(time.Second * 30),
-			result: &prom.QueryResult{
+			result: &source.QueryResult{
 				Values: []*util.Vector{
 					{
 						Timestamp: startFloat + (minute * 15),
@@ -559,7 +559,7 @@ func TestCalculateStartAndEnd(t *testing.T) {
 			resolution:    time.Minute,
 			expectedStart: windowStart,
 			expectedEnd:   windowStart.Add(time.Second * 30),
-			result: &prom.QueryResult{
+			result: &source.QueryResult{
 				Values: []*util.Vector{
 					{
 						Timestamp: startFloat,
