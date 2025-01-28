@@ -1,26 +1,86 @@
 package costmodel
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/opencost/opencost/core/pkg/util"
+	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+func TestPruneDuplicates(t *testing.T) {
+
+	tests := []struct {
+		name     string
+		input    []string
+		expected []string
+	}{
+		{
+			name:     "empty slice",
+			input:    []string{},
+			expected: []string{},
+		},
+		{
+			name:     "single element slice",
+			input:    []string{"test1"},
+			expected: []string{"test1"},
+		},
+		{
+			name:     "basic duplicate",
+			input:    []string{"test1", "test1"},
+			expected: []string{"test1"},
+		},
+		{
+			name:     "compound duplicate",
+			input:    []string{"test1", "test2", "test1", "test2"},
+			expected: []string{"test1", "test2"},
+		},
+		{
+			name:     "mixture of duplicate/ no duplicate",
+			input:    []string{"test1", "test2", "test1", "test2", "test3"},
+			expected: []string{"test1", "test2", "test3"},
+		},
+		{
+			name:     "underscore sanitization",
+			input:    []string{"test_1", "test_2", "test_1", "test_2", "test_3"},
+			expected: []string{"test-1", "test-2", "test-3"},
+		},
+		{
+			name:     "underscore sanitization II",
+			input:    []string{"test-1", "test_2", "test_1", "test_2", "test_3"},
+			expected: []string{"test-1", "test-2", "test-3"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual := pruneDuplicates(tt.expected)
+			slices.Sort(actual)
+			expected := tt.expected
+			slices.Sort(expected)
+
+			if !slices.Equal(actual, expected) {
+				t.Fatalf("test failuire for case %s. Expected %v, got %v", tt.name, expected, actual)
+			}
+		})
+	}
+
+}
 
 func TestGetGPUCount(t *testing.T) {
 	tests := []struct {
 		name          string
-		node          *v1.Node
+		node          *clustercache.Node
 		expectedGPU   float64
 		expectedVGPU  float64
 		expectedError bool
 	}{
 		{
 			name: "Standard NVIDIA GPU",
-			node: &v1.Node{
+			node: &clustercache.Node{
 				Status: v1.NodeStatus{
 					Capacity: v1.ResourceList{
 						"nvidia.com/gpu": resource.MustParse("2"),
@@ -32,12 +92,10 @@ func TestGetGPUCount(t *testing.T) {
 		},
 		{
 			name: "NVIDIA GPU with GFD - renameByDefault=true",
-			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"nvidia.com/gpu.replicas": "4",
-						"nvidia.com/gpu.count":    "1",
-					},
+			node: &clustercache.Node{
+				Labels: map[string]string{
+					"nvidia.com/gpu.replicas": "4",
+					"nvidia.com/gpu.count":    "1",
 				},
 				Status: v1.NodeStatus{
 					Capacity: v1.ResourceList{
@@ -50,12 +108,10 @@ func TestGetGPUCount(t *testing.T) {
 		},
 		{
 			name: "NVIDIA GPU with GFD - renameByDefault=false",
-			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"nvidia.com/gpu.replicas": "4",
-						"nvidia.com/gpu.count":    "1",
-					},
+			node: &clustercache.Node{
+				Labels: map[string]string{
+					"nvidia.com/gpu.replicas": "4",
+					"nvidia.com/gpu.count":    "1",
 				},
 				Status: v1.NodeStatus{
 					Capacity: v1.ResourceList{
@@ -68,7 +124,7 @@ func TestGetGPUCount(t *testing.T) {
 		},
 		{
 			name: "No GPU",
-			node: &v1.Node{
+			node: &clustercache.Node{
 				Status: v1.NodeStatus{
 					Capacity: v1.ResourceList{},
 				},

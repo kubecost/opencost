@@ -3,7 +3,7 @@ package opencost
 import (
 	"testing"
 
-	filter21 "github.com/opencost/opencost/core/pkg/filter"
+	"github.com/opencost/opencost/core/pkg/filter"
 	afilter "github.com/opencost/opencost/core/pkg/filter/allocation"
 	"github.com/opencost/opencost/core/pkg/filter/ast"
 	"github.com/opencost/opencost/core/pkg/filter/ops"
@@ -21,7 +21,7 @@ func Test_AllocationFilterCondition_Matches(t *testing.T) {
 	cases := []struct {
 		name   string
 		a      *Allocation
-		filter filter21.Filter
+		filter filter.Filter
 
 		expected bool
 	}{
@@ -639,7 +639,7 @@ func Test_AllocationFilterAnd_Matches(t *testing.T) {
 	cases := []struct {
 		name   string
 		a      *Allocation
-		filter filter21.Filter
+		filter filter.Filter
 
 		expected bool
 	}{
@@ -740,7 +740,7 @@ func Test_AllocationFilterOr_Matches(t *testing.T) {
 	cases := []struct {
 		name   string
 		a      *Allocation
-		filter filter21.Filter
+		filter filter.Filter
 
 		expected bool
 	}{

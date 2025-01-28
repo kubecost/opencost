@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/opencost/opencost/core/pkg/log"
-
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/fields"
 	rt "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/runtime"
@@ -55,7 +55,7 @@ type CachingWatchController struct {
 func NewCachingWatcher(restClient rest.Interface, resource string, resourceType rt.Object, namespace string, fieldSelector fields.Selector) WatchController {
 	resourceCache := cache.NewListWatchFromClient(restClient, resource, namespace, fieldSelector)
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
-	indexer, informer := cache.NewIndexerInformer(resourceCache, resourceType, 0, cache.ResourceEventHandlerFuncs{
+	indexer, informer := cache.NewTransformingIndexerInformer(resourceCache, resourceType, 0, cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			key, err := cache.MetaNamespaceKeyFunc(obj)
 			if err == nil {
@@ -76,7 +76,7 @@ func NewCachingWatcher(restClient rest.Interface, resource string, resourceType 
 				queue.Add(key)
 			}
 		},
-	}, cache.Indexers{})
+	}, cache.Indexers{}, trimUnwantedFields)
 
 	return &CachingWatchController{
 		indexer:      indexer,
@@ -88,7 +88,19 @@ func NewCachingWatcher(restClient rest.Interface, resource string, resourceType 
 }
 
 func (c *CachingWatchController) GetAll() []interface{} {
-	return c.indexer.List()
+	list := c.indexer.List()
+
+	// since the indexer returns the as-is pointer to the resource,
+	// we deep copy the resources such that callers don't corrupt the
+	// index
+	cloneList := make([]interface{}, 0, len(list))
+	for _, v := range list {
+		if deepCopyable, ok := v.(rt.Object); ok {
+			cloneList = append(cloneList, deepCopyable.DeepCopyObject())
+		}
+	}
+
+	return cloneList
 }
 
 func (c *CachingWatchController) SetUpdateHandler(handler WatchHandler) WatchController {
@@ -193,4 +205,13 @@ func (c *CachingWatchController) Run(threadiness int, stopCh chan struct{}) {
 func (c *CachingWatchController) runWorker() {
 	for c.processNextItem() {
 	}
+}
+
+// trimUnwantedFields removes unwanted fields from the object
+// - managedFields as this metadata can be quite large
+func trimUnwantedFields(obj interface{}) (interface{}, error) {
+	if accessor, err := meta.Accessor(obj); err == nil {
+		accessor.SetManagedFields(nil)
+	}
+	return obj, nil
 }

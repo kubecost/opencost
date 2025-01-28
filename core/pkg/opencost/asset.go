@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	filter21 "github.com/opencost/opencost/core/pkg/filter"
+	"github.com/opencost/opencost/core/pkg/filter"
 	"github.com/opencost/opencost/core/pkg/filter/ast"
 	"github.com/opencost/opencost/core/pkg/filter/matcher"
 	"github.com/opencost/opencost/core/pkg/log"
@@ -3772,7 +3772,7 @@ func (asr *AssetSetRange) newAccumulation() (*AssetSet, error) {
 
 type AssetAggregationOptions struct {
 	SharedHourlyCosts map[string]float64
-	Filter            filter21.Filter
+	Filter            filter.Filter
 	LabelConfig       *LabelConfig
 }
 

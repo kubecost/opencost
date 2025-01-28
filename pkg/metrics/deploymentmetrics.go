@@ -39,10 +39,10 @@ func (kdc KubecostDeploymentCollector) Collect(ch chan<- prometheus.Metric) {
 
 	ds := kdc.KubeClusterCache.GetAllDeployments()
 	for _, deployment := range ds {
-		deploymentName := deployment.GetName()
-		deploymentNS := deployment.GetNamespace()
+		deploymentName := deployment.Name
+		deploymentNS := deployment.Namespace
 
-		labels, values := promutil.KubeLabelsToLabels(promutil.SanitizeLabels(deployment.Spec.Selector.MatchLabels))
+		labels, values := promutil.KubeLabelsToLabels(promutil.SanitizeLabels(deployment.MatchLabels))
 		if len(labels) > 0 {
 			m := newDeploymentMatchLabelsMetric(deploymentName, deploymentNS, "deployment_match_labels", labels, values)
 			ch <- m
@@ -143,15 +143,15 @@ func (kdc KubeDeploymentCollector) Collect(ch chan<- prometheus.Metric) {
 	disabledMetrics := kdc.metricsConfig.GetDisabledMetricsMap()
 
 	for _, deployment := range deployments {
-		deploymentName := deployment.GetName()
-		deploymentNS := deployment.GetNamespace()
+		deploymentName := deployment.Name
+		deploymentNS := deployment.Namespace
 
 		// Replicas Defined
 		var replicas int32
-		if deployment.Spec.Replicas == nil {
+		if deployment.SpecReplicas == nil {
 			replicas = 1 // defaults to 1, documented on the 'Replicas' field
 		} else {
-			replicas = *deployment.Spec.Replicas
+			replicas = *deployment.SpecReplicas
 		}
 
 		if _, disabled := disabledMetrics["kube_deployment_spec_replicas"]; !disabled {
@@ -163,7 +163,7 @@ func (kdc KubeDeploymentCollector) Collect(ch chan<- prometheus.Metric) {
 				"kube_deployment_status_replicas_available",
 				deploymentName,
 				deploymentNS,
-				deployment.Status.AvailableReplicas)
+				deployment.StatusAvailableReplicas)
 		}
 	}
 }

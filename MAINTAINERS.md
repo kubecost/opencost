@@ -9,10 +9,10 @@ Official list of [OpenCost Maintainers](https://github.com/orgs/opencost/teams/o
 | Ajay Tripathy | @AjayTripathy | Kubecost | <Ajay@kubecost.com> |
 | Alex Meijer | @ameijer | Kubecost | <ameijer@kubecost.com> |
 | Artur Khantimirov | @r2k1 | Microsoft | <akhantimirov@microsoft.com> |
+| Cliff Colvin | @cliffcolvin | Kubecost | <ccolvin@kubecost.com> |
 | Matt Bolt | @​mbolt35 | Kubecost | <matt@kubecost.com> |
 | Niko Kovacevic | @nikovacevic | Kubecost | <niko@kubecost.com> |
 | Sean Holcomb | @Sean-Holcomb | Kubecost | <Sean@kubecost.com> |
-| Thomas Evans | @teevans | Kubecost | <thomas@kubecost.com> |
 
 ## Opencost Emeritus Committers
 We would like to acknowledge previous committers and their huge contributions to our collective success:
@@ -21,3 +21,4 @@ We would like to acknowledge previous committers and their huge contributions to
 | --------------- | --------- | ----------- | ----------- |
 | Michael Dresser | @michaelmdresser | Kubecost (former) | <michaelmdresser@gmail.com> |
 | Matt Ray | @mattray | Kubecost (former) | <mattray@kubecost.com> |
+| Thomas Evans | @teevans | Kubecost (former) | <thomas@kubecost.com> |

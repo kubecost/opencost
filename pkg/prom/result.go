@@ -16,52 +16,48 @@ var (
 	NaNWarning warning = newWarning("Found NaN value parsing vector data point for metric")
 )
 
-func DataFieldFormatErr(query string) error {
-	return fmt.Errorf("Data field improperly formatted in prometheus response fetching query '%s'", query)
+func DataFieldFormatErr(query string, promResponse interface{}) error {
+	return fmt.Errorf("Error parsing Prometheus response: 'data' field improperly formatted. Query: '%s'. Response: '%+v'", query, promResponse)
 }
 
-func DataPointFormatErr(query string) error {
-	return fmt.Errorf("Improperly formatted datapoint from Prometheus fetching query '%s'", query)
+func DataPointFormatErr(query string, promResponse interface{}) error {
+	return fmt.Errorf("Error parsing Prometheus response: improperly formatted datapoint. Query: '%s'. Response: '%+v'", query, promResponse)
 }
 
-func MetricFieldDoesNotExistErr(query string) error {
-	return fmt.Errorf("Metric field does not exist in data result vector fetching query '%s'", query)
+func MetricFieldDoesNotExistErr(query string, promResponse interface{}) error {
+	return fmt.Errorf("Error parsing Prometheus response: 'metric' field does not exist in data result vector. Query: '%s'. Response: '%+v'", query, promResponse)
 }
 
-func MetricFieldFormatErr(query string) error {
-	return fmt.Errorf("Metric field is improperly formatted fetching query '%s'", query)
+func MetricFieldFormatErr(query string, promResponse interface{}) error {
+	return fmt.Errorf("Error parsing Prometheus response: 'metric' field improperly formatted. Query: '%s'. Response: '%+v'", query, promResponse)
 }
 
 func NoDataErr(query string) error {
 	return NewNoDataError(query)
 }
 
-func PromUnexpectedResponseErr(query string) error {
-	return fmt.Errorf("Unexpected response from Prometheus fetching query '%s'", query)
+func PromUnexpectedResponseErr(query string, promResponse interface{}) error {
+	return fmt.Errorf("Error parsing Prometheus response: unexpected response. Query: '%s'. Response: '%+v'", query, promResponse)
 }
 
 func QueryResultNilErr(query string) error {
 	return NewCommError(query)
 }
 
-func ResultFieldDoesNotExistErr(query string) error {
-	return fmt.Errorf("Result field not does not exist in prometheus response fetching query '%s'", query)
+func ResultFieldDoesNotExistErr(query string, promResponse interface{}) error {
+	return fmt.Errorf("Error parsing Prometheus response: 'result' field does not exist. Query: '%s'. Response: '%+v'", query, promResponse)
 }
 
-func ResultFieldFormatErr(query string) error {
-	return fmt.Errorf("Result field improperly formatted in prometheus response fetching query '%s'", query)
+func ResultFieldFormatErr(query string, promResponse interface{}) error {
+	return fmt.Errorf("Error parsing Prometheus response: 'result' field improperly formatted. Query: '%s'. Response: '%+v'", query, promResponse)
 }
 
-func ResultFormatErr(query string) error {
-	return fmt.Errorf("Result is improperly formatted fetching query '%s'", query)
+func ResultFormatErr(query string, promResponse interface{}) error {
+	return fmt.Errorf("Error parsing Prometheus response: 'result' field improperly formatted. Query: '%s'. Response: '%+v'", query, promResponse)
 }
 
-func ValueFieldDoesNotExistErr(query string) error {
-	return fmt.Errorf("Value field does not exist in data result vector fetching query '%s'", query)
-}
-
-func ValueFieldFormatErr(query string) error {
-	return fmt.Errorf("Values field is improperly formatted fetching query '%s'", query)
+func ValueFieldDoesNotExistErr(query string, promResponse interface{}) error {
+	return fmt.Errorf("Error parsing Prometheus response: 'value' field does not exist in data result vector. Query: '%s'. Response: '%+v'", query, promResponse)
 }
 
 // QueryResultsChan is a channel of query results
@@ -118,17 +114,17 @@ func NewQueryResults(query string, queryResult interface{}) *QueryResults {
 	// Deep Check for proper formatting
 	d, ok := data.(map[string]interface{})
 	if !ok {
-		qrs.Error = DataFieldFormatErr(query)
+		qrs.Error = DataFieldFormatErr(query, data)
 		return qrs
 	}
 	resultData, ok := d["result"]
 	if !ok {
-		qrs.Error = ResultFieldDoesNotExistErr(query)
+		qrs.Error = ResultFieldDoesNotExistErr(query, d)
 		return qrs
 	}
 	resultsData, ok := resultData.([]interface{})
 	if !ok {
-		qrs.Error = ResultFieldFormatErr(query)
+		qrs.Error = ResultFieldFormatErr(query, resultData)
 		return qrs
 	}
 
@@ -139,18 +135,18 @@ func NewQueryResults(query string, queryResult interface{}) *QueryResults {
 	for _, val := range resultsData {
 		resultInterface, ok := val.(map[string]interface{})
 		if !ok {
-			qrs.Error = ResultFormatErr(query)
+			qrs.Error = ResultFormatErr(query, val)
 			return qrs
 		}
 
 		metricInterface, ok := resultInterface["metric"]
 		if !ok {
-			qrs.Error = MetricFieldDoesNotExistErr(query)
+			qrs.Error = MetricFieldDoesNotExistErr(query, resultInterface)
 			return qrs
 		}
 		metricMap, ok := metricInterface.(map[string]interface{})
 		if !ok {
-			qrs.Error = MetricFieldFormatErr(query)
+			qrs.Error = MetricFieldFormatErr(query, metricInterface)
 			return qrs
 		}
 
@@ -165,7 +161,7 @@ func NewQueryResults(query string, queryResult interface{}) *QueryResults {
 		if !isRange {
 			dataPoint, ok := resultInterface["value"]
 			if !ok {
-				qrs.Error = ValueFieldDoesNotExistErr(query)
+				qrs.Error = ValueFieldDoesNotExistErr(query, resultInterface)
 				return qrs
 			}
 
@@ -304,7 +300,7 @@ func parseDataPoint(query string, dataPoint interface{}) (*util.Vector, warning,
 
 	value, ok := dataPoint.([]interface{})
 	if !ok || len(value) != 2 {
-		return nil, w, DataPointFormatErr(query)
+		return nil, w, DataPointFormatErr(query, dataPoint)
 	}
 
 	strVal := value[1].(string)
@@ -340,7 +336,7 @@ func labelsForMetric(metricMap map[string]interface{}) string {
 func wrapPrometheusError(query string, qr interface{}) (string, error) {
 	e, ok := qr.(map[string]interface{})["error"]
 	if !ok {
-		return "", PromUnexpectedResponseErr(query)
+		return "", PromUnexpectedResponseErr(query, qr)
 	}
 	eStr, ok := e.(string)
 	return fmt.Sprintf("'%s' parsing query '%s'", eStr, query), nil
