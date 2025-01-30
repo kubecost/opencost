@@ -1,0 +1,14 @@
+{
+  "provider": "Linode",
+  "description": "Linode estimates based on January 2025 advertised prices",
+  "CPU": "0.0283",
+  "RAM": "0.0074",
+  "GPU": "0.0",
+  "storage": "0.00015",
+  "zoneNetworkEgress": "0.0",
+  "regionNetworkEgress": "0.0",
+  "internetNetworkEgress": "0.0",
+  "defaultLBPrice": "0.15",
+  "controlPlaneCosts": "0.0",
+  "haControlPlaneCosts": "0.9"
+}

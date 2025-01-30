@@ -184,6 +184,9 @@ const CustomProvider = "custom"
 // ScalewayProvider describes the provider Scaleway
 const ScalewayProvider = "Scaleway"
 
+// LinodeProvider describes the provider Linode
+const LinodeProvider = "Linode"
+
 // OracleProvider describes the provider Oracle
 const OracleProvider = "Oracle"
 

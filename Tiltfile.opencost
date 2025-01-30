@@ -38,6 +38,7 @@ def run_opencost(options):
         cmd='CGO_ENABLED=0 GOOS=linux GOARCH='+go_arch+' go build -o ../opencost/cmd/costmodel/costmodel-tilt ../opencost/cmd/costmodel/main.go',
         deps=[
             '../opencost/cmd/costmodel/main.go',
+            '../opencost/core/pkg',
             '../opencost/pkg',
         ],
         allow_parallel=True,
