@@ -341,12 +341,14 @@ var volTypes = map[string]string{
 	"EBS:VolumeP-IOPS.piops": "io1",
 	"EBS:VolumeUsage.st1":    "st1",
 	"EBS:VolumeUsage.piops":  "io1",
+	"EBS:VolumeUsage.io2":    "io2",
 	"gp2":                    "EBS:VolumeUsage.gp2",
 	"gp3":                    "EBS:VolumeUsage.gp3",
 	"standard":               "EBS:VolumeUsage",
 	"sc1":                    "EBS:VolumeUsage.sc1",
 	"io1":                    "EBS:VolumeUsage.piops",
 	"st1":                    "EBS:VolumeUsage.st1",
+	"io2":                    "EBS:VolumeUsage.io2",
 }
 
 var loadedAWSSecret bool = false
