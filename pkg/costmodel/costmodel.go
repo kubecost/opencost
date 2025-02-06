@@ -154,8 +154,8 @@ const (
 	queryRAMUsageStr = `avg(
 		label_replace(
 			label_replace(
-				label_replace(
-					sum_over_time(container_memory_working_set_bytes{container!="", container!="POD", instance!="", %s}[%s] %s), "node", "$1", "instance", "(.+)"
+				sum_over_time(
+					container_memory_working_set_bytes{container!="", container!="POD", instance!="", %s}[%s] %s
 				), "container_name", "$1", "container", "(.+)"
 			), "pod_name", "$1", "pod", "(.+)"
 		)
@@ -171,10 +171,8 @@ const (
 	queryCPUUsageStr = `avg(
 		label_replace(
 			label_replace(
-				label_replace(
-					rate(
-						container_cpu_usage_seconds_total{container!="", container!="POD", instance!="", %s}[%s] %s
-					), "node", "$1", "instance", "(.+)"
+				rate(
+					container_cpu_usage_seconds_total{container!="", container!="POD", instance!="", %s}[%s] %s
 				), "container_name", "$1", "container", "(.+)"
 			), "pod_name", "$1", "pod", "(.+)"
 		)
