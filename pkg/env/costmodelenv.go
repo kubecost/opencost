@@ -86,6 +86,9 @@ const (
 	LegacyExternalAPIDisabledVar         = "LEGACY_EXTERNAL_API_DISABLED"
 
 	PromClusterIDLabelEnvVar = "PROM_CLUSTER_ID_LABEL"
+	PromNamespaceLabelEnvVar = "PROM_NAMESPACE_LABEL"
+	PromPodLabelEnvVar       = "PROM_POD_LABEL"
+	PromContainerLabelEnvVar = "PROM_CONTAINER_LABEL"
 
 	PricingConfigmapName  = "PRICING_CONFIGMAP_NAME"
 	MetricsConfigmapName  = "METRICS_CONFIGMAP_NAME"
@@ -612,6 +615,21 @@ func LegacyExternalCostsAPIDisabled() bool {
 // GetPromClusterLabel returns the environment variable value for PromClusterIDLabel
 func GetPromClusterLabel() string {
 	return env.Get(PromClusterIDLabelEnvVar, "cluster_id")
+}
+
+// GetPromNamespaceLabel returns the environment variable value for PromNamespaceLabel
+func GetPromNamespaceLabel() string {
+	return env.Get(PromNamespaceLabelEnvVar, "namespace")
+}
+
+// GetPromPodLabel returns the environment variable value for PromPodLabel
+func GetPromPodLabel() string {
+	return env.Get(PromPodLabelEnvVar, "pod")
+}
+
+// GetPromContainerLabel returns the environment variable value for PromContainerLabel
+func GetPromContainerLabel() string {
+	return env.Get(PromContainerLabelEnvVar, "container")
 }
 
 // IsIngestingPodUID returns the env variable from ingestPodUID, which alters the
