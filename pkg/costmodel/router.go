@@ -965,78 +965,6 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 		panic(fatalErr)
 	}
 
-	/*
-		address := env.GetPrometheusServerEndpoint()
-		if address == "" {
-			log.Fatalf("No address for prometheus set in $%s. Aborting.", env.PrometheusServerEndpointEnvVar)
-		}
-
-		queryConcurrency := env.GetMaxQueryConcurrency()
-		log.Infof("Prometheus/Thanos Client Max Concurrency set to %d", queryConcurrency)
-
-		timeout := 120 * time.Second
-		keepAlive := 120 * time.Second
-		tlsHandshakeTimeout := 10 * time.Second
-		scrapeInterval := env.GetKubecostScrapeInterval()
-
-		var rateLimitRetryOpts *prom.RateLimitRetryOpts = nil
-		if env.IsPrometheusRetryOnRateLimitResponse() {
-			rateLimitRetryOpts = &prom.RateLimitRetryOpts{
-				MaxRetries:       env.GetPrometheusRetryOnRateLimitMaxRetries(),
-				DefaultRetryWait: env.GetPrometheusRetryOnRateLimitDefaultWait(),
-			}
-		}
-
-		promCli, err := prom.NewPrometheusClient(address, &prom.PrometheusClientConfig{
-			Timeout:               timeout,
-			KeepAlive:             keepAlive,
-			TLSHandshakeTimeout:   tlsHandshakeTimeout,
-			TLSInsecureSkipVerify: env.GetInsecureSkipVerify(),
-			RateLimitRetryOpts:    rateLimitRetryOpts,
-			Auth: &prom.ClientAuth{
-				Username:    env.GetDBBasicAuthUsername(),
-				Password:    env.GetDBBasicAuthUserPassword(),
-				BearerToken: env.GetDBBearerToken(),
-			},
-			QueryConcurrency:  queryConcurrency,
-			QueryLogFile:      "",
-			HeaderXScopeOrgId: env.GetPrometheusHeaderXScopeOrgId(),
-		})
-		if err != nil {
-			log.Fatalf("Failed to create prometheus client, Error: %v", err)
-		}
-
-		m, err := prom.Validate(promCli)
-		if err != nil || !m.Running {
-			if err != nil {
-				log.Errorf("Failed to query prometheus at %s. Error: %s . Troubleshooting help available at: %s", address, err.Error(), prom.PrometheusTroubleshootingURL)
-			} else if !m.Running {
-				log.Errorf("Prometheus at %s is not running. Troubleshooting help available at: %s", address, prom.PrometheusTroubleshootingURL)
-			}
-		} else {
-			log.Infof("Success: retrieved the 'up' query against prometheus at: " + address)
-		}
-
-		api := prometheusAPI.NewAPI(promCli)
-		_, err = api.Buildinfo(context.Background())
-		if err != nil {
-			log.Infof("No valid prometheus config file at %s. Error: %s . Troubleshooting help available at: %s. Ignore if using cortex/mimir/thanos here.", address, err.Error(), prom.PrometheusTroubleshootingURL)
-		} else {
-			log.Infof("Retrieved a prometheus config file from: %s", address)
-		}
-
-		if scrapeInterval == 0 {
-			scrapeInterval = time.Minute
-			// Lookup scrape interval for kubecost job, update if found
-			si, err := prom.ScrapeIntervalFor(promCli, env.GetKubecostJobName())
-			if err == nil {
-				scrapeInterval = si
-			}
-		}
-
-		log.Infof("Using scrape interval of %f", scrapeInterval.Seconds())
-	*/
-
 	// Kubernetes API setup
 	kubeClientset, err := kubeconfig.LoadKubeClient("")
 	if err != nil {
@@ -1081,45 +1009,6 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 			log.Infof("Unable to set cluster id '%s' for cluster '%s', %s", info["id"], info["name"], err.Error())
 		}
 	}
-
-	/*
-
-		// Thanos Client
-		var thanosClient prometheus.Client
-		if thanos.IsEnabled() {
-			thanosAddress := thanos.QueryURL()
-
-			if thanosAddress != "" {
-				thanosCli, _ := thanos.NewThanosClient(thanosAddress, &prom.PrometheusClientConfig{
-					Timeout:               timeout,
-					KeepAlive:             keepAlive,
-					TLSHandshakeTimeout:   tlsHandshakeTimeout,
-					TLSInsecureSkipVerify: env.GetInsecureSkipVerify(),
-					RateLimitRetryOpts:    rateLimitRetryOpts,
-					Auth: &prom.ClientAuth{
-						Username:    env.GetMultiClusterBasicAuthUsername(),
-						Password:    env.GetMultiClusterBasicAuthPassword(),
-						BearerToken: env.GetMultiClusterBearerToken(),
-					},
-					QueryConcurrency: queryConcurrency,
-					QueryLogFile:     env.GetQueryLoggingFile(),
-				})
-
-				_, err = prom.Validate(thanosCli)
-				if err != nil {
-					log.Warnf("Failed to query Thanos at %s. Error: %s.", thanosAddress, err.Error())
-					thanosClient = thanosCli
-				} else {
-					log.Infof("Success: retrieved the 'up' query against Thanos at: " + thanosAddress)
-
-					thanosClient = thanosCli
-				}
-
-			} else {
-				log.Infof("Error resolving environment variable: $%s", env.ThanosQueryUrlEnvVar)
-			}
-		}
-	*/
 
 	// ClusterInfo Provider to provide the cluster map with local and remote cluster data
 	var clusterInfoProvider clusters.ClusterInfoProvider
