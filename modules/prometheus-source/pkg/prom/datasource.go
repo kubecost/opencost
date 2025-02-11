@@ -572,6 +572,10 @@ func (pds *PrometheusDataSource) MetaData() map[string]string {
 	return metadata
 }
 
+//--------------------------------------------------------------------------
+//  InstantMetricsQuerier
+//--------------------------------------------------------------------------
+
 func (pds *PrometheusDataSource) QueryRAMUsage(window string, offset string) source.QueryResultsChan {
 	const ramUsageQuery = `avg(
 		label_replace(
@@ -735,6 +739,10 @@ func (pds *PrometheusDataSource) QueryHistoricalPodLabels(window string, offset 
 	ctx := pds.promContexts.NewNamedContext(ComputeCostDataContextName)
 	return ctx.Query(queryHistoricalPodLabels)
 }
+
+//--------------------------------------------------------------------------
+//  RangeMetricsQuerier
+//--------------------------------------------------------------------------
 
 func (pds *PrometheusDataSource) QueryRAMRequestsOverTime(start, end time.Time, resolution time.Duration) source.QueryResultsChan {
 	const ramRequestsQuery = `avg(
@@ -1145,6 +1153,10 @@ func (pds *PrometheusDataSource) QueryNormalizationOverTime(start, end time.Time
 	ctx := pds.promContexts.NewNamedContext(ComputeCostDataRangeContextName)
 	return ctx.QueryRange(queryNormalization, start, end, resolution)
 }
+
+//--------------------------------------------------------------------------
+//  ClusterMetricsQuerier
+//--------------------------------------------------------------------------
 
 func (pds *PrometheusDataSource) QueryPVCost(start, end time.Time) source.QueryResultsChan {
 	const pvCostQuery = `avg(avg_over_time(pv_hourly_cost{%s}[%s])) by (%s, persistentvolume,provider_id)`
@@ -1880,7 +1892,7 @@ func (pds *PrometheusDataSource) QueryClusterRAM(start, end time.Time, step time
 	durStr := timeutil.DurationString(step)
 
 	if durStr == "" {
-		panic("failed to parse duration string passed to QueryClusterCores")
+		panic("failed to parse duration string passed to QueryClusterRAM")
 	}
 
 	clusterRAMQuery := fmt.Sprintf(queryClusterRAM, cfg.ClusterFilter, durStr, cfg.ClusterLabel, cfg.ClusterFilter, durStr, cfg.ClusterLabel, cfg.ClusterLabel)

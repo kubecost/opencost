@@ -220,58 +220,62 @@ func TestBuildPVMap(t *testing.T) {
 		"pvMap1": {
 			resolution: time.Hour * 6,
 			resultsPVCostPerGiBHour: []*source.QueryResult{
-				{
-					Metric: map[string]interface{}{
+				source.NewQueryResult(
+					map[string]interface{}{
 						"cluster_id": "cluster1",
 						"volumename": "pv1",
 					},
-					Values: []*util.Vector{
+					[]*util.Vector{
 						{
 							Value: 0.05,
 						},
 					},
-				},
-				{
-					Metric: map[string]interface{}{
+					source.DefaultResultKeys(),
+				),
+				source.NewQueryResult(
+					map[string]interface{}{
 						"cluster_id": "cluster1",
 						"volumename": "pv2",
 					},
-					Values: []*util.Vector{
+					[]*util.Vector{
 						{
 							Value: 0.05,
 						},
 					},
-				},
-				{
-					Metric: map[string]interface{}{
+					source.DefaultResultKeys(),
+				),
+				source.NewQueryResult(
+					map[string]interface{}{
 						"cluster_id": "cluster2",
 						"volumename": "pv3",
 					},
-					Values: []*util.Vector{
+					[]*util.Vector{
 						{
 							Value: 0.03,
 						},
 					},
-				},
-				{
-					Metric: map[string]interface{}{
+					source.DefaultResultKeys(),
+				),
+				source.NewQueryResult(
+					map[string]interface{}{
 						"cluster_id": "cluster2",
 						"volumename": "pv4",
 					},
-					Values: []*util.Vector{
+					[]*util.Vector{
 						{
 							Value: 0.05,
 						},
 					},
-				},
+					source.DefaultResultKeys(),
+				),
 			},
 			resultsActiveMinutes: []*source.QueryResult{
-				{
-					Metric: map[string]interface{}{
+				source.NewQueryResult(
+					map[string]interface{}{
 						"cluster_id":       "cluster1",
 						"persistentvolume": "pv1",
 					},
-					Values: []*util.Vector{
+					[]*util.Vector{
 						{
 							Timestamp: startFloat,
 						},
@@ -285,13 +289,14 @@ func TestBuildPVMap(t *testing.T) {
 							Timestamp: startFloat + (hour * 18),
 						},
 					},
-				},
-				{
-					Metric: map[string]interface{}{
+					source.DefaultResultKeys(),
+				),
+				source.NewQueryResult(
+					map[string]interface{}{
 						"cluster_id":       "cluster1",
 						"persistentvolume": "pv2",
 					},
-					Values: []*util.Vector{
+					[]*util.Vector{
 						{
 							Timestamp: startFloat,
 						},
@@ -308,13 +313,14 @@ func TestBuildPVMap(t *testing.T) {
 							Timestamp: startFloat + (hour * 24),
 						},
 					},
-				},
-				{
-					Metric: map[string]interface{}{
+					source.DefaultResultKeys(),
+				),
+				source.NewQueryResult(
+					map[string]interface{}{
 						"cluster_id":       "cluster2",
 						"persistentvolume": "pv3",
 					},
-					Values: []*util.Vector{
+					[]*util.Vector{
 						{
 							Timestamp: startFloat + (hour * 6),
 						},
@@ -325,13 +331,14 @@ func TestBuildPVMap(t *testing.T) {
 							Timestamp: startFloat + (hour * 18),
 						},
 					},
-				},
-				{
-					Metric: map[string]interface{}{
+					source.DefaultResultKeys(),
+				),
+				source.NewQueryResult(
+					map[string]interface{}{
 						"cluster_id":       "cluster2",
 						"persistentvolume": "pv4",
 					},
-					Values: []*util.Vector{
+					[]*util.Vector{
 						{
 							Timestamp: startFloat,
 						},
@@ -345,7 +352,8 @@ func TestBuildPVMap(t *testing.T) {
 							Timestamp: startFloat + (hour * 18),
 						},
 					},
-				},
+					source.DefaultResultKeys(),
+				),
 			},
 			expected: pvMap1NoBytes,
 		},

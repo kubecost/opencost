@@ -738,20 +738,21 @@ func TestBuildGPUCostMap(t *testing.T) {
 		{
 			name: "All Zeros",
 			promResult: []*source.QueryResult{
-				{
-					Metric: map[string]interface{}{
+				source.NewQueryResult(
+					map[string]interface{}{
 						"cluster_id":    "cluster1",
 						"node":          "node1",
 						"instance_type": "type1",
 						"provider_id":   "provider1",
 					},
-					Values: []*util.Vector{
+					[]*util.Vector{
 						{
 							Timestamp: 0,
 							Value:     0,
 						},
 					},
-				},
+					source.DefaultResultKeys(),
+				),
 			},
 			countMap: map[NodeIdentifier]float64{
 				{
@@ -771,20 +772,21 @@ func TestBuildGPUCostMap(t *testing.T) {
 		{
 			name: "Zero Node Count",
 			promResult: []*source.QueryResult{
-				{
-					Metric: map[string]interface{}{
+				source.NewQueryResult(
+					map[string]interface{}{
 						"cluster_id":    "cluster1",
 						"node":          "node1",
 						"instance_type": "type1",
 						"provider_id":   "provider1",
 					},
-					Values: []*util.Vector{
+					[]*util.Vector{
 						{
 							Timestamp: 0,
 							Value:     2,
 						},
 					},
-				},
+					source.DefaultResultKeys(),
+				),
 			},
 			countMap: map[NodeIdentifier]float64{
 				{
@@ -804,20 +806,21 @@ func TestBuildGPUCostMap(t *testing.T) {
 		{
 			name: "Missing Node Count",
 			promResult: []*source.QueryResult{
-				{
-					Metric: map[string]interface{}{
+				source.NewQueryResult(
+					map[string]interface{}{
 						"cluster_id":    "cluster1",
 						"node":          "node1",
 						"instance_type": "type1",
 						"provider_id":   "provider1",
 					},
-					Values: []*util.Vector{
+					[]*util.Vector{
 						{
 							Timestamp: 0,
 							Value:     2,
 						},
 					},
-				},
+					source.DefaultResultKeys(),
+				),
 			},
 			countMap: map[NodeIdentifier]float64{},
 			expected: map[NodeIdentifier]float64{
@@ -829,10 +832,8 @@ func TestBuildGPUCostMap(t *testing.T) {
 			},
 		},
 		{
-			name: "missing cost data",
-			promResult: []*source.QueryResult{
-				{},
-			},
+			name:       "missing cost data",
+			promResult: []*source.QueryResult{},
 			countMap: map[NodeIdentifier]float64{
 				{
 					Cluster:    "cluster1",
@@ -845,20 +846,21 @@ func TestBuildGPUCostMap(t *testing.T) {
 		{
 			name: "All values present",
 			promResult: []*source.QueryResult{
-				{
-					Metric: map[string]interface{}{
+				source.NewQueryResult(
+					map[string]interface{}{
 						"cluster_id":    "cluster1",
 						"node":          "node1",
 						"instance_type": "type1",
 						"provider_id":   "provider1",
 					},
-					Values: []*util.Vector{
+					[]*util.Vector{
 						{
 							Timestamp: 0,
 							Value:     2,
 						},
 					},
-				},
+					source.DefaultResultKeys(),
+				),
 			},
 			countMap: map[NodeIdentifier]float64{
 				{
@@ -900,62 +902,65 @@ func TestAssetCustompricing(t *testing.T) {
 	startTimestamp := float64(windowStart.Unix())
 
 	nodePromResult := []*source.QueryResult{
-		{
-			Metric: map[string]interface{}{
+		source.NewQueryResult(
+			map[string]interface{}{
 				"cluster_id":    "cluster1",
 				"node":          "node1",
 				"instance_type": "type1",
 				"provider_id":   "provider1",
 			},
-			Values: []*util.Vector{
+			[]*util.Vector{
 				{
 					Timestamp: startTimestamp,
 					Value:     0.5,
 				},
 			},
-		},
+			source.DefaultResultKeys(),
+		),
 	}
 
 	pvCostPromResult := []*source.QueryResult{
-		{
-			Metric: map[string]interface{}{
+		source.NewQueryResult(
+			map[string]interface{}{
 				"cluster_id":       "cluster1",
 				"persistentvolume": "pvc1",
 				"provider_id":      "provider1",
 			},
-			Values: []*util.Vector{
+			[]*util.Vector{
 				{
 					Timestamp: startTimestamp,
 					Value:     1.0,
 				},
 			},
-		},
+			source.DefaultResultKeys(),
+		),
 	}
 
 	pvSizePromResult := []*source.QueryResult{
-		{
-			Metric: map[string]interface{}{
+		source.NewQueryResult(
+			map[string]interface{}{
 				"cluster_id":       "cluster1",
 				"persistentvolume": "pvc1",
 				"provider_id":      "provider1",
 			},
-			Values: []*util.Vector{
+			[]*util.Vector{
 				{
 					Timestamp: startTimestamp,
 					Value:     1073741824.0,
 				},
 			},
-		},
+			source.DefaultResultKeys(),
+		),
 	}
 
 	pvMinsPromResult := []*source.QueryResult{
-		{
-			Metric: map[string]interface{}{
+		source.NewQueryResult(
+			map[string]interface{}{
 				"cluster_id":       "cluster1",
 				"persistentvolume": "pvc1",
 				"provider_id":      "provider1",
 			},
-			Values: []*util.Vector{
+			[]*util.Vector{
 				{
 					Timestamp: startTimestamp,
 					Value:     1.0,
@@ -965,17 +970,18 @@ func TestAssetCustompricing(t *testing.T) {
 					Value:     1.0,
 				},
 			},
-		},
+			source.DefaultResultKeys(),
+		),
 	}
 
 	pvAvgUsagePromResult := []*source.QueryResult{
-		{
-			Metric: map[string]interface{}{
+		source.NewQueryResult(
+			map[string]interface{}{
 				"cluster_id":            "cluster1",
 				"persistentvolumeclaim": "pv-claim1",
 				"namespace":             "ns1",
 			},
-			Values: []*util.Vector{
+			[]*util.Vector{
 				{
 					Timestamp: startTimestamp,
 					Value:     1.0,
@@ -985,17 +991,18 @@ func TestAssetCustompricing(t *testing.T) {
 					Value:     1.0,
 				},
 			},
-		},
+			source.DefaultResultKeys(),
+		),
 	}
 
 	pvMaxUsagePromResult := []*source.QueryResult{
-		{
-			Metric: map[string]interface{}{
+		source.NewQueryResult(
+			map[string]interface{}{
 				"cluster_id":            "cluster1",
 				"persistentvolumeclaim": "pv-claim1",
 				"namespace":             "ns1",
 			},
-			Values: []*util.Vector{
+			[]*util.Vector{
 				{
 					Timestamp: startTimestamp,
 					Value:     1.0,
@@ -1005,24 +1012,26 @@ func TestAssetCustompricing(t *testing.T) {
 					Value:     1.0,
 				},
 			},
-		},
+			source.DefaultResultKeys(),
+		),
 	}
 
 	pvInfoPromResult := []*source.QueryResult{
-		{
-			Metric: map[string]interface{}{
+		source.NewQueryResult(
+			map[string]interface{}{
 				"cluster_id":            "cluster1",
 				"persistentvolumeclaim": "pv-claim1",
 				"volumename":            "pvc1",
 				"namespace":             "ns1",
 			},
-			Values: []*util.Vector{
+			[]*util.Vector{
 				{
 					Timestamp: startTimestamp,
 					Value:     1.0,
 				},
 			},
-		},
+			source.DefaultResultKeys(),
+		),
 	}
 
 	gpuCountMap := map[NodeIdentifier]float64{
@@ -1123,8 +1132,8 @@ func TestBuildLabelsMap(t *testing.T) {
 	startTimestamp := float64(windowStart.Unix())
 
 	nodePromResult := []*source.QueryResult{
-		{
-			Metric: map[string]interface{}{
+		source.NewQueryResult(
+			map[string]interface{}{
 				"cluster_id":             "cluster1",
 				"node":                   "node1",
 				"instance_type":          "type1",
@@ -1132,15 +1141,16 @@ func TestBuildLabelsMap(t *testing.T) {
 				"label_testlabelkey1":    "testlabel1-value",
 				"label_test-label-key-2": "testlabel2.value",
 			},
-			Values: []*util.Vector{
+			[]*util.Vector{
 				{
 					Timestamp: startTimestamp,
 					Value:     0.5,
 				},
 			},
-		},
-		{
-			Metric: map[string]interface{}{
+			source.DefaultResultKeys(),
+		),
+		source.NewQueryResult(
+			map[string]interface{}{
 				"cluster_id":             "cluster1",
 				"node":                   "node2",
 				"instance_type":          "type1",
@@ -1148,13 +1158,14 @@ func TestBuildLabelsMap(t *testing.T) {
 				"label_testlabelkey1":    "testlabel1-value",
 				"label_test-label-key-2": "testlabel2.value",
 			},
-			Values: []*util.Vector{
+			[]*util.Vector{
 				{
 					Timestamp: startTimestamp,
 					Value:     0.5,
 				},
 			},
-		},
+			source.DefaultResultKeys(),
+		),
 	}
 
 	nodeLabelMap := buildLabelsMap(nodePromResult)
