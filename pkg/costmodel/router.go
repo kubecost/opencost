@@ -26,7 +26,6 @@ import (
 	"github.com/opencost/opencost/pkg/cloud/provider"
 	"github.com/opencost/opencost/pkg/cloudcost"
 	"github.com/opencost/opencost/pkg/config"
-	clustermap "github.com/opencost/opencost/pkg/costmodel/clusters"
 	"github.com/opencost/opencost/pkg/customcost"
 	"github.com/opencost/opencost/pkg/kubeconfig"
 	"github.com/opencost/opencost/pkg/metrics"
@@ -48,7 +47,6 @@ import (
 	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/opencost/opencost/pkg/env"
 	"github.com/opencost/opencost/pkg/errors"
-	prometheus "github.com/prometheus/client_golang/api"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/patrickmn/go-cache"
@@ -944,13 +942,13 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 	var fatalErr error
 
 	ctx, cancel := context.WithCancel(context.Background())
-	dataSource, err := retry.Retry(
+	dataSource, _ := retry.Retry(
 		ctx,
 		func() (source.OpenCostDataSource, error) {
 			ds, e := prom.NewDefaultPrometheusDataSource()
 			if e != nil {
 				if source.IsRetryable(e) {
-					return e
+					return nil, e
 				}
 				fatalErr = e
 				cancel()
@@ -1129,16 +1127,10 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 		clusterInfoFile := confManager.ConfigFileAt(path.Join(configPrefix, "cluster-info.json"))
 		clusterInfoProvider = NewConfiguredClusterInfoProvider(clusterInfoFile)
 	} else {
-		clusterInfoProvider = NewLocalClusterInfoProvider(kubeClientset, cloudProvider)
+		clusterInfoProvider = NewLocalClusterInfoProvider(kubeClientset, dataSource, cloudProvider)
 	}
 
-	// Initialize ClusterMap for maintaining ClusterInfo by ClusterID
-	var clusterMap clusters.ClusterMap
-	if thanosClient != nil {
-		clusterMap = clustermap.NewClusterMap(thanosClient, clusterInfoProvider, 10*time.Minute)
-	} else {
-		clusterMap = clustermap.NewClusterMap(promCli, clusterInfoProvider, 5*time.Minute)
-	}
+	clusterMap := dataSource.NewClusterMap(clusterInfoProvider)
 
 	// cache responses from model and aggregation for a default of 10 minutes;
 	// clear expired responses every 20 minutes
@@ -1159,19 +1151,11 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 		30 * day: maxCacheMinutes30d * time.Minute,
 	}
 
-	var pc prometheus.Client
-	if thanosClient != nil {
-		pc = thanosClient
-	} else {
-		pc = promCli
-	}
 	costModel := NewCostModel(dataSource, cloudProvider, k8sCache, clusterMap, dataSource.BatchDuration())
 	metricsEmitter := NewCostModelMetricsEmitter(k8sCache, cloudProvider, clusterInfoProvider, costModel)
 
 	a := &Accesses{
-		httpServices: services.NewCostModelServices(),
-		//PrometheusClient:    promCli,
-		//ThanosClient:        thanosClient,
+		httpServices:        services.NewCostModelServices(),
 		DataSource:          dataSource,
 		KubeClientSet:       kubeClientset,
 		ClusterCache:        k8sCache,

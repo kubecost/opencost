@@ -1,4 +1,4 @@
-package clusters
+package prom
 
 import (
 	"context"
@@ -7,16 +7,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/opencost/opencost/pkg/env"
+	"github.com/opencost/opencost/modules/prometheus-source/pkg/env"
+	"github.com/opencost/opencost/modules/prometheus-source/pkg/thanos"
 
 	"github.com/opencost/opencost/core/pkg/clusters"
 	"github.com/opencost/opencost/core/pkg/log"
 	"github.com/opencost/opencost/core/pkg/source"
 	"github.com/opencost/opencost/core/pkg/util/retry"
-	"github.com/opencost/opencost/pkg/prom"
-	"github.com/opencost/opencost/pkg/thanos"
-
-	prometheus "github.com/prometheus/client_golang/api"
 )
 
 const (
@@ -24,28 +21,24 @@ const (
 	LoadRetryDelay time.Duration = 10 * time.Second
 )
 
-// prometheus query offset to apply to each non-range query
-// package scope to prevent calling duration parse each use
-var promQueryOffset = env.GetPrometheusQueryOffset()
-
 // ClusterMap keeps records of all known cost-model clusters.
 type PrometheusClusterMap struct {
-	lock        sync.RWMutex
-	client      prometheus.Client
-	clusters    map[string]*clusters.ClusterInfo
-	clusterInfo clusters.ClusterInfoProvider
-	stop        chan struct{}
+	lock           sync.RWMutex
+	contextFactory *ContextFactory
+	clusters       map[string]*clusters.ClusterInfo
+	clusterInfo    clusters.ClusterInfoProvider
+	stop           chan struct{}
 }
 
-// NewClusterMap creates a new ClusterMap implementation using a prometheus or thanos client
-func NewClusterMap(client prometheus.Client, cip clusters.ClusterInfoProvider, refresh time.Duration) clusters.ClusterMap {
+// newPrometheusClusterMap creates a new ClusterMap implementation using a prometheus or thanos client
+func newPrometheusClusterMap(contextFactory *ContextFactory, cip clusters.ClusterInfoProvider, refresh time.Duration) clusters.ClusterMap {
 	stop := make(chan struct{})
 
 	cm := &PrometheusClusterMap{
-		client:      client,
-		clusters:    make(map[string]*clusters.ClusterInfo),
-		clusterInfo: cip,
-		stop:        stop,
+		contextFactory: contextFactory,
+		clusters:       make(map[string]*clusters.ClusterInfo),
+		clusterInfo:    cip,
+		stop:           stop,
 	}
 
 	// Run an updater to ensure cluster data stays relevant over time
@@ -77,14 +70,14 @@ func clusterInfoQuery(offset string) string {
 // loadClusters loads all the cluster info to map
 func (pcm *PrometheusClusterMap) loadClusters() (map[string]*clusters.ClusterInfo, error) {
 	var offset string = ""
-	if prom.IsThanos(pcm.client) {
+	if IsThanos(pcm.contextFactory.client) {
 		offset = thanos.QueryOffset()
 	}
 
 	// Execute Query
 	tryQuery := func() (interface{}, error) {
-		ctx := prom.NewNamedContext(pcm.client, prom.ClusterMapContextName)
-		resCh := ctx.QueryAtTime(clusterInfoQuery(offset), time.Now().Add(-promQueryOffset))
+		ctx := pcm.contextFactory.NewNamedContext(ClusterMapContextName)
+		resCh := ctx.QueryAtTime(clusterInfoQuery(offset), time.Now())
 		r, e := resCh.Await()
 		return r, e
 	}

@@ -11,8 +11,8 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/opencost/opencost/modules/prometheus-source/pkg/env"
-	"github.com/opencost/opencost/pkg/prom"
 
+	"github.com/opencost/opencost/core/pkg/clusters"
 	"github.com/opencost/opencost/core/pkg/log"
 	"github.com/opencost/opencost/core/pkg/protocol"
 	"github.com/opencost/opencost/core/pkg/source"
@@ -387,7 +387,7 @@ func (pds *PrometheusDataSource) prometheusQueryRange(w http.ResponseWriter, r *
 		return
 	}
 
-	ctx := pds.promContexts.NewNamedContext(prom.FrontendContextName)
+	ctx := pds.promContexts.NewNamedContext(FrontendContextName)
 	body, err := ctx.RawQueryRange(query, start, end, duration)
 	if err != nil {
 		fmt.Fprintf(w, "Error running query %s. Error: %s", query, err)
@@ -519,6 +519,14 @@ func (pds *PrometheusDataSource) prometheusMetrics(w http.ResponseWriter, _ *htt
 	proto.WriteResponse(w, proto.ToResponse(result, nil))
 }
 
+func (pds *PrometheusDataSource) NewClusterMap(clusterInfoProvider clusters.ClusterInfoProvider) clusters.ClusterMap {
+	if pds.thanosClient != nil {
+		return newPrometheusClusterMap(pds.thanosContexts, clusterInfoProvider, 10*time.Minute)
+	}
+
+	return newPrometheusClusterMap(pds.promContexts, clusterInfoProvider, 5*time.Minute)
+}
+
 func (pds *PrometheusDataSource) RegisterEndPoints(router *httprouter.Router) {
 	// endpoints migrated from server
 	router.GET("/validatePrometheus", pds.prometheusMetadata)
@@ -548,6 +556,20 @@ func (pds *PrometheusDataSource) BatchDuration() time.Duration {
 
 func (pds *PrometheusDataSource) Resolution() time.Duration {
 	return pds.promConfig.DataResolution
+}
+
+func (pds *PrometheusDataSource) MetaData() map[string]string {
+	thanosEnabled := pds.thanosClient != nil
+
+	metadata := map[string]string{
+		clusters.ClusterInfoThanosEnabledKey: fmt.Sprintf("%t", thanosEnabled),
+	}
+
+	if thanosEnabled {
+		metadata[clusters.ClusterInfoThanosOffsetKey] = pds.thanosConfig.Offset
+	}
+
+	return metadata
 }
 
 func (pds *PrometheusDataSource) QueryRAMUsage(window string, offset string) source.QueryResultsChan {

@@ -22,7 +22,7 @@ var _ AllocationModel = &AllocationModelMock{}
 //			ComputeAllocationFunc: func(start time.Time, end time.Time, resolution time.Duration) (*opencost.AllocationSet, error) {
 //				panic("mock out the ComputeAllocation method")
 //			},
-//			DateRangeFunc: func() (time.Time, time.Time, error) {
+//			DateRangeFunc: func(limitDays int) (time.Time, time.Time, error) {
 //				panic("mock out the DateRange method")
 //			},
 //		}
@@ -36,7 +36,7 @@ type AllocationModelMock struct {
 	ComputeAllocationFunc func(start time.Time, end time.Time, resolution time.Duration) (*opencost.AllocationSet, error)
 
 	// DateRangeFunc mocks the DateRange method.
-	DateRangeFunc func(int) (time.Time, time.Time, error)
+	DateRangeFunc func(limitDays int) (time.Time, time.Time, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -51,7 +51,8 @@ type AllocationModelMock struct {
 		}
 		// DateRange holds details about calls to the DateRange method.
 		DateRange []struct {
-			LimitDays int 
+			// LimitDays is the limitDays argument value.
+			LimitDays int
 		}
 	}
 	lockComputeAllocation sync.RWMutex
@@ -105,7 +106,9 @@ func (mock *AllocationModelMock) DateRange(limitDays int) (time.Time, time.Time,
 	}
 	callInfo := struct {
 		LimitDays int
-	}{}
+	}{
+		LimitDays: limitDays,
+	}
 	mock.lockDateRange.Lock()
 	mock.calls.DateRange = append(mock.calls.DateRange, callInfo)
 	mock.lockDateRange.Unlock()

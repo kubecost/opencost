@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
+	"github.com/opencost/opencost/core/pkg/clusters"
 )
 
 type InstantMetricsQuerier interface {
@@ -93,8 +94,8 @@ type ClusterMetricsQuerier interface {
 	QueryNodeRAMSystemPercent(start, end time.Time) QueryResultsChan
 	QueryNodeRAMUserPercent(start, end time.Time) QueryResultsChan
 
-	QueryNodeTotalLocalStorage(start, end time.Time) QueryResultsChan
-	QueryNodeUsedLocalStorage(start, end time.Time) QueryResultsChan
+	//QueryNodeTotalLocalStorage(start, end time.Time) QueryResultsChan
+	//QueryNodeUsedLocalStorage(start, end time.Time) QueryResultsChan
 
 	// Load Balancers
 	QueryLBCost(start, end time.Time) QueryResultsChan
@@ -178,8 +179,11 @@ type OpenCostDataSource interface {
 	ClusterMetricsQuerier
 	AllocationMetricsQuerier
 
+	NewClusterMap(clusterInfoProvider clusters.ClusterInfoProvider) clusters.ClusterMap
+
 	RegisterEndPoints(router *httprouter.Router)
 
 	BatchDuration() time.Duration
 	Resolution() time.Duration
+	MetaData() map[string]string
 }

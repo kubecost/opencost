@@ -10,13 +10,6 @@ import (
 	"github.com/opencost/opencost/core/pkg/opencost"
 	"github.com/opencost/opencost/core/pkg/source"
 	"github.com/opencost/opencost/pkg/env"
-	"github.com/opencost/opencost/pkg/prom"
-)
-
-const (
-	queryFmtNodeCPUCores = `avg(avg_over_time(kube_node_status_capacity_cpu_cores[%s])) by (%s, node)`
-	queryFmtNodeRAMBytes = `avg(avg_over_time(kube_node_status_capacity_memory_bytes[%s])) by (%s, node)`
-	queryFmtNodeGPUCount = `avg(avg_over_time(node_gpu_count[%s])) by (%s, node, provider_id)`
 )
 
 // NodeTotals contains the cpu, ram, and gpu costs for a given node over a specific timeframe.
@@ -251,15 +244,10 @@ type extendedNodeQueryResults struct {
 
 // queryExtendedNodeData makes additional prometheus queries for node data to append on
 // the AllocationNodePricing struct.
-func queryExtendedNodeData(ctx *prom.Context, start, end time.Time, durStr, resStr string) (*extendedNodeQueryResults, error) {
-	queryNodeCPUCores := fmt.Sprintf(queryFmtNodeCPUCores, durStr, env.GetPromClusterLabel())
-	resChQueryNodeCPUCores := ctx.QueryAtTime(queryNodeCPUCores, end)
-
-	queryNodeRAMBytes := fmt.Sprintf(queryFmtNodeRAMBytes, durStr, env.GetPromClusterLabel())
-	resChQueryNodeRAMBytes := ctx.QueryAtTime(queryNodeRAMBytes, end)
-
-	queryNodeGPUCount := fmt.Sprintf(queryFmtNodeGPUCount, durStr, env.GetPromClusterLabel())
-	resChQueryNodeGPUCount := ctx.QueryAtTime(queryNodeGPUCount, end)
+func queryExtendedNodeData(grp *source.QueryGroup, ds source.OpenCostDataSource, start, end time.Time) (*extendedNodeQueryResults, error) {
+	resChQueryNodeCPUCores := grp.With(ds.QueryNodeCPUCoresCapacity(start, end))
+	resChQueryNodeRAMBytes := grp.With(ds.QueryNodeRAMBytesCapacity(start, end))
+	resChQueryNodeGPUCount := grp.With(ds.QueryNodeGPUCount(start, end))
 
 	nodeCPUCoreResults, _ := resChQueryNodeCPUCores.Await()
 	nodeRAMByteResults, _ := resChQueryNodeRAMBytes.Await()

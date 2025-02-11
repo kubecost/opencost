@@ -5,7 +5,6 @@ import (
 
 	"github.com/opencost/opencost/core/pkg/log"
 	"github.com/opencost/opencost/core/pkg/source"
-	"github.com/opencost/opencost/pkg/env"
 	prometheus "github.com/prometheus/client_golang/api"
 )
 
@@ -208,7 +207,7 @@ func GetPrometheusMetrics(client prometheus.Client, config *OpenCostPrometheusCo
 
 	var result []*PrometheusDiagnostic
 	for _, definition := range diagnosticDefinitions {
-		pd := definition.NewDiagnostic(offset)
+		pd := definition.NewDiagnostic(config.ClusterFilter, offset)
 		err := pd.executePrometheusDiagnosticQuery(ctx)
 
 		// log the errror, append to results anyways, and continue
@@ -228,7 +227,7 @@ func GetPrometheusMetricsByID(ids []string, client prometheus.Client, config *Op
 	var result []*PrometheusDiagnostic
 	for _, id := range ids {
 		if definition, ok := diagnosticDefinitions[id]; ok {
-			pd := definition.NewDiagnostic(offset)
+			pd := definition.NewDiagnostic(config.ClusterFilter, offset)
 			err := pd.executePrometheusDiagnosticQuery(ctx)
 
 			// log the errror, append to results anyways, and continue
@@ -269,11 +268,10 @@ type diagnosticDefinition struct {
 }
 
 // NewDiagnostic creates a new PrometheusDiagnostic instance using the provided definition data.
-func (pdd *diagnosticDefinition) NewDiagnostic(offset string) *PrometheusDiagnostic {
+func (pdd *diagnosticDefinition) NewDiagnostic(filter string, offset string) *PrometheusDiagnostic {
 	// FIXME: Any reasonable way to get the total number of replacements required in the query?
 	// FIXME: All of the other queries require a single offset replace, but CPUThrottle requires two.
 	var query string
-	filter := env.GetPromClusterFilter()
 	if pdd.ID == CPUThrottlingDiagnosticMetricID {
 		query = fmt.Sprintf(pdd.QueryFmt, filter, offset, filter, offset)
 	} else {

@@ -5,11 +5,11 @@ import (
 
 	"github.com/opencost/opencost/core/pkg/clusters"
 	"github.com/opencost/opencost/core/pkg/log"
+	"github.com/opencost/opencost/core/pkg/source"
 	"github.com/opencost/opencost/core/pkg/util/json"
 	cloudProvider "github.com/opencost/opencost/pkg/cloud/models"
 	"github.com/opencost/opencost/pkg/config"
 	"github.com/opencost/opencost/pkg/env"
-	"github.com/opencost/opencost/pkg/thanos"
 
 	"k8s.io/client-go/kubernetes"
 )
@@ -35,19 +35,19 @@ func writeClusterProfile(clusterInfo map[string]string) {
 	clusterInfo[clusters.ClusterInfoProfileKey] = clusterProfile
 }
 
-// writeThanosFlags includes the configured thanos flags on the cluster info
-func writeThanosFlags(clusterInfo map[string]string) {
-	// Include Thanos Offset Duration if Applicable
-	clusterInfo[clusters.ClusterInfoThanosEnabledKey] = fmt.Sprintf("%t", thanos.IsEnabled())
-	if thanos.IsEnabled() {
-		clusterInfo[clusters.ClusterInfoThanosOffsetKey] = thanos.Offset()
+// writeDataSourceMetaData includes the configured thanos flags on the cluster info
+func writeDataSourceMetaData(dataSource source.OpenCostDataSource, clusterInfo map[string]string) {
+	md := dataSource.MetaData()
+	for k, v := range md {
+		clusterInfo[k] = v
 	}
 }
 
 // localClusterInfoProvider gets the local cluster info from the cloud provider and kubernetes
 type localClusterInfoProvider struct {
-	k8s      kubernetes.Interface
-	provider cloudProvider.Provider
+	k8s        kubernetes.Interface
+	dataSource source.OpenCostDataSource
+	provider   cloudProvider.Provider
 }
 
 // GetClusterInfo returns a string map containing the local cluster info
@@ -73,17 +73,18 @@ func (dlcip *localClusterInfoProvider) GetClusterInfo() map[string]string {
 
 	writeClusterProfile(data)
 	writeReportingFlags(data)
-	writeThanosFlags(data)
+	writeDataSourceMetaData(dlcip.dataSource, data)
 
 	return data
 }
 
 // NewLocalClusterInfoProvider creates a new clusters.LocalClusterInfoProvider implementation for providing local
 // cluster information
-func NewLocalClusterInfoProvider(k8s kubernetes.Interface, cloud cloudProvider.Provider) clusters.ClusterInfoProvider {
+func NewLocalClusterInfoProvider(k8s kubernetes.Interface, dataSource source.OpenCostDataSource, cloud cloudProvider.Provider) clusters.ClusterInfoProvider {
 	return &localClusterInfoProvider{
-		k8s:      k8s,
-		provider: cloud,
+		k8s:        k8s,
+		dataSource: dataSource,
+		provider:   cloud,
 	}
 }
 
