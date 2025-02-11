@@ -7,7 +7,7 @@ replace (
 
 require (
 	cloud.google.com/go/bigquery v1.61.0
-	cloud.google.com/go/compute/metadata v0.3.0
+	cloud.google.com/go/compute/metadata v0.6.0
 	cloud.google.com/go/storage v1.42.0
 	github.com/Azure/azure-sdk-for-go v68.0.0+incompatible
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.12.0
