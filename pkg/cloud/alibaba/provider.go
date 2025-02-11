@@ -62,7 +62,7 @@ const (
 
 var (
 	// Regular expression to get the numerical value of PV suffix with GiB from *v1.PersistentVolume.
-	sizeRegEx = regexp.MustCompile("(.*?)Gi")
+	sizeRegEx = regexp.MustCompile(`(\d+)([a-zA-Z]+)`)
 )
 
 // Variable to keep track of instance families that fail in DescribePrice API due improper defaulting of systemDisk if the information is not available
@@ -1125,9 +1125,13 @@ func processDescribePriceAndCreateAlibabaPricing(client *sdk.Client, i interface
 			if err != nil {
 				return nil, fmt.Errorf("unable to unmarshall json response to custom struct with err: %w", err)
 			}
+			diskSize, err := strconv.ParseFloat(disk.SizeInGiB, 32)
+			if err != nil {
+				return nil, fmt.Errorf("error converting to float: %s", err)
+			}
 			pricing.PVAttributes = NewAlibabaPVAttributes(disk)
 			pricing.PV = &models.PV{
-				Cost: fmt.Sprintf("%f", response.PriceInfo.Price.TradePrice),
+				Cost: fmt.Sprintf("%f", response.PriceInfo.Price.TradePrice/float32(diskSize)),
 			}
 			// TO-DO : Disk has support for Hour and Month but pricing API is failing for month for disk(Research why?) and same challenge as node pricing no prepaid/postpaid distinction in v1.PersistentVolume object have to look at APIs for th information.
 			pricing.PricingTerms = NewAlibabaPricingTerms(ALIBABA_PAY_AS_YOU_GO_BILLING, NewAlibabaPricingDetails(response.PriceInfo.Price.TradePrice, ALIBABA_HOUR_PRICE_UNIT, response.PriceInfo.Price.TradePrice, response.PriceInfo.Price.Currency))
@@ -1300,8 +1304,28 @@ func getNumericalValueFromResourceQuantity(quantity string) (value string) {
 		}
 	}()
 	res := sizeRegEx.FindAllStringSubmatch(quantity, 1)
-	value = res[0][1]
+	value = convertToGi(res[0][1], res[0][2])
 	return
+}
+
+// Helper function to convert given value and unit to Gi
+func convertToGi(value string, unit string) string {
+	val, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		panic(fmt.Sprintf("Invalid numerical value: %s", value))
+	}
+
+	switch unit {
+	case "Ki":
+		val = val / (1024 * 1024)
+	case "Mi":
+		val = val / 1024
+	case "Gi":
+	default:
+		panic(fmt.Sprintf("Unsupported unit: %s", unit))
+	}
+
+	return fmt.Sprintf("%.0f", val)
 }
 
 // generateSlimK8sDiskFromV1PV function generates SlimK8sDisk from v1.PersistentVolume
