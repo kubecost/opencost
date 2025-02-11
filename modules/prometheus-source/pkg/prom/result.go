@@ -89,7 +89,7 @@ func NewQueryResults(query string, queryResult interface{}, resultKeys *source.R
 			qrs.Error = err
 			return qrs
 		}
-		qrs.Error = fmt.Errorf(e)
+		qrs.Error = fmt.Errorf("%s", e)
 		return qrs
 	}
 

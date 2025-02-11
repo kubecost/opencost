@@ -14,12 +14,13 @@ import (
 
 	"github.com/opencost/opencost/core/pkg/log"
 	"github.com/opencost/opencost/core/pkg/opencost"
+	"github.com/opencost/opencost/pkg/env"
 	"github.com/opencost/opencost/pkg/filemanager"
 )
 
 type AllocationModel interface {
 	ComputeAllocation(start, end time.Time, resolution time.Duration) (*opencost.AllocationSet, error)
-	DateRange() (time.Time, time.Time, error)
+	DateRange(limitDays int) (time.Time, time.Time, error)
 }
 
 var errNoData = errors.New("no data")
@@ -134,7 +135,7 @@ func (e *csvExporter) updateExportCSV(ctx context.Context, previousExportTmp *os
 }
 
 func (e *csvExporter) availableAllocationDates() (map[time.Time]struct{}, error) {
-	start, end, err := e.Model.DateRange()
+	start, end, err := e.Model.DateRange(env.GetExportCSVMaxDays())
 	if err != nil {
 		return nil, err
 	}

@@ -14,7 +14,6 @@ import (
 	"github.com/opencost/opencost/core/pkg/util/timeutil"
 	"github.com/opencost/opencost/pkg/cloud/provider"
 	"github.com/opencost/opencost/pkg/env"
-	"github.com/opencost/opencost/pkg/prom"
 	"k8s.io/apimachinery/pkg/labels"
 )
 
@@ -39,14 +38,12 @@ const (
 
 /* Pod Helpers */
 
-func (cm *CostModel) buildPodMap(window opencost.Window, resolution, maxBatchSize time.Duration, podMap map[podKey]*pod, clusterStart, clusterEnd map[string]time.Time, ingestPodUID bool, podUIDKeyMap map[podKey][]podKey) error {
+func (cm *CostModel) buildPodMap(window opencost.Window, maxBatchSize time.Duration, podMap map[podKey]*pod, clusterStart, clusterEnd map[string]time.Time, ingestPodUID bool, podUIDKeyMap map[podKey][]podKey) error {
 	// Assumes that window is positive and closed
 	start, end := *window.Start(), *window.End()
 
-	// Convert resolution duration to a query-ready string
-	resStr := timeutil.DurationString(resolution)
-
-	ctx := prom.NewNamedContext(cm.PrometheusClient, prom.AllocationContextName)
+	grp := source.NewQueryGroup()
+	ds := cm.DataSource
 
 	// Query for (start, end) by (pod, namespace, cluster) over the given
 	// window, using the given resolution, and if necessary in batches no
@@ -83,18 +80,17 @@ func (cm *CostModel) buildPodMap(window opencost.Window, resolution, maxBatchSiz
 
 			// Submit and profile query
 
-			var queryPods string
-			// If ingesting UIDs, avg on them
+			var queryPodsResult *source.QueryGroupAsyncResult
 			if ingestPodUID {
-				queryPods = fmt.Sprintf(queryFmtPodsUID, env.GetPromClusterFilter(), env.GetPromClusterLabel(), durStr, resStr)
+				queryPodsResult = grp.With(ds.QueryPodsUID(batchStart, batchEnd))
 			} else {
-				queryPods = fmt.Sprintf(queryFmtPods, env.GetPromClusterFilter(), env.GetPromClusterLabel(), durStr, resStr)
+				queryPodsResult = grp.With(ds.QueryPods(batchStart, batchEnd))
 			}
 
 			queryProfile := time.Now()
-			resPods, err = ctx.QueryAtTime(queryPods, batchEnd).Await()
+			resPods, err = queryPodsResult.Await()
 			if err != nil {
-				log.Profile(queryProfile, fmt.Sprintf("CostModel.ComputeAllocation: pod query %d try %d failed: %s", numQuery, numTries, queryPods))
+				log.Profile(queryProfile, fmt.Sprintf("CostModel.ComputeAllocation: pod query %d try %d failed: %s", numQuery, numTries, err))
 				resPods = nil
 			}
 		}
@@ -124,7 +120,7 @@ func (cm *CostModel) buildPodMap(window opencost.Window, resolution, maxBatchSiz
 			}
 		}
 
-		applyPodResults(window, resolution, podMap, clusterStart, clusterEnd, resPods, ingestPodUID, podUIDKeyMap)
+		applyPodResults(window, ds.Resolution(), podMap, clusterStart, clusterEnd, resPods, ingestPodUID, podUIDKeyMap)
 
 		coverage = coverage.ExpandEnd(batchEnd)
 		numQuery++
@@ -213,13 +209,13 @@ func applyPodResults(window opencost.Window, resolution time.Duration, podMap ma
 
 func applyCPUCoresAllocated(podMap map[podKey]*pod, resCPUCoresAllocated []*source.QueryResult, podUIDKeyMap map[podKey][]podKey) {
 	for _, res := range resCPUCoresAllocated {
-		key, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
+		key, err := resultPodKey(res)
 		if err != nil {
 			log.DedupedWarningf(10, "CostModel.ComputeAllocation: CPU allocation result missing field: %s", err)
 			continue
 		}
 
-		container, err := res.GetString("container")
+		container, err := res.GetContainer()
 		if err != nil {
 			log.DedupedWarningf(10, "CostModel.ComputeAllocation: CPU allocation query result missing 'container': %s", key)
 			continue
@@ -268,13 +264,13 @@ func applyCPUCoresAllocated(podMap map[podKey]*pod, resCPUCoresAllocated []*sour
 
 func applyCPUCoresRequested(podMap map[podKey]*pod, resCPUCoresRequested []*source.QueryResult, podUIDKeyMap map[podKey][]podKey) {
 	for _, res := range resCPUCoresRequested {
-		key, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
+		key, err := resultPodKey(res)
 		if err != nil {
 			log.DedupedWarningf(10, "CostModel.ComputeAllocation: CPU request result missing field: %s", err)
 			continue
 		}
 
-		container, err := res.GetString("container")
+		container, err := res.GetContainer()
 		if err != nil {
 			log.DedupedWarningf(10, "CostModel.ComputeAllocation: CPU request query result missing 'container': %s", key)
 			continue
@@ -326,19 +322,16 @@ func applyCPUCoresRequested(podMap map[podKey]*pod, resCPUCoresRequested []*sour
 
 func applyCPUCoresUsedAvg(podMap map[podKey]*pod, resCPUCoresUsedAvg []*source.QueryResult, podUIDKeyMap map[podKey][]podKey) {
 	for _, res := range resCPUCoresUsedAvg {
-		key, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
+		key, err := resultPodKey(res)
 		if err != nil {
 			log.DedupedWarningf(10, "CostModel.ComputeAllocation: CPU usage avg result missing field: %s", err)
 			continue
 		}
 
-		container, err := res.GetString("container")
-		if container == "" || err != nil {
-			container, err = res.GetString("container_name")
-			if err != nil {
-				log.DedupedWarningf(10, "CostModel.ComputeAllocation: CPU usage avg query result missing 'container': %s", key)
-				continue
-			}
+		container, err := res.GetContainer()
+		if err != nil {
+			log.DedupedWarningf(10, "CostModel.ComputeAllocation: CPU usage avg query result missing 'container': %s", key)
+			continue
 		}
 
 		var pods []*pod
@@ -374,19 +367,16 @@ func applyCPUCoresUsedAvg(podMap map[podKey]*pod, resCPUCoresUsedAvg []*source.Q
 
 func applyCPUCoresUsedMax(podMap map[podKey]*pod, resCPUCoresUsedMax []*source.QueryResult, podUIDKeyMap map[podKey][]podKey) {
 	for _, res := range resCPUCoresUsedMax {
-		key, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
+		key, err := resultPodKey(res)
 		if err != nil {
 			log.DedupedWarningf(10, "CostModel.ComputeAllocation: CPU usage max result missing field: %s", err)
 			continue
 		}
 
-		container, err := res.GetString("container")
-		if container == "" || err != nil {
-			container, err = res.GetString("container_name")
-			if err != nil {
-				log.DedupedWarningf(10, "CostModel.ComputeAllocation: CPU usage max query result missing 'container': %s", key)
-				continue
-			}
+		container, err := res.GetContainer()
+		if err != nil {
+			log.DedupedWarningf(10, "CostModel.ComputeAllocation: CPU usage max query result missing 'container': %s", key)
+			continue
 		}
 
 		var pods []*pod
@@ -424,13 +414,13 @@ func applyCPUCoresUsedMax(podMap map[podKey]*pod, resCPUCoresUsedMax []*source.Q
 
 func applyRAMBytesAllocated(podMap map[podKey]*pod, resRAMBytesAllocated []*source.QueryResult, podUIDKeyMap map[podKey][]podKey) {
 	for _, res := range resRAMBytesAllocated {
-		key, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
+		key, err := resultPodKey(res)
 		if err != nil {
 			log.DedupedWarningf(10, "CostModel.ComputeAllocation: RAM allocation result missing field: %s", err)
 			continue
 		}
 
-		container, err := res.GetString("container")
+		container, err := res.GetContainer()
 		if err != nil {
 			log.DedupedWarningf(10, "CostModel.ComputeAllocation: RAM allocation query result missing 'container': %s", key)
 			continue
@@ -475,13 +465,13 @@ func applyRAMBytesAllocated(podMap map[podKey]*pod, resRAMBytesAllocated []*sour
 
 func applyRAMBytesRequested(podMap map[podKey]*pod, resRAMBytesRequested []*source.QueryResult, podUIDKeyMap map[podKey][]podKey) {
 	for _, res := range resRAMBytesRequested {
-		key, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
+		key, err := resultPodKey(res)
 		if err != nil {
 			log.DedupedWarningf(10, "CostModel.ComputeAllocation: RAM request result missing field: %s", err)
 			continue
 		}
 
-		container, err := res.GetString("container")
+		container, err := res.GetContainer()
 		if err != nil {
 			log.DedupedWarningf(10, "CostModel.ComputeAllocation: RAM request query result missing 'container': %s", key)
 			continue
@@ -530,19 +520,16 @@ func applyRAMBytesRequested(podMap map[podKey]*pod, resRAMBytesRequested []*sour
 
 func applyRAMBytesUsedAvg(podMap map[podKey]*pod, resRAMBytesUsedAvg []*source.QueryResult, podUIDKeyMap map[podKey][]podKey) {
 	for _, res := range resRAMBytesUsedAvg {
-		key, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
+		key, err := resultPodKey(res)
 		if err != nil {
 			log.DedupedWarningf(10, "CostModel.ComputeAllocation: RAM avg usage result missing field: %s", err)
 			continue
 		}
 
-		container, err := res.GetString("container")
-		if container == "" || err != nil {
-			container, err = res.GetString("container_name")
-			if err != nil {
-				log.DedupedWarningf(10, "CostModel.ComputeAllocation: RAM usage avg query result missing 'container': %s", key)
-				continue
-			}
+		container, err := res.GetContainer()
+		if err != nil {
+			log.DedupedWarningf(10, "CostModel.ComputeAllocation: RAM usage avg query result missing 'container': %s", key)
+			continue
 		}
 
 		var pods []*pod
@@ -574,19 +561,16 @@ func applyRAMBytesUsedAvg(podMap map[podKey]*pod, resRAMBytesUsedAvg []*source.Q
 
 func applyRAMBytesUsedMax(podMap map[podKey]*pod, resRAMBytesUsedMax []*source.QueryResult, podUIDKeyMap map[podKey][]podKey) {
 	for _, res := range resRAMBytesUsedMax {
-		key, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
+		key, err := resultPodKey(res)
 		if err != nil {
 			log.DedupedWarningf(10, "CostModel.ComputeAllocation: RAM usage max result missing field: %s", err)
 			continue
 		}
 
-		container, err := res.GetString("container")
-		if container == "" || err != nil {
-			container, err = res.GetString("container_name")
-			if err != nil {
-				log.DedupedWarningf(10, "CostModel.ComputeAllocation: RAM usage max query result missing 'container': %s", key)
-				continue
-			}
+		container, err := res.GetContainer()
+		if err != nil {
+			log.DedupedWarningf(10, "CostModel.ComputeAllocation: RAM usage max query result missing 'container': %s", key)
+			continue
 		}
 
 		var pods []*pod
@@ -626,7 +610,7 @@ func applyRAMBytesUsedMax(podMap map[podKey]*pod, resRAMBytesUsedMax []*source.Q
 func applyGPUUsage(podMap map[podKey]*pod, resGPUUsageAvgOrMax []*source.QueryResult, podUIDKeyMap map[podKey][]podKey, mode string) {
 	// Example PromQueryResult: {container="dcgmproftester12", namespace="gpu", pod="dcgmproftester3-deployment-fc89c8dd6-ph7z5"} 0.997307
 	for _, res := range resGPUUsageAvgOrMax {
-		key, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
+		key, err := resultPodKey(res)
 		if err != nil {
 			log.DedupedWarningf(10, "CostModel.ComputeAllocation: GPU usage avg/max result missing field: %s", err)
 			continue
@@ -649,7 +633,7 @@ func applyGPUUsage(podMap map[podKey]*pod, resGPUUsageAvgOrMax []*source.QueryRe
 		}
 
 		for _, thisPod := range pods {
-			container, err := res.GetString("container")
+			container, err := res.GetContainer()
 			if err != nil {
 				log.DedupedWarningf(10, "CostModel.ComputeAllocation: GPU usage avg/max query result missing 'container': %s", key)
 				continue
@@ -726,13 +710,13 @@ func applyGPUsAllocated(podMap map[podKey]*pod, resGPUsRequested []*source.Query
 		resGPUsRequested = resGPUsAllocated
 	}
 	for _, res := range resGPUsRequested {
-		key, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
+		key, err := resultPodKey(res)
 		if err != nil {
 			log.DedupedWarningf(10, "CostModel.ComputeAllocation: GPU request result missing field: %s", err)
 			continue
 		}
 
-		container, err := res.GetString("container")
+		container, err := res.GetContainer()
 		if err != nil {
 			log.DedupedWarningf(10, "CostModel.ComputeAllocation: GPU request query result missing 'container': %s", key)
 			continue
@@ -782,7 +766,7 @@ func applyGPUsAllocated(podMap map[podKey]*pod, resGPUsRequested []*source.Query
 
 func applyNetworkTotals(podMap map[podKey]*pod, resNetworkTransferBytes []*source.QueryResult, resNetworkReceiveBytes []*source.QueryResult, podUIDKeyMap map[podKey][]podKey) {
 	for _, res := range resNetworkTransferBytes {
-		podKey, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
+		podKey, err := resultPodKey(res)
 		if err != nil {
 			log.DedupedWarningf(10, "CostModel.ComputeAllocation: Network Transfer Bytes query result missing field: %s", err)
 			continue
@@ -812,7 +796,7 @@ func applyNetworkTotals(podMap map[podKey]*pod, resNetworkTransferBytes []*sourc
 		}
 	}
 	for _, res := range resNetworkReceiveBytes {
-		podKey, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
+		podKey, err := resultPodKey(res)
 		if err != nil {
 			log.DedupedWarningf(10, "CostModel.ComputeAllocation: Network Receive Bytes query result missing field: %s", err)
 			continue
@@ -856,7 +840,7 @@ func applyNetworkAllocation(podMap map[podKey]*pod, resNetworkGiB []*source.Quer
 	}
 
 	for _, res := range resNetworkGiB {
-		podKey, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
+		podKey, err := resultPodKey(res)
 		if err != nil {
 			log.DedupedWarningf(10, "CostModel.ComputeAllocation: Network allocation query result missing field: %s", err)
 			continue
@@ -904,7 +888,7 @@ func resToNodeLabels(resNodeLabels []*source.QueryResult) map[nodeKey]map[string
 	nodeLabels := map[nodeKey]map[string]string{}
 
 	for _, res := range resNodeLabels {
-		nodeKey, err := resultNodeKey(res, env.GetPromClusterLabel(), "node")
+		nodeKey, err := resultNodeKey(res)
 		if err != nil {
 			continue
 		}
@@ -940,7 +924,7 @@ func resToNamespaceLabels(resNamespaceLabels []*source.QueryResult) map[namespac
 	namespaceLabels := map[namespaceKey]map[string]string{}
 
 	for _, res := range resNamespaceLabels {
-		nsKey, err := resultNamespaceKey(res, env.GetPromClusterLabel(), "namespace")
+		nsKey, err := resultNamespaceKey(res)
 		if err != nil {
 			continue
 		}
@@ -961,7 +945,7 @@ func resToPodLabels(resPodLabels []*source.QueryResult, podUIDKeyMap map[podKey]
 	podLabels := map[podKey]map[string]string{}
 
 	for _, res := range resPodLabels {
-		key, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
+		key, err := resultPodKey(res)
 		if err != nil {
 			continue
 		}
@@ -1017,7 +1001,7 @@ func resToPodAnnotations(resPodAnnotations []*source.QueryResult, podUIDKeyMap m
 	podAnnotations := map[podKey]map[string]string{}
 
 	for _, res := range resPodAnnotations {
-		key, err := resultPodKey(res, env.GetPromClusterLabel(), "namespace")
+		key, err := resultPodKey(res)
 		if err != nil {
 			continue
 		}
@@ -1132,7 +1116,7 @@ func resToDeploymentLabels(resDeploymentLabels []*source.QueryResult) map[contro
 	deploymentLabels := map[controllerKey]map[string]string{}
 
 	for _, res := range resDeploymentLabels {
-		controllerKey, err := resultDeploymentKey(res, env.GetPromClusterLabel(), "namespace", "deployment")
+		controllerKey, err := resultDeploymentKey(res, "deployment")
 		if err != nil {
 			continue
 		}
@@ -1165,7 +1149,7 @@ func resToStatefulSetLabels(resStatefulSetLabels []*source.QueryResult) map[cont
 	statefulSetLabels := map[controllerKey]map[string]string{}
 
 	for _, res := range resStatefulSetLabels {
-		controllerKey, err := resultStatefulSetKey(res, env.GetPromClusterLabel(), "namespace", "statefulSet")
+		controllerKey, err := resultStatefulSetKey(res, "statefulSet")
 		if err != nil {
 			continue
 		}
@@ -1227,12 +1211,12 @@ func resToPodDaemonSetMap(resDaemonSetLabels []*source.QueryResult, podUIDKeyMap
 	daemonSetLabels := map[podKey]controllerKey{}
 
 	for _, res := range resDaemonSetLabels {
-		controllerKey, err := resultDaemonSetKey(res, env.GetPromClusterLabel(), "namespace", "owner_name")
+		controllerKey, err := resultDaemonSetKey(res, "owner_name")
 		if err != nil {
 			continue
 		}
 
-		pod, err := res.GetString("pod")
+		pod, err := res.GetPod()
 		if err != nil {
 			log.Warnf("CostModel.ComputeAllocation: DaemonSetLabel result without pod: %s", controllerKey)
 		}
@@ -1263,7 +1247,7 @@ func resToPodJobMap(resJobLabels []*source.QueryResult, podUIDKeyMap map[podKey]
 	jobLabels := map[podKey]controllerKey{}
 
 	for _, res := range resJobLabels {
-		controllerKey, err := resultJobKey(res, env.GetPromClusterLabel(), "namespace", "owner_name")
+		controllerKey, err := resultJobKey(res, "owner_name")
 		if err != nil {
 			continue
 		}
@@ -1275,7 +1259,7 @@ func resToPodJobMap(resJobLabels []*source.QueryResult, podUIDKeyMap map[podKey]
 			controllerKey.Controller = match[1]
 		}
 
-		pod, err := res.GetString("pod")
+		pod, err := res.GetPod()
 		if err != nil {
 			log.Warnf("CostModel.ComputeAllocation: JobLabel result without pod: %s", controllerKey)
 		}
@@ -1313,7 +1297,7 @@ func resToPodReplicaSetMap(resPodsWithReplicaSetOwner []*source.QueryResult, res
 
 	// Create unowned ReplicaSet controller keys
 	for _, res := range resReplicaSetsWithoutOwners {
-		controllerKey, err := resultReplicaSetKey(res, env.GetPromClusterLabel(), "namespace", "replicaset")
+		controllerKey, err := resultReplicaSetKey(res, "replicaset")
 		if err != nil {
 			continue
 		}
@@ -1323,7 +1307,7 @@ func resToPodReplicaSetMap(resPodsWithReplicaSetOwner []*source.QueryResult, res
 
 	// Create Rollout-owned ReplicaSet controller keys
 	for _, res := range resReplicaSetsWithRolloutOwner {
-		controllerKey, err := resultReplicaSetRolloutKey(res, env.GetPromClusterLabel(), "namespace", "replicaset")
+		controllerKey, err := resultReplicaSetRolloutKey(res, "replicaset")
 		if err != nil {
 			continue
 		}
@@ -1337,13 +1321,13 @@ func resToPodReplicaSetMap(resPodsWithReplicaSetOwner []*source.QueryResult, res
 
 	for _, res := range resPodsWithReplicaSetOwner {
 		// First, check if this pod is owned by an unowned ReplicaSet
-		controllerKey, err := resultReplicaSetKey(res, env.GetPromClusterLabel(), "namespace", "owner_name")
+		controllerKey, err := resultReplicaSetKey(res, "owner_name")
 		if err != nil {
 			continue
 		} else if _, ok := replicaSets[controllerKey]; !ok {
 			// If the pod is not owned by an unowned ReplicaSet, check if
 			// it's owned by a Rollout-owned ReplicaSet
-			controllerKey, err = resultReplicaSetRolloutKey(res, env.GetPromClusterLabel(), "namespace", "owner_name")
+			controllerKey, err = resultReplicaSetRolloutKey(res, "owner_name")
 			if err != nil {
 				continue
 			} else if _, ok := replicaSets[controllerKey]; !ok {
@@ -1351,7 +1335,7 @@ func resToPodReplicaSetMap(resPodsWithReplicaSetOwner []*source.QueryResult, res
 			}
 		}
 
-		pod, err := res.GetString("pod")
+		pod, err := res.GetPod()
 		if err != nil {
 			log.Warnf("CostModel.ComputeAllocation: ReplicaSet result without pod: %s", controllerKey)
 		}
@@ -1393,7 +1377,7 @@ func getServiceLabels(resServiceLabels []*source.QueryResult) map[serviceKey]map
 	serviceLabels := map[serviceKey]map[string]string{}
 
 	for _, res := range resServiceLabels {
-		serviceKey, err := resultServiceKey(res, env.GetPromClusterLabel(), "namespace", "service")
+		serviceKey, err := resultServiceKey(res, "service")
 		if err != nil {
 			continue
 		}
@@ -1467,7 +1451,7 @@ func applyServicesToPods(podMap map[podKey]*pod, podLabels map[podKey]map[string
 
 func getLoadBalancerCosts(lbMap map[serviceKey]*lbCost, resLBCost, resLBActiveMins []*source.QueryResult, resolution time.Duration, window opencost.Window) {
 	for _, res := range resLBActiveMins {
-		serviceKey, err := resultServiceKey(res, env.GetPromClusterLabel(), "namespace", "service_name")
+		serviceKey, err := resultServiceKey(res, "service_name")
 		if err != nil || len(res.Values) == 0 {
 			continue
 		}
@@ -1485,7 +1469,7 @@ func getLoadBalancerCosts(lbMap map[serviceKey]*lbCost, resLBCost, resLBActiveMi
 	}
 
 	for _, res := range resLBCost {
-		serviceKey, err := resultServiceKey(res, env.GetPromClusterLabel(), "namespace", "service_name")
+		serviceKey, err := resultServiceKey(res, "service_name")
 		if err != nil {
 			continue
 		}
@@ -1920,7 +1904,7 @@ func (cm *CostModel) getNodePricing(nodeMap map[nodeKey]*nodePricing, nodeKey no
 
 func buildPVMap(resolution time.Duration, pvMap map[pvKey]*pv, resPVCostPerGiBHour, resPVActiveMins, resPVMeta []*source.QueryResult, window opencost.Window) {
 	for _, result := range resPVActiveMins {
-		key, err := resultPVKey(result, env.GetPromClusterLabel(), "persistentvolume")
+		key, err := resultPVKey(result, "persistentvolume")
 		if err != nil {
 			log.Warnf("CostModel.ComputeAllocation: pv bytes query result missing field: %s", err)
 			continue
@@ -1940,7 +1924,7 @@ func buildPVMap(resolution time.Duration, pvMap map[pvKey]*pv, resPVCostPerGiBHo
 	}
 
 	for _, result := range resPVCostPerGiBHour {
-		key, err := resultPVKey(result, env.GetPromClusterLabel(), "volumename")
+		key, err := resultPVKey(result, "volumename")
 		if err != nil {
 			log.Warnf("CostModel.ComputeAllocation: thisPV bytes query result missing field: %s", err)
 			continue
@@ -1957,7 +1941,7 @@ func buildPVMap(resolution time.Duration, pvMap map[pvKey]*pv, resPVCostPerGiBHo
 	}
 
 	for _, result := range resPVMeta {
-		key, err := resultPVKey(result, env.GetPromClusterLabel(), "persistentvolume")
+		key, err := resultPVKey(result, "persistentvolume")
 		if err != nil {
 			log.Warnf("error getting key for PV: %v", err)
 			continue
@@ -1978,7 +1962,7 @@ func buildPVMap(resolution time.Duration, pvMap map[pvKey]*pv, resPVCostPerGiBHo
 
 func applyPVBytes(pvMap map[pvKey]*pv, resPVBytes []*source.QueryResult) {
 	for _, res := range resPVBytes {
-		key, err := resultPVKey(res, env.GetPromClusterLabel(), "persistentvolume")
+		key, err := resultPVKey(res, "persistentvolume")
 		if err != nil {
 			log.Warnf("CostModel.ComputeAllocation: pv bytes query result missing field: %s", err)
 			continue
@@ -2046,7 +2030,7 @@ func buildPVCMap(resolution time.Duration, pvcMap map[pvcKey]*pvc, pvMap map[pvK
 
 func applyPVCBytesRequested(pvcMap map[pvcKey]*pvc, resPVCBytesRequested []*source.QueryResult) {
 	for _, res := range resPVCBytesRequested {
-		key, err := resultPVCKey(res, env.GetPromClusterLabel(), "namespace", "persistentvolumeclaim")
+		key, err := resultPVCKey(res, "persistentvolumeclaim")
 		if err != nil {
 			continue
 		}

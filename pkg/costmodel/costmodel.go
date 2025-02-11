@@ -45,7 +45,6 @@ type CostModel struct {
 	ClusterMap      clusters.ClusterMap
 	BatchDuration   time.Duration
 	RequestGroup    *singleflight.Group
-	RefreshInterval time.Duration
 	DataSource      source.OpenCostDataSource
 	Provider        costAnalyzerCloud.Provider
 	pricingMetadata *costAnalyzerCloud.PricingMatchMetadata
@@ -57,19 +56,17 @@ func NewCostModel(
 	cache clustercache.ClusterCache,
 	clusterMap clusters.ClusterMap,
 	batchDuration time.Duration,
-	refreshInterval time.Duration,
 ) *CostModel {
 	// request grouping to prevent over-requesting the same data prior to caching
 	requestGroup := new(singleflight.Group)
 
 	return &CostModel{
-		Cache:           cache,
-		ClusterMap:      clusterMap,
-		BatchDuration:   batchDuration,
-		DataSource:      dataSource,
-		Provider:        provider,
-		RequestGroup:    requestGroup,
-		RefreshInterval: refreshInterval,
+		Cache:         cache,
+		ClusterMap:    clusterMap,
+		BatchDuration: batchDuration,
+		DataSource:    dataSource,
+		Provider:      provider,
+		RequestGroup:  requestGroup,
 	}
 }
 
@@ -136,121 +133,7 @@ func (cd *CostData) GetController() (name string, kind string, hasController boo
 	return name, kind, hasController
 }
 
-const (
-	queryRAMRequestsStr = `avg(
-		label_replace(
-			label_replace(
-				sum_over_time(kube_pod_container_resource_requests{resource="memory", unit="byte", container!="",container!="POD", node!="", %s}[%s] %s)
-				, "container_name","$1","container","(.+)"
-			), "pod_name","$1","pod","(.+)"
-		)
-	) by (namespace,container_name,pod_name,node,%s)`
-	queryRAMUsageStr = `avg(
-		label_replace(
-			label_replace(
-				label_replace(
-					sum_over_time(container_memory_working_set_bytes{container!="", container!="POD", instance!="", %s}[%s] %s), "node", "$1", "instance", "(.+)"
-				), "container_name", "$1", "container", "(.+)"
-			), "pod_name", "$1", "pod", "(.+)"
-		)
-	) by (namespace, container_name, pod_name, node, %s)`
-	queryCPURequestsStr = `avg(
-		label_replace(
-			label_replace(
-				sum_over_time(kube_pod_container_resource_requests{resource="cpu", unit="core", container!="",container!="POD", node!="", %s}[%s] %s)
-				, "container_name","$1","container","(.+)"
-			), "pod_name","$1","pod","(.+)"
-		)
-	) by (namespace,container_name,pod_name,node,%s)`
-	queryCPUUsageStr = `avg(
-		label_replace(
-			label_replace(
-				label_replace(
-					rate(
-						container_cpu_usage_seconds_total{container!="", container!="POD", instance!="", %s}[%s] %s
-					), "node", "$1", "instance", "(.+)"
-				), "container_name", "$1", "container", "(.+)"
-			), "pod_name", "$1", "pod", "(.+)"
-		)
-	) by (namespace, container_name, pod_name, node, %s)`
-	queryGPURequestsStr = `avg(
-		label_replace(
-			label_replace(
-				sum_over_time(kube_pod_container_resource_requests{resource="nvidia_com_gpu", container!="",container!="POD", node!="", %s}[%s] %s),
-				"container_name","$1","container","(.+)"
-			), "pod_name","$1","pod","(.+)"
-		)
-	) by (namespace,container_name,pod_name,node,%s)`
-	queryPVRequestsStr = `avg(avg(kube_persistentvolumeclaim_info{volumename != "", %s}) by (persistentvolumeclaim, storageclass, namespace, volumename, %s, kubernetes_node)
-	*
-	on (persistentvolumeclaim, namespace, %s, kubernetes_node) group_right(storageclass, volumename)
-	sum(kube_persistentvolumeclaim_resource_requests_storage_bytes{%s}) by (persistentvolumeclaim, namespace, %s, kubernetes_node, kubernetes_name)) by (persistentvolumeclaim, storageclass, namespace, %s, volumename, kubernetes_node)`
-	// queryRAMAllocationByteHours yields the total byte-hour RAM allocation over the given
-	// window, aggregated by container.
-	//  [line 3]  sum_over_time(each byte) = [byte*scrape] by metric
-	//  [line 4] (scalar(avg(prometheus_target_interval_length_seconds)) = [seconds/scrape] / 60 / 60 =  [hours/scrape] by container
-	//  [lines 2,4]  sum(") by unique container key and multiply [byte*scrape] * [hours/scrape] for byte*hours
-	//  [lines 1,5]  relabeling
-	queryRAMAllocationByteHours = `
-		label_replace(label_replace(
-			sum(
-				sum_over_time(container_memory_allocation_bytes{container!="",container!="POD", node!="", %s}[%s])
-			) by (namespace,container,pod,node,%s) * %f / 60 / 60
-		, "container_name","$1","container","(.+)"), "pod_name","$1","pod","(.+)")`
-	// queryCPUAllocationVCPUHours yields the total VCPU-hour CPU allocation over the given
-	// window, aggregated by container.
-	//  [line 3] sum_over_time(each VCPU*mins in window) = [VCPU*scrape] by metric
-	//  [line 4] (scalar(avg(prometheus_target_interval_length_seconds)) = [seconds/scrape] / 60 / 60 =  [hours/scrape] by container
-	//  [lines 2,4]  sum(") by unique container key and multiply [VCPU*scrape] * [hours/scrape] for VCPU*hours
-	//  [lines 1,5]  relabeling
-	queryCPUAllocationVCPUHours = `
-		label_replace(label_replace(
-			sum(
-				sum_over_time(container_cpu_allocation{container!="",container!="POD", node!="", %s}[%s])
-			) by (namespace,container,pod,node,%s) * %f / 60 / 60
-		, "container_name","$1","container","(.+)"), "pod_name","$1","pod","(.+)")`
-	// queryPVCAllocationFmt yields the total byte-hour PVC allocation over the given window.
-	// sum_over_time(each byte) = [byte*scrape] by metric *(scalar(avg(prometheus_target_interval_length_seconds)) = [seconds/scrape] / 60 / 60 =  [hours/scrape] by pod
-	queryPVCAllocationFmt     = `sum(sum_over_time(pod_pvc_allocation{%s}[%s])) by (%s, namespace, pod, persistentvolume, persistentvolumeclaim) * %f/60/60`
-	queryPVHourlyCostFmt      = `avg_over_time(pv_hourly_cost{%s}[%s])`
-	queryNSLabels             = `avg_over_time(kube_namespace_labels{%s}[%s])`
-	queryPodLabels            = `avg_over_time(kube_pod_labels{%s}[%s])`
-	queryNSAnnotations        = `avg_over_time(kube_namespace_annotations{%s}[%s])`
-	queryPodAnnotations       = `avg_over_time(kube_pod_annotations{%s}[%s])`
-	queryDeploymentLabels     = `avg_over_time(deployment_match_labels{%s}[%s])`
-	queryStatefulsetLabels    = `avg_over_time(statefulSet_match_labels{%s}[%s])`
-	queryPodDaemonsets        = `sum(kube_pod_owner{owner_kind="DaemonSet", %s}) by (namespace,pod,owner_name,%s)`
-	queryPodJobs              = `sum(kube_pod_owner{owner_kind="Job", %s}) by (namespace,pod,owner_name,%s)`
-	queryServiceLabels        = `avg_over_time(service_selector_labels{%s}[%s])`
-	queryZoneNetworkUsage     = `sum(increase(kubecost_pod_network_egress_bytes_total{internet="false", sameZone="false", sameRegion="true", %s}[%s] %s)) by (namespace,pod_name,%s) / 1024 / 1024 / 1024`
-	queryRegionNetworkUsage   = `sum(increase(kubecost_pod_network_egress_bytes_total{internet="false", sameZone="false", sameRegion="false", %s}[%s] %s)) by (namespace,pod_name,%s) / 1024 / 1024 / 1024`
-	queryInternetNetworkUsage = `sum(increase(kubecost_pod_network_egress_bytes_total{internet="true", %s}[%s] %s)) by (namespace,pod_name,%s) / 1024 / 1024 / 1024`
-	normalizationStr          = `max(count_over_time(kube_pod_container_resource_requests{resource="memory", unit="byte", %s}[%s] %s))`
-)
-
 func (cm *CostModel) ComputeCostData(window string, offset string, filterNamespace string) (map[string]*CostData, error) {
-
-	/*
-		queryRAMUsage := fmt.Sprintf(queryRAMUsageStr, env.GetPromClusterFilter(), window, offset, env.GetPromClusterLabel())
-		queryCPUUsage := fmt.Sprintf(queryCPUUsageStr, env.GetPromClusterFilter(), window, offset, env.GetPromClusterLabel())
-		queryNetZoneRequests := fmt.Sprintf(queryZoneNetworkUsage, env.GetPromClusterFilter(), window, "", env.GetPromClusterLabel())
-		queryNetRegionRequests := fmt.Sprintf(queryRegionNetworkUsage, env.GetPromClusterFilter(), window, "", env.GetPromClusterLabel())
-		queryNetInternetRequests := fmt.Sprintf(queryInternetNetworkUsage, env.GetPromClusterFilter(), window, "", env.GetPromClusterLabel())
-		queryNormalization := fmt.Sprintf(normalizationStr, env.GetPromClusterFilter(), window, offset)
-
-		// Cluster ID is specific to the source cluster
-		clusterID := env.GetClusterID()
-
-		// Submit all Prometheus queries asynchronously
-		ctx := prom.NewNamedContext(cli, prom.ComputeCostDataContextName)
-		resChRAMUsage := ctx.Query(queryRAMUsage)
-		resChCPUUsage := ctx.Query(queryCPUUsage)
-		resChNetZoneRequests := ctx.Query(queryNetZoneRequests)
-		resChNetRegionRequests := ctx.Query(queryNetRegionRequests)
-		resChNetInternetRequests := ctx.Query(queryNetInternetRequests)
-		resChNormalization := ctx.Query(queryNormalization)
-	*/
-
 	// Cluster ID is specific to the source cluster
 	clusterID := env.GetClusterID()
 	cp := cm.Provider

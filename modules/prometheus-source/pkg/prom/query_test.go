@@ -10,9 +10,7 @@ import (
 )
 
 func TestWarningsFrom(t *testing.T) {
-	var results interface{}
-
-	results = map[string]interface{}{
+	var results any = map[string]interface{}{
 		"status": "success",
 		"warnings": []string{
 			"Warning #1",

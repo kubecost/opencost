@@ -959,7 +959,7 @@ func (gcp *GCP) parsePage(r io.Reader, inputKeys map[string]models.Key, pvKeys m
 		if t == "nextPageToken" {
 			pageToken, err := dec.Token()
 			if err != nil {
-				log.Errorf("Error parsing nextpage token: " + err.Error())
+				log.Errorf("Error parsing nextpage token: %s", err)
 				return nil, "", err
 			}
 			if pageToken.(string) != "" {

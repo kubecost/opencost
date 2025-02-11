@@ -18,7 +18,6 @@ import (
 	"github.com/opencost/opencost/pkg/env"
 	"github.com/opencost/opencost/pkg/errors"
 	"github.com/opencost/opencost/pkg/metrics"
-	"github.com/opencost/opencost/pkg/prom"
 
 	promclient "github.com/prometheus/client_golang/api"
 	"github.com/prometheus/client_golang/prometheus"
@@ -325,7 +324,7 @@ type CostModelMetricsEmitter struct {
 }
 
 // NewCostModelMetricsEmitter creates a new cost-model metrics emitter. Use Start() to begin metric emission.
-func NewCostModelMetricsEmitter(promClient promclient.Client, clusterCache clustercache.ClusterCache, provider models.Provider, clusterInfo clusters.ClusterInfoProvider, model *CostModel) *CostModelMetricsEmitter {
+func NewCostModelMetricsEmitter(clusterCache clustercache.ClusterCache, provider models.Provider, clusterInfo clusters.ClusterInfoProvider, model *CostModel) *CostModelMetricsEmitter {
 
 	// Get metric configurations, if any
 	metricsConfig, err := metrics.GetMetricsConfig()
@@ -352,7 +351,6 @@ func NewCostModelMetricsEmitter(promClient promclient.Client, clusterCache clust
 	metrics.InitOpencostTelemetry(metricsConfig)
 
 	return &CostModelMetricsEmitter{
-		PrometheusClient:              promClient,
 		KubeClusterCache:              clusterCache,
 		CloudProvider:                 provider,
 		Model:                         model,
@@ -460,7 +458,7 @@ func (cmme *CostModelMetricsEmitter) Start() bool {
 				// For an error collection, we'll just log the length of the errors (ComputeCostData already logs the
 				// actual errors)
 				if source.IsErrorCollection(err) {
-					if ec, ok := err.(prom.QueryErrorCollection); ok {
+					if ec, ok := err.(source.QueryErrorCollection); ok {
 						log.Errorf("Error in price recording: %d errors occurred", len(ec.Errors()))
 					}
 				} else {

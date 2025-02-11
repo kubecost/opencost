@@ -213,7 +213,7 @@ func GetPrometheusMetrics(client prometheus.Client, config *OpenCostPrometheusCo
 
 		// log the errror, append to results anyways, and continue
 		if err != nil {
-			log.Errorf(err.Error())
+			log.Errorf("error: %s", err.Error())
 		}
 		result = append(result, pd)
 	}
@@ -233,7 +233,7 @@ func GetPrometheusMetricsByID(ids []string, client prometheus.Client, config *Op
 
 			// log the errror, append to results anyways, and continue
 			if err != nil {
-				log.Errorf(err.Error())
+				log.Errorf("error: %s", err.Error())
 			}
 			result = append(result, pd)
 		} else {

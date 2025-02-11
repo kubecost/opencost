@@ -19,7 +19,7 @@ func Test_UpdateCSV(t *testing.T) {
 	t.Run("previous data doesn't exist, upload new data", func(t *testing.T) {
 		storage := &filemanager.InMemoryFile{}
 		model := &AllocationModelMock{
-			DateRangeFunc: func() (time.Time, time.Time, error) {
+			DateRangeFunc: func(_ int) (time.Time, time.Time, error) {
 				return time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2021, 1, 2, 0, 0, 0, 0, time.UTC), nil
 			},
 			ComputeAllocationFunc: func(start time.Time, end time.Time, resolution time.Duration) (*opencost.AllocationSet, error) {
@@ -74,7 +74,7 @@ func Test_UpdateCSV(t *testing.T) {
 	t.Run("export labels", func(t *testing.T) {
 		storage := &filemanager.InMemoryFile{}
 		model := &AllocationModelMock{
-			DateRangeFunc: func() (time.Time, time.Time, error) {
+			DateRangeFunc: func(_ int) (time.Time, time.Time, error) {
 				return time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2021, 1, 2, 0, 0, 0, 0, time.UTC), nil
 			},
 			ComputeAllocationFunc: func(start time.Time, end time.Time, resolution time.Duration) (*opencost.AllocationSet, error) {
@@ -113,7 +113,7 @@ func Test_UpdateCSV(t *testing.T) {
 `),
 		}
 		model := &AllocationModelMock{
-			DateRangeFunc: func() (time.Time, time.Time, error) {
+			DateRangeFunc: func(_ int) (time.Time, time.Time, error) {
 				return time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2021, 1, 3, 0, 0, 0, 0, time.UTC), nil
 			},
 			ComputeAllocationFunc: func(start time.Time, end time.Time, resolution time.Duration) (*opencost.AllocationSet, error) {
@@ -151,7 +151,7 @@ func Test_UpdateCSV(t *testing.T) {
 			Data: []byte(data),
 		}
 		model := &AllocationModelMock{
-			DateRangeFunc: func() (time.Time, time.Time, error) {
+			DateRangeFunc: func(_ int) (time.Time, time.Time, error) {
 				return time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2021, 1, 2, 0, 0, 0, 0, time.UTC), nil
 			},
 		}
@@ -168,7 +168,7 @@ func Test_UpdateCSV(t *testing.T) {
 					Allocations: nil,
 				}, nil
 			},
-			DateRangeFunc: func() (time.Time, time.Time, error) {
+			DateRangeFunc: func(_ int) (time.Time, time.Time, error) {
 				return time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2021, 1, 3, 0, 0, 0, 0, time.UTC), nil
 			},
 		}

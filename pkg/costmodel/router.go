@@ -517,8 +517,8 @@ func (a *Accesses) CostDataModelRange(w http.ResponseWriter, r *http.Request, ps
 	fields := r.URL.Query().Get("filterFields")
 	namespace := r.URL.Query().Get("namespace")
 	cluster := r.URL.Query().Get("cluster")
-	remote := r.URL.Query().Get("remote")
-	remoteEnabled := env.IsRemoteEnabled() && remote != "false"
+	//remote := r.URL.Query().Get("remote")
+	//remoteEnabled := env.IsRemoteEnabled() && remote != "false"
 
 	layout := "2006-01-02T15:04:05.000Z"
 	start, err := time.Parse(layout, startStr)
@@ -1165,8 +1165,8 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 	} else {
 		pc = promCli
 	}
-	costModel := NewCostModel(pc, cloudProvider, k8sCache, clusterMap, scrapeInterval)
-	metricsEmitter := NewCostModelMetricsEmitter(dataSource, k8sCache, cloudProvider, clusterInfoProvider, costModel)
+	costModel := NewCostModel(dataSource, cloudProvider, k8sCache, clusterMap, dataSource.BatchDuration())
+	metricsEmitter := NewCostModelMetricsEmitter(k8sCache, cloudProvider, clusterInfoProvider, costModel)
 
 	a := &Accesses{
 		httpServices: services.NewCostModelServices(),

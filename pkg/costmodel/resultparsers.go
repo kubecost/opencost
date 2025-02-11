@@ -10,7 +10,6 @@ import (
 	"github.com/opencost/opencost/core/pkg/util"
 	costAnalyzerCloud "github.com/opencost/opencost/pkg/cloud/models"
 	"github.com/opencost/opencost/pkg/clustercache"
-	"github.com/opencost/opencost/pkg/prom"
 )
 
 func GetPVInfoLocal(cache clustercache.ClusterCache, defaultClusterID string) (map[string]*PersistentVolumeClaimData, error) {
@@ -487,10 +486,10 @@ func getCost(qrs []*source.QueryResult) (map[string][]*util.Vector, error) {
 // normalization data is empty: time window may be invalid or kube-state-metrics or node-exporter may not be running
 func getNormalization(qrs []*source.QueryResult) (float64, error) {
 	if len(qrs) == 0 {
-		return 0.0, prom.NoDataErr("getNormalization")
+		return 0.0, source.NewNoDataError("getNormalization")
 	}
 	if len(qrs[0].Values) == 0 {
-		return 0.0, prom.NoDataErr("getNormalization")
+		return 0.0, source.NewNoDataError("getNormalization")
 	}
 	return qrs[0].Values[0].Value, nil
 }
@@ -499,7 +498,7 @@ func getNormalization(qrs []*source.QueryResult) (float64, error) {
 // normalization data is empty: time window may be invalid or kube-state-metrics or node-exporter may not be running
 func getNormalizations(qrs []*source.QueryResult) ([]*util.Vector, error) {
 	if len(qrs) == 0 {
-		return nil, prom.NoDataErr("getNormalizations")
+		return nil, source.NewNoDataError("getNormalizations")
 	}
 
 	return qrs[0].Values, nil

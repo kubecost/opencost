@@ -34,28 +34,28 @@ func newContainerKey(cluster, namespace, pod, container string) containerKey {
 // "cluster_id" as the containerKey's Cluster field. If a given field does not
 // exist on the result, an error is returned. (The only exception to that is
 // clusterLabel, which we expect may not exist, but has a default value.)
-func resultContainerKey(res *source.QueryResult, clusterLabel, namespaceLabel, podLabel, containerLabel string) (containerKey, error) {
+func resultContainerKey(res *source.QueryResult) (containerKey, error) {
 	key := containerKey{}
 
-	cluster, err := res.GetString(clusterLabel)
+	cluster, err := res.GetCluster()
 	if err != nil {
 		cluster = env.GetClusterID()
 	}
 	key.Cluster = cluster
 
-	namespace, err := res.GetString(namespaceLabel)
+	namespace, err := res.GetNamespace()
 	if err != nil {
 		return key, err
 	}
 	key.Namespace = namespace
 
-	pod, err := res.GetString(podLabel)
+	pod, err := res.GetPod()
 	if err != nil {
 		return key, err
 	}
 	key.Pod = pod
 
-	container, err := res.GetString(containerLabel)
+	container, err := res.GetContainer()
 	if err != nil {
 		return key, err
 	}
@@ -94,27 +94,24 @@ func getUnmountedPodKey(cluster string) podKey {
 // as the podKey's Cluster field. If a given field does not exist on the
 // result, an error is returned. (The only exception to that is clusterLabel,
 // which we expect may not exist, but has a default value.)
-func resultPodKey(res *source.QueryResult, clusterLabel, namespaceLabel string) (podKey, error) {
+func resultPodKey(res *source.QueryResult) (podKey, error) {
 	key := podKey{}
 
-	cluster, err := res.GetString(clusterLabel)
+	cluster, err := res.GetCluster()
 	if err != nil {
 		cluster = env.GetClusterID()
 	}
 	key.Cluster = cluster
 
-	namespace, err := res.GetString(namespaceLabel)
+	namespace, err := res.GetNamespace()
 	if err != nil {
 		return key, err
 	}
 	key.Namespace = namespace
 
-	pod, err := res.GetString("pod")
-	if pod == "" || err != nil {
-		pod, err = res.GetString("pod_name")
-		if err != nil {
-			return key, err
-		}
+	pod, err := res.GetPod()
+	if err != nil {
+		return key, err
 	}
 	key.Pod = pod
 
@@ -143,16 +140,16 @@ func newNamespaceKey(cluster, namespace string) namespaceKey {
 // "cluster_id" as the namespaceKey's Cluster field. If a given field does not
 // exist on the result, an error is returned. (The only exception to that is
 // clusterLabel, which we expect may not exist, but has a default value.)
-func resultNamespaceKey(res *source.QueryResult, clusterLabel, namespaceLabel string) (namespaceKey, error) {
+func resultNamespaceKey(res *source.QueryResult) (namespaceKey, error) {
 	key := namespaceKey{}
 
-	cluster, err := res.GetString(clusterLabel)
+	cluster, err := res.GetCluster()
 	if err != nil {
 		cluster = env.GetClusterID()
 	}
 	key.Cluster = cluster
 
-	namespace, err := res.GetString(namespaceLabel)
+	namespace, err := res.GetNamespace()
 	if err != nil {
 		return key, err
 	}
@@ -187,16 +184,16 @@ func newControllerKey(cluster, namespace, controllerKind, controller string) con
 // "cluster_id" as the controllerKey's Cluster field. If a given field does not
 // exist on the result, an error is returned. (The only exception to that is
 // clusterLabel, which we expect may not exist, but has a default value.)
-func resultControllerKey(controllerKind string, res *source.QueryResult, clusterLabel, namespaceLabel, controllerLabel string) (controllerKey, error) {
+func resultControllerKey(controllerKind string, res *source.QueryResult, controllerLabel string) (controllerKey, error) {
 	key := controllerKey{}
 
-	cluster, err := res.GetString(clusterLabel)
+	cluster, err := res.GetCluster()
 	if err != nil {
 		cluster = env.GetClusterID()
 	}
 	key.Cluster = cluster
 
-	namespace, err := res.GetString(namespaceLabel)
+	namespace, err := res.GetNamespace()
 	if err != nil {
 		return key, err
 	}
@@ -215,38 +212,38 @@ func resultControllerKey(controllerKind string, res *source.QueryResult, cluster
 
 // resultDeploymentKey creates a controllerKey for a Deployment.
 // (See resultControllerKey for more.)
-func resultDeploymentKey(res *source.QueryResult, clusterLabel, namespaceLabel, controllerLabel string) (controllerKey, error) {
-	return resultControllerKey("deployment", res, clusterLabel, namespaceLabel, controllerLabel)
+func resultDeploymentKey(res *source.QueryResult, controllerLabel string) (controllerKey, error) {
+	return resultControllerKey("deployment", res, controllerLabel)
 }
 
 // resultStatefulSetKey creates a controllerKey for a StatefulSet.
 // (See resultControllerKey for more.)
-func resultStatefulSetKey(res *source.QueryResult, clusterLabel, namespaceLabel, controllerLabel string) (controllerKey, error) {
-	return resultControllerKey("statefulset", res, clusterLabel, namespaceLabel, controllerLabel)
+func resultStatefulSetKey(res *source.QueryResult, controllerLabel string) (controllerKey, error) {
+	return resultControllerKey("statefulset", res, controllerLabel)
 }
 
 // resultDaemonSetKey creates a controllerKey for a DaemonSet.
 // (See resultControllerKey for more.)
-func resultDaemonSetKey(res *source.QueryResult, clusterLabel, namespaceLabel, controllerLabel string) (controllerKey, error) {
-	return resultControllerKey("daemonset", res, clusterLabel, namespaceLabel, controllerLabel)
+func resultDaemonSetKey(res *source.QueryResult, controllerLabel string) (controllerKey, error) {
+	return resultControllerKey("daemonset", res, controllerLabel)
 }
 
 // resultJobKey creates a controllerKey for a Job.
 // (See resultControllerKey for more.)
-func resultJobKey(res *source.QueryResult, clusterLabel, namespaceLabel, controllerLabel string) (controllerKey, error) {
-	return resultControllerKey("job", res, clusterLabel, namespaceLabel, controllerLabel)
+func resultJobKey(res *source.QueryResult, controllerLabel string) (controllerKey, error) {
+	return resultControllerKey("job", res, controllerLabel)
 }
 
 // resultReplicaSetKey creates a controllerKey for a Job.
 // (See resultControllerKey for more.)
-func resultReplicaSetKey(res *source.QueryResult, clusterLabel, namespaceLabel, controllerLabel string) (controllerKey, error) {
-	return resultControllerKey("replicaset", res, clusterLabel, namespaceLabel, controllerLabel)
+func resultReplicaSetKey(res *source.QueryResult, controllerLabel string) (controllerKey, error) {
+	return resultControllerKey("replicaset", res, controllerLabel)
 }
 
 // resultReplicaSetRolloutKey creates a controllerKey for a Job.
 // (See resultControllerKey for more.)
-func resultReplicaSetRolloutKey(res *source.QueryResult, clusterLabel, namespaceLabel, controllerLabel string) (controllerKey, error) {
-	return resultControllerKey("rollout", res, clusterLabel, namespaceLabel, controllerLabel)
+func resultReplicaSetRolloutKey(res *source.QueryResult, controllerLabel string) (controllerKey, error) {
+	return resultControllerKey("rollout", res, controllerLabel)
 }
 
 type serviceKey struct {
@@ -273,16 +270,16 @@ func newServiceKey(cluster, namespace, service string) serviceKey {
 // "cluster_id" as the serviceKey's Cluster field. If a given field does not
 // exist on the result, an error is returned. (The only exception to that is
 // clusterLabel, which we expect may not exist, but has a default value.)
-func resultServiceKey(res *source.QueryResult, clusterLabel, namespaceLabel, serviceLabel string) (serviceKey, error) {
+func resultServiceKey(res *source.QueryResult, serviceLabel string) (serviceKey, error) {
 	key := serviceKey{}
 
-	cluster, err := res.GetString(clusterLabel)
+	cluster, err := res.GetCluster()
 	if err != nil {
 		cluster = env.GetClusterID()
 	}
 	key.Cluster = cluster
 
-	namespace, err := res.GetString(namespaceLabel)
+	namespace, err := res.GetNamespace()
 	if err != nil {
 		return key, err
 	}
@@ -319,16 +316,16 @@ func newNodeKey(cluster, node string) nodeKey {
 // "cluster_id" as the nodeKey's Cluster field. If a given field does not
 // exist on the result, an error is returned. (The only exception to that is
 // clusterLabel, which we expect may not exist, but has a default value.)
-func resultNodeKey(res *source.QueryResult, clusterLabel, nodeLabel string) (nodeKey, error) {
+func resultNodeKey(res *source.QueryResult) (nodeKey, error) {
 	key := nodeKey{}
 
-	cluster, err := res.GetString(clusterLabel)
+	cluster, err := res.GetCluster()
 	if err != nil {
 		cluster = env.GetClusterID()
 	}
 	key.Cluster = cluster
 
-	node, err := res.GetString(nodeLabel)
+	node, err := res.GetNode()
 	if err != nil {
 		return key, err
 	}
@@ -361,16 +358,16 @@ func newPVCKey(cluster, namespace, persistentVolumeClaim string) pvcKey {
 // "cluster_id" as the pvcKey's Cluster field. If a given field does not
 // exist on the result, an error is returned. (The only exception to that is
 // clusterLabel, which we expect may not exist, but has a default value.)
-func resultPVCKey(res *source.QueryResult, clusterLabel, namespaceLabel, pvcLabel string) (pvcKey, error) {
+func resultPVCKey(res *source.QueryResult, pvcLabel string) (pvcKey, error) {
 	key := pvcKey{}
 
-	cluster, err := res.GetString(clusterLabel)
+	cluster, err := res.GetCluster()
 	if err != nil {
 		cluster = env.GetClusterID()
 	}
 	key.Cluster = cluster
 
-	namespace, err := res.GetString(namespaceLabel)
+	namespace, err := res.GetNamespace()
 	if err != nil {
 		return key, err
 	}
@@ -407,10 +404,10 @@ func newPVKey(cluster, persistentVolume string) pvKey {
 // "cluster_id" as the pvKey's Cluster field. If a given field does not
 // exist on the result, an error is returned. (The only exception to that is
 // clusterLabel, which we expect may not exist, but has a default value.)
-func resultPVKey(res *source.QueryResult, clusterLabel, persistentVolumeLabel string) (pvKey, error) {
+func resultPVKey(res *source.QueryResult, persistentVolumeLabel string) (pvKey, error) {
 	key := pvKey{}
 
-	cluster, err := res.GetString(clusterLabel)
+	cluster, err := res.GetCluster()
 	if err != nil {
 		cluster = env.GetClusterID()
 	}

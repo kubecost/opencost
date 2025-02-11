@@ -5,7 +5,7 @@ package costmodel
 import (
 	"time"
 
-	"github.com/opencost/opencost/pkg/prom"
+	"github.com/opencost/opencost/core/pkg/source"
 )
 
 // These implementations are placeholders to allow conditional compilation of
@@ -22,7 +22,7 @@ import (
 type extendedNodeQueryResults struct{}
 
 // queryExtendedNodeData is a place holder function for the incubating feature
-func queryExtendedNodeData(ctx *prom.Context, start, end time.Time, durStr, resStr string) (*extendedNodeQueryResults, error) {
+func queryExtendedNodeData(grp *source.QueryGroup, ds source.OpenCostDataSource, start, end time.Time) (*extendedNodeQueryResults, error) {
 	return &extendedNodeQueryResults{}, nil
 }
 
