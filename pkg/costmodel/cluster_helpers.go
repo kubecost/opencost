@@ -746,7 +746,6 @@ func buildNodeMap(
 	preemptibleMap map[NodeIdentifier]bool,
 	labelsMap map[nodeIdentifierNoProviderID]map[string]string,
 	clusterAndNameToType map[nodeIdentifierNoProviderID]string,
-	res time.Duration,
 	overheadMap map[nodeIdentifierNoProviderID]*NodeOverhead,
 ) map[NodeIdentifier]*Node {
 

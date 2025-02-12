@@ -13,7 +13,7 @@ func TestScaleHourlyCostData(t *testing.T) {
 	start := 1570000000
 	oneHour := 60 * 60
 
-	generateVectorSeries := func(start, count, interval int, value float64) []*util.Vector {
+	generateVectorSeries := func(start, count, _ int, value float64) []*util.Vector {
 		vs := []*util.Vector{}
 		for i := 0; i < count; i++ {
 			v := &util.Vector{

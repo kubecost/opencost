@@ -11,18 +11,18 @@ import (
 
 var (
 	// Static KeyTuple Errors
-	NewKeyTupleErr = errors.New("NewKeyTuple() Provided key not containing exactly 3 components.")
+	ErrNewKeyTuple = errors.New("new-key-tuple: key not containing exactly 3 components")
 
 	// Static Errors for ContainerMetric creation
-	InvalidKeyErr      error = errors.New("Not a valid key")
-	NoContainerErr     error = errors.New("Prometheus vector does not have container name")
-	NoContainerNameErr error = errors.New("Prometheus vector does not have string container name")
-	NoPodErr           error = errors.New("Prometheus vector does not have pod name")
-	NoPodNameErr       error = errors.New("Prometheus vector does not have string pod name")
-	NoNamespaceErr     error = errors.New("Prometheus vector does not have namespace")
-	NoNamespaceNameErr error = errors.New("Prometheus vector does not have string namespace")
-	NoNodeNameErr      error = errors.New("Prometheus vector does not have string node")
-	NoClusterIDErr     error = errors.New("Prometheus vector does not have string cluster id")
+	ErrInvalidKey      error = errors.New("not a valid key")
+	ErrNoContainer     error = errors.New("vector does not have container name")
+	ErrNoContainerName error = errors.New("vector does not have string container name")
+	ErrNoPod           error = errors.New("vector does not have pod name")
+	ErrNoPodName       error = errors.New("vector does not have string pod name")
+	ErrNoNamespace     error = errors.New("vector does not have namespace")
+	ErrNoNamespaceName error = errors.New("vector does not have string namespace")
+	ErrNoNodeName      error = errors.New("vector does not have string node")
+	ErrNoClusterID     error = errors.New("vector does not have string cluster id")
 )
 
 //--------------------------------------------------------------------------
@@ -57,18 +57,18 @@ func (kt *KeyTuple) ClusterID() string {
 func NewKeyTuple(key string) (*KeyTuple, error) {
 	kIndex := strings.IndexRune(key, ',')
 	if kIndex < 0 {
-		return nil, NewKeyTupleErr
+		return nil, ErrNewKeyTuple
 	}
 	kIndex += 1
 
 	subIndex := strings.IndexRune(key[kIndex:], ',')
 	if subIndex < 0 {
-		return nil, NewKeyTupleErr
+		return nil, ErrNewKeyTuple
 	}
 	cIndex := kIndex + subIndex + 1
 
 	if strings.ContainsRune(key[cIndex:], ',') {
-		return nil, NewKeyTupleErr
+		return nil, ErrNewKeyTuple
 	}
 
 	return &KeyTuple{
@@ -118,7 +118,7 @@ func NewContainerMetricFromKey(key string) (*ContainerMetric, error) {
 			key:           key,
 		}, nil
 	}
-	return nil, InvalidKeyErr
+	return nil, ErrInvalidKey
 }
 
 // NewContainerMetricFromValues creates a new ContainerMetric instance using the provided string parameters.
@@ -160,17 +160,17 @@ func NewContainerMetricsFromPod(pod *clustercache.Pod, clusterID string) ([]*Con
 func NewContainerMetricFromResult(result *source.QueryResult, defaultClusterID string) (*ContainerMetric, error) {
 	containerName, err := result.GetContainer()
 	if err != nil {
-		return nil, NoContainerErr
+		return nil, ErrNoContainer
 	}
 
 	podName, err := result.GetPod()
 	if err != nil {
-		return nil, NoPodNameErr
+		return nil, ErrNoPodName
 	}
 
 	namespace, err := result.GetNamespace()
 	if err != nil {
-		return nil, NoNamespaceNameErr
+		return nil, ErrNoNamespaceName
 	}
 
 	nodeName, err := result.GetNode()

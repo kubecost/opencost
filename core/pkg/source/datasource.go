@@ -7,55 +7,6 @@ import (
 	"github.com/opencost/opencost/core/pkg/clusters"
 )
 
-type InstantMetricsQuerier interface {
-	QueryRAMUsage(window string, offset string) QueryResultsChan
-	QueryCPUUsage(window string, offset string) QueryResultsChan
-	QueryNetworkInZoneRequests(window string, offset string) QueryResultsChan
-	QueryNetworkInRegionRequests(window string, offset string) QueryResultsChan
-	QueryNetworkInternetRequests(window string, offset string) QueryResultsChan
-	QueryNormalization(window string, offset string) QueryResultsChan
-
-	QueryHistoricalCPUCost(window string, offset string) QueryResultsChan
-	QueryHistoricalRAMCost(window string, offset string) QueryResultsChan
-	QueryHistoricalGPUCost(window string, offset string) QueryResultsChan
-	QueryHistoricalPodLabels(window string, offset string) QueryResultsChan
-}
-
-type RangeMetricsQuerier interface {
-	QueryRAMRequestsOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-	QueryRAMUsageOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-	QueryRAMAllocationOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-
-	QueryCPURequestsOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-	QueryCPUUsageOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-	QueryCPUAllocationOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-
-	QueryGPURequestsOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-
-	QueryPVRequestsOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-	QueryPVCAllocationOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-	QueryPVHourlyCostOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-
-	QueryNetworkInZoneOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-	QueryNetworkInRegionOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-	QueryNetworkInternetOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-
-	QueryNamespaceLabelsOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-	QueryNamespaceAnnotationsOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-
-	QueryPodLabelsOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-	QueryPodAnnotationsOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-
-	QueryServiceLabelsOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-	QueryDeploymentLabelsOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-	QueryStatefulsetLabelsOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-
-	QueryPodJobsOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-	QueryPodDaemonsetsOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-
-	QueryNormalizationOverTime(start, end time.Time, resolution time.Duration) QueryResultsChan
-}
-
 type ClusterMetricsQuerier interface {
 	// Cluster Disks
 	QueryPVCost(start, end time.Time) QueryResultsChan
@@ -77,14 +28,14 @@ type ClusterMetricsQuerier interface {
 	QueryLocalStorageUsedByProvider(provider string, start, end time.Time) QueryResultsChan
 
 	// Nodes
-	QueryNodeCPUHourlyCost(start, end time.Time) QueryResultsChan
+	QueryNodeCPUHourlyCost(start, end time.Time) QueryResultsChan // Duplicate: QueryNodeCostPerCPUHr
 	QueryNodeCPUCoresCapacity(start, end time.Time) QueryResultsChan
 	QueryNodeCPUCoresAllocatable(start, end time.Time) QueryResultsChan
-	QueryNodeRAMHourlyCost(start, end time.Time) QueryResultsChan
+	QueryNodeRAMHourlyCost(start, end time.Time) QueryResultsChan // Duplicate: QueryNodeCostPerRAMHr
 	QueryNodeRAMBytesCapacity(start, end time.Time) QueryResultsChan
 	QueryNodeRAMBytesAllocatable(start, end time.Time) QueryResultsChan
 	QueryNodeGPUCount(start, end time.Time) QueryResultsChan
-	QueryNodeGPUHourlyCost(start, end time.Time) QueryResultsChan
+	QueryNodeGPUHourlyCost(start, end time.Time) QueryResultsChan // Duplicate: QueryNodeCostPerGPUHr
 	QueryNodeLabels(start, end time.Time) QueryResultsChan
 	QueryNodeActiveMinutes(start, end time.Time) QueryResultsChan
 	QueryNodeIsSpot(start, end time.Time) QueryResultsChan
@@ -93,9 +44,6 @@ type ClusterMetricsQuerier interface {
 	QueryNodeCPUModePercent(start, end time.Time) QueryResultsChan
 	QueryNodeRAMSystemPercent(start, end time.Time) QueryResultsChan
 	QueryNodeRAMUserPercent(start, end time.Time) QueryResultsChan
-
-	//QueryNodeTotalLocalStorage(start, end time.Time) QueryResultsChan
-	//QueryNodeUsedLocalStorage(start, end time.Time) QueryResultsChan
 
 	// Load Balancers
 	QueryLBCost(start, end time.Time) QueryResultsChan
@@ -174,8 +122,6 @@ type AllocationMetricsQuerier interface {
 }
 
 type OpenCostDataSource interface {
-	InstantMetricsQuerier
-	RangeMetricsQuerier
 	ClusterMetricsQuerier
 	AllocationMetricsQuerier
 

@@ -137,7 +137,7 @@ var (
 )
 
 // initCostModelMetrics uses a sync.Once to ensure that these metrics are only created once
-func initCostModelMetrics(clusterCache clustercache.ClusterCache, provider models.Provider, clusterInfo clusters.ClusterInfoProvider, metricsConfig *metrics.MetricsConfig) {
+func initCostModelMetrics(clusterInfo clusters.ClusterInfoProvider, metricsConfig *metrics.MetricsConfig) {
 
 	disabledMetrics := metricsConfig.GetDisabledMetricsMap()
 	var toRegisterGV []*prometheus.GaugeVec
@@ -337,7 +337,7 @@ func NewCostModelMetricsEmitter(clusterCache clustercache.ClusterCache, provider
 	}
 
 	// init will only actually execute once to register the custom gauges
-	initCostModelMetrics(clusterCache, provider, clusterInfo, metricsConfig)
+	initCostModelMetrics(clusterInfo, metricsConfig)
 
 	metrics.InitKubeMetrics(clusterCache, metricsConfig, &metrics.KubeMetricsOpts{
 		EmitKubecostControllerMetrics: true,
@@ -452,8 +452,10 @@ func (cmme *CostModelMetricsEmitter) Start() bool {
 				cmme.NetworkInternetEgressRecorder.Set(networkCosts.InternetNetworkEgressCost)
 			}
 
-			// TODO: Pass PrometheusClient and CloudProvider into CostModel on instantiation so this isn't so awkward
-			data, err := cmme.Model.ComputeCostData("2m", "", "")
+			end := time.Now()
+			start := end.Add(-time.Minute * 2)
+
+			data, err := cmme.Model.ComputeCostData(start, end)
 			if err != nil {
 				// For an error collection, we'll just log the length of the errors (ComputeCostData already logs the
 				// actual errors)
@@ -462,7 +464,7 @@ func (cmme *CostModelMetricsEmitter) Start() bool {
 						log.Errorf("Error in price recording: %d errors occurred", len(ec.Errors()))
 					}
 				} else {
-					log.Errorf("Error in price recording: " + err.Error())
+					log.Errorf("Error in price recording: %s", err)
 				}
 
 				// zero the for loop so the time.Sleep will still work

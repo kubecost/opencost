@@ -13,10 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/microcosm-cc/bluemonday"
-	"github.com/opencost/opencost/core/pkg/opencost"
 	"github.com/opencost/opencost/core/pkg/source"
-	"github.com/opencost/opencost/core/pkg/util/httputil"
 	"github.com/opencost/opencost/core/pkg/util/retry"
 	"github.com/opencost/opencost/core/pkg/util/timeutil"
 	"github.com/opencost/opencost/core/pkg/version"
@@ -43,7 +40,6 @@ import (
 	"github.com/opencost/opencost/modules/prometheus-source/pkg/prom"
 	"github.com/opencost/opencost/pkg/cloud/azure"
 	"github.com/opencost/opencost/pkg/cloud/models"
-	"github.com/opencost/opencost/pkg/cloud/utils"
 	"github.com/opencost/opencost/pkg/clustercache"
 	"github.com/opencost/opencost/pkg/env"
 	"github.com/opencost/opencost/pkg/errors"
@@ -53,8 +49,6 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 )
-
-var sanitizePolicy = bluemonday.UGCPolicy()
 
 const (
 	RFC3339Milli         = "2006-01-02T15:04:05.000Z"
@@ -74,8 +68,6 @@ var (
 // Accesses defines a singleton application instance, providing access to
 // Prometheus, Kubernetes, the cloud provider, and caches.
 type Accesses struct {
-	//PrometheusClient    prometheus.Client
-	//ThanosClient        prometheus.Client
 	DataSource          source.OpenCostDataSource
 	KubeClientSet       kubernetes.Interface
 	ClusterCache        clustercache.ClusterCache
@@ -86,11 +78,9 @@ type Accesses struct {
 	Model               *CostModel
 	MetricsEmitter      *CostModelMetricsEmitter
 	OutOfClusterCache   *cache.Cache
-	AggregateCache      *cache.Cache
 	CostDataCache       *cache.Cache
 	ClusterCostsCache   *cache.Cache
 	CacheExpiration     map[time.Duration]time.Duration
-	AggAPI              Aggregator
 	// SettingsCache stores current state of app settings
 	SettingsCache *cache.Cache
 	// settingsSubscribers tracks channels through which changes to different
@@ -100,23 +90,6 @@ type Accesses struct {
 	// registered http service instances
 	httpServices services.HTTPServices
 }
-
-// GetPrometheusClient decides whether the default Prometheus client or the Thanos client
-// should be used.
-/*
-func (a *Accesses) GetPrometheusClient(remote bool) prometheus.Client {
-	// Use Thanos Client if it exists (enabled) and remote flag set
-	var pc prometheus.Client
-
-	if remote && a.ThanosClient != nil {
-		pc = a.ThanosClient
-	} else {
-		pc = a.PrometheusClient
-	}
-
-	return pc
-}
-*/
 
 // GetCacheExpiration looks up and returns custom cache expiration for the given duration.
 // If one does not exists, it returns the default cache expiration, which is defined by
@@ -226,24 +199,6 @@ func filterFields(fields string, data map[string]*CostData) map[string]CostData 
 		filteredData[cname] = cd2.Interface().(CostData)
 	}
 	return filteredData
-}
-
-func normalizeTimeParam(param string) (string, error) {
-	if param == "" {
-		return "", fmt.Errorf("invalid time param")
-	}
-	// convert days to hours
-	if param[len(param)-1:] == "d" {
-		count := param[:len(param)-1]
-		val, err := strconv.ParseInt(count, 10, 64)
-		if err != nil {
-			return "", err
-		}
-		val = val * 24
-		param = fmt.Sprintf("%dh", val)
-	}
-
-	return param, nil
 }
 
 // ParsePercentString takes a string of expected format "N%" and returns a floating point 0.0N.
@@ -362,14 +317,6 @@ func WrapDataWithMessageAndWarning(data interface{}, err error, message, warning
 	return resp
 }
 
-// wrapAsObjectItems wraps a slice of items into an object containing a single items list
-// allows our k8s proxy methods to emulate a List() request to k8s API
-func wrapAsObjectItems(items interface{}) map[string]interface{} {
-	return map[string]interface{}{
-		"items": items,
-	}
-}
-
 // RefreshPricingData needs to be called when a new node joins the fleet, since we cache the relevant subsets of pricing data to avoid storing the whole thing.
 func (a *Accesses) RefreshPricingData(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	w.Header().Set("Content-Type", "application/json")
@@ -392,11 +339,35 @@ func (a *Accesses) CostDataModel(w http.ResponseWriter, r *http.Request, ps http
 	fields := r.URL.Query().Get("filterFields")
 	namespace := r.URL.Query().Get("namespace")
 
-	if offset != "" {
-		offset = "offset " + offset
+	duration, err := timeutil.ParseDuration(window)
+	if err != nil {
+		w.Write(WrapData(nil, fmt.Errorf("error parsing window (%s): %s", window, err)))
+		return
 	}
 
-	data, err := a.Model.ComputeCostData(window, offset, namespace)
+	end := time.Now()
+	if offset != "" {
+		offsetDur, err := timeutil.ParseDuration(offset)
+		if err != nil {
+			w.Write(WrapData(nil, fmt.Errorf("error parsing offset (%s): %s", offset, err)))
+			return
+		}
+
+		end = end.Add(-offsetDur)
+	}
+
+	start := end.Add(-duration)
+
+	data, err := a.Model.ComputeCostData(start, end)
+
+	// apply filter by removing if != namespace
+	if namespace != "" {
+		for key, costData := range data {
+			if costData.Namespace != namespace {
+				delete(data, key)
+			}
+		}
+	}
 
 	if fields != "" {
 		filteredData := filterFields(fields, data)
@@ -404,7 +375,6 @@ func (a *Accesses) CostDataModel(w http.ResponseWriter, r *http.Request, ps http
 	} else {
 		w.Write(WrapData(data, err))
 	}
-
 }
 
 func (a *Accesses) ClusterCosts(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -505,84 +475,6 @@ func (a *Accesses) ClusterCostsOverTime(w http.ResponseWriter, r *http.Request, 
 	w.Write(WrapData(data, err))
 }
 
-func (a *Accesses) CostDataModelRange(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	startStr := r.URL.Query().Get("start")
-	endStr := r.URL.Query().Get("end")
-	windowStr := r.URL.Query().Get("window")
-	fields := r.URL.Query().Get("filterFields")
-	namespace := r.URL.Query().Get("namespace")
-	cluster := r.URL.Query().Get("cluster")
-	//remote := r.URL.Query().Get("remote")
-	//remoteEnabled := env.IsRemoteEnabled() && remote != "false"
-
-	layout := "2006-01-02T15:04:05.000Z"
-	start, err := time.Parse(layout, startStr)
-	if err != nil {
-		w.Write(WrapDataWithMessage(nil, fmt.Errorf("invalid start date: %s", startStr), fmt.Sprintf("invalid start date: %s", startStr)))
-		return
-	}
-	end, err := time.Parse(layout, endStr)
-	if err != nil {
-		w.Write(WrapDataWithMessage(nil, fmt.Errorf("invalid end date: %s", endStr), fmt.Sprintf("invalid end date: %s", endStr)))
-		return
-	}
-
-	window := opencost.NewWindow(&start, &end)
-	if window.IsOpen() || !window.HasDuration() || window.IsNegative() {
-		w.Write(WrapDataWithMessage(nil, fmt.Errorf("invalid date range: %s", window), fmt.Sprintf("invalid date range: %s", window)))
-		return
-	}
-
-	resolution := time.Hour
-	if resDur, err := time.ParseDuration(windowStr); err == nil {
-		resolution = resDur
-	}
-
-	// Use Thanos Client if it exists (enabled) and remote flag set
-	/*
-		var pClient prometheus.Client
-		if remote != "false" && a.ThanosClient != nil {
-			pClient = a.ThanosClient
-		} else {
-			pClient = a.PrometheusClient
-		}
-	*/
-
-	data, err := a.Model.ComputeCostDataRange(window, resolution, namespace, cluster)
-	if err != nil {
-		w.Write(WrapData(nil, err))
-	}
-	if fields != "" {
-		filteredData := filterFields(fields, data)
-		w.Write(WrapData(filteredData, err))
-	} else {
-		w.Write(WrapData(data, err))
-	}
-}
-
-func parseAggregations(customAggregation, aggregator, filterType string) (string, []string, string) {
-	var key string
-	var filter string
-	var val []string
-	if customAggregation != "" {
-		key = customAggregation
-		filter = filterType
-		val = strings.Split(customAggregation, ",")
-	} else {
-		aggregations := strings.Split(aggregator, ",")
-		for i, agg := range aggregations {
-			aggregations[i] = "kubernetes_" + agg
-		}
-		key = strings.Join(aggregations, ",")
-		filter = "kubernetes_" + filterType
-		val = aggregations
-	}
-	return key, val, filter
-}
-
 func (a *Accesses) GetAllNodePricing(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -611,7 +503,6 @@ func (a *Accesses) UpdateSpotInfoConfigs(w http.ResponseWriter, r *http.Request,
 	if err != nil {
 		log.Errorf("Error redownloading data on config update: %s", err.Error())
 	}
-	return
 }
 
 func (a *Accesses) UpdateAthenaInfoConfigs(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -623,7 +514,6 @@ func (a *Accesses) UpdateAthenaInfoConfigs(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	w.Write(WrapData(data, err))
-	return
 }
 
 func (a *Accesses) UpdateBigQueryInfoConfigs(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -635,7 +525,6 @@ func (a *Accesses) UpdateBigQueryInfoConfigs(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	w.Write(WrapData(data, err))
-	return
 }
 
 func (a *Accesses) UpdateAzureStorageConfigs(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -647,7 +536,6 @@ func (a *Accesses) UpdateAzureStorageConfigs(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	w.Write(WrapData(data, err))
-	return
 }
 
 func (a *Accesses) UpdateConfigByKey(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -659,7 +547,6 @@ func (a *Accesses) UpdateConfigByKey(w http.ResponseWriter, r *http.Request, ps 
 		return
 	}
 	w.Write(WrapData(data, err))
-	return
 }
 
 func (a *Accesses) ManagementPlatform(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -672,7 +559,6 @@ func (a *Accesses) ManagementPlatform(w http.ResponseWriter, r *http.Request, ps
 		return
 	}
 	w.Write(WrapData(data, err))
-	return
 }
 
 func (a *Accesses) ClusterInfo(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -722,35 +608,6 @@ func (a *Accesses) GetPricingSourceSummary(w http.ResponseWriter, r *http.Reques
 	w.Write(WrapData(data, nil))
 }
 
-// helper for query range proxy requests
-func toStartEndStep(qp httputil.QueryParams) (start, end time.Time, step time.Duration, err error) {
-	var e error
-
-	ss := qp.Get("start", "")
-	es := qp.Get("end", "")
-	ds := qp.Get("duration", "")
-	layout := "2006-01-02T15:04:05.000Z"
-
-	start, e = time.Parse(layout, ss)
-	if e != nil {
-		err = fmt.Errorf("Error parsing time %s. Error: %s", ss, err)
-		return
-	}
-	end, e = time.Parse(layout, es)
-	if e != nil {
-		err = fmt.Errorf("Error parsing time %s. Error: %s", es, err)
-		return
-	}
-	step, e = time.ParseDuration(ds)
-	if e != nil {
-		err = fmt.Errorf("Error parsing duration %s. Error: %s", ds, err)
-		return
-	}
-	err = nil
-
-	return
-}
-
 func (a *Accesses) GetOrphanedPods(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -766,7 +623,7 @@ func (a *Accesses) GetOrphanedPods(w http.ResponseWriter, r *http.Request, ps ht
 
 	body, err := json.Marshal(lonePods)
 	if err != nil {
-		fmt.Fprintf(w, "Error decoding pod: "+err.Error())
+		fmt.Fprintf(w, "Error decoding pod: %s", err)
 	} else {
 		w.Write(body)
 	}
@@ -862,7 +719,7 @@ func (a *Accesses) AddServiceKey(w http.ResponseWriter, r *http.Request, ps http
 	k := []byte(key)
 	err := os.WriteFile(path.Join(env.GetConfigPathWithDefault(env.DefaultConfigMountPath), "key.json"), k, 0644)
 	if err != nil {
-		fmt.Fprintf(w, "Error writing service key: "+err.Error())
+		fmt.Fprintf(w, "Error writing service key: %s", err)
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -887,15 +744,10 @@ func (a *Accesses) GetHelmValues(w http.ResponseWriter, r *http.Request, ps http
 	w.Write(result)
 }
 
-// FIXME: Prometheus Status EP
-/*
-
- */
-
 // captures the panic event in sentry
 func capturePanicEvent(err string, stack string) {
 	msg := fmt.Sprintf("Panic: %s\nStackTrace: %s\n", err, stack)
-	log.Infof(msg)
+	log.Infof("%s", msg)
 	sentry.CurrentHub().CaptureEvent(&sentry.Event{
 		Level:   sentry.LevelError,
 		Message: msg,
@@ -997,19 +849,6 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 	configWatchers.AddWatcher(metrics.GetMetricsConfigWatcher())
 	configWatchers.Watch()
 
-	remoteEnabled := env.IsRemoteEnabled()
-	if remoteEnabled {
-		info, err := cloudProvider.ClusterInfo()
-		log.Infof("Saving cluster  with id:'%s', and name:'%s' to durable storage", info["id"], info["name"])
-		if err != nil {
-			log.Infof("Error saving cluster id %s", err.Error())
-		}
-		_, _, err = utils.GetOrCreateClusterMeta(info["id"], info["name"])
-		if err != nil {
-			log.Infof("Unable to set cluster id '%s' for cluster '%s', %s", info["id"], info["name"], err.Error())
-		}
-	}
-
 	// ClusterInfo Provider to provide the cluster map with local and remote cluster data
 	var clusterInfoProvider clusters.ClusterInfoProvider
 	if env.IsClusterInfoFileEnabled() {
@@ -1023,7 +862,6 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 
 	// cache responses from model and aggregation for a default of 10 minutes;
 	// clear expired responses every 20 minutes
-	aggregateCache := cache.New(time.Minute*10, time.Minute*20)
 	costDataCache := cache.New(time.Minute*10, time.Minute*20)
 	clusterCostsCache := cache.New(cache.NoExpiration, cache.NoExpiration)
 	outOfClusterCache := cache.New(time.Minute*5, time.Minute*10)
@@ -1054,7 +892,6 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 		ClusterInfoProvider: clusterInfoProvider,
 		Model:               costModel,
 		MetricsEmitter:      metricsEmitter,
-		AggregateCache:      aggregateCache,
 		CostDataCache:       costDataCache,
 		ClusterCostsCache:   clusterCostsCache,
 		OutOfClusterCache:   outOfClusterCache,
@@ -1062,26 +899,22 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 		CacheExpiration:     cacheExpiration,
 	}
 
-	// Use the Accesses instance, itself, as the CostModelAggregator. This is
-	// confusing and unconventional, but necessary so that we can swap it
-	// out for the ETL-adapted version elsewhere.
-	// TODO clean this up once ETL is open-sourced.
-	a.AggAPI = a
-
 	// Initialize mechanism for subscribing to settings changes
 	a.InitializeSettingsPubSub()
 	err = a.CloudProvider.DownloadPricingData()
 	if err != nil {
-		log.Infof("Failed to download pricing data: " + err.Error())
+		log.Infof("Failed to download pricing data: %s", err)
 	}
 
-	// Warm the aggregate cache unless explicitly set to false
+	// NOTE: (bolt) this only warms the cache for cluster costs.
 	if env.IsCacheWarmingEnabled() {
-		log.Infof("Init: AggregateCostModel cache warming enabled")
+		log.Infof("Init: ClusterCosts cache warming enabled")
 		a.warmAggregateCostModelCache()
 	} else {
-		log.Infof("Init: AggregateCostModel cache warming disabled")
+		log.Infof("Init: ClusterCosts cache warming disabled")
 	}
+
+	// router.GET("/aggregatedCostModel", a.AggregateCostModelHandler)
 
 	if !env.IsKubecostMetricsPodEnabled() {
 		a.MetricsEmitter.Start()
@@ -1091,8 +924,6 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 	a.DataSource.RegisterEndPoints(router)
 
 	router.GET("/costDataModel", a.CostDataModel)
-	router.GET("/costDataModelRange", a.CostDataModelRange)
-	router.GET("/aggregatedCostModel", a.AggregateCostModelHandler)
 	router.GET("/allocation/compute", a.ComputeAllocationHandler)
 	router.GET("/allocation/compute/summary", a.ComputeAllocationHandlerSummary)
 	router.GET("/allNodePricing", a.GetAllNodePricing)

@@ -712,7 +712,6 @@ func TestBuildNodeMap(t *testing.T) {
 				testCase.preemptibleMap,
 				testCase.labelsMap,
 				testCase.clusterAndNameToType,
-				time.Minute,
 				testCase.overheadMap,
 			)
 

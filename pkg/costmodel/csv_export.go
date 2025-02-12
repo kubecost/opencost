@@ -305,7 +305,7 @@ func (e *csvExporter) writeCSVToWriter(ctx context.Context, w io.Writer, dates [
 		csvDef = append(csvDef, columnDef{
 			column: "Label_" + label,
 			value: func(data rowData) string {
-				value, _ := data.alloc.Properties.Labels[label]
+				value := data.alloc.Properties.Labels[label]
 				return value
 			},
 		})

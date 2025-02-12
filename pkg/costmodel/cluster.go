@@ -18,30 +18,6 @@ import (
 	"github.com/opencost/opencost/pkg/env"
 )
 
-const (
-	queryClusterCores = `sum(
-		avg(avg_over_time(kube_node_status_capacity_cpu_cores{%s}[%s] %s)) by (node, %s) * avg(avg_over_time(node_cpu_hourly_cost{%s}[%s] %s)) by (node, %s) * 730 +
-		avg(avg_over_time(node_gpu_hourly_cost{%s}[%s] %s)) by (node, %s) * 730
-	  ) by (%s)`
-
-	queryClusterRAM = `sum(
-		avg(avg_over_time(kube_node_status_capacity_memory_bytes{%s}[%s] %s)) by (node, %s) / 1024 / 1024 / 1024 * avg(avg_over_time(node_ram_hourly_cost{%s}[%s] %s)) by (node, %s) * 730
-	  ) by (%s)`
-
-	queryStorage = `sum(
-		avg(avg_over_time(pv_hourly_cost{%s}[%s] %s)) by (persistentvolume, %s) * 730
-		* avg(avg_over_time(kube_persistentvolume_capacity_bytes{%s}[%s] %s)) by (persistentvolume, %s) / 1024 / 1024 / 1024
-	  ) by (%s) %s`
-
-	queryTotal = `sum(avg(node_total_hourly_cost{%s}) by (node, %s)) * 730 +
-	  sum(
-		avg(avg_over_time(pv_hourly_cost{%s}[1h])) by (persistentvolume, %s) * 730
-		* avg(avg_over_time(kube_persistentvolume_capacity_bytes{%s}[1h])) by (persistentvolume, %s) / 1024 / 1024 / 1024
-	  ) by (%s) %s`
-
-	queryNodes = `sum(avg(node_total_hourly_cost{%s}) by (node, %s)) * 730 %s`
-)
-
 const MAX_LOCAL_STORAGE_SIZE = 1024 * 1024 * 1024 * 1024
 
 // When ASSET_INCLUDE_LOCAL_DISK_COST is set to false, local storage
@@ -674,7 +650,6 @@ func ClusterNodes(dataSource source.OpenCostDataSource, cp models.Provider, star
 		preemptibleMap,
 		labelsMap,
 		clusterAndNameToType,
-		resolution,
 		overheadMap,
 	)
 
@@ -1107,7 +1082,7 @@ type Totals struct {
 
 func resultToTotals(qrs []*source.QueryResult) ([][]string, error) {
 	if len(qrs) == 0 {
-		return [][]string{}, fmt.Errorf("Not enough data available in the selected time range")
+		return [][]string{}, fmt.Errorf("not enough data available in the selected time range")
 	}
 
 	result := qrs[0]

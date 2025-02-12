@@ -15,12 +15,6 @@ import (
 	"github.com/opencost/opencost/core/pkg/util/timeutil"
 )
 
-const (
-	minutesPerDay  = 60 * 24
-	minutesPerHour = 60
-	hoursPerDay    = 24
-)
-
 var (
 	durationRegex       = regexp.MustCompile(`^(\d+)(m|h|d|w)$`)
 	durationOffsetRegex = regexp.MustCompile(`^(\d+)(m|h|d|w) offset (\d+)(m|h|d|w)$`)
@@ -29,39 +23,9 @@ var (
 	rfcRegex            = regexp.MustCompile(fmt.Sprintf(`(%s),(%s)`, rfc3339, rfc3339))
 	timestampPairRegex  = regexp.MustCompile(`^(\d+)[,|-](\d+)$`)
 
-	tOffsetLock sync.Mutex
-	tOffset     *time.Duration
-
 	utcOffsetLock sync.Mutex
 	utcOffsetDur  *time.Duration
 )
-
-// get and cache the thanos offset duration.
-// TODO: Due to dependencies here, we have to drag a non-core config option into
-// TOOD: core scope. Any solution here would be a one-off until we can generalize
-// TODO: global configuration options.
-func thanosOffset() time.Duration {
-	tOffsetLock.Lock()
-	defer tOffsetLock.Unlock()
-
-	if tOffset == nil {
-		d, err := time.ParseDuration(env.Get("THANOS_QUERY_OFFSET", "3h"))
-		if err != nil {
-			d = 0
-		}
-
-		tOffset = &d
-	}
-
-	return *tOffset
-}
-
-// returns true if thanos is enabled
-// TODO: Same note as thanosOffset above - temporary work-around until more
-// TODO: generalized global configuration.
-func isThanosEnabled() bool {
-	return env.GetBool("THANOS_ENABLED", false)
-}
 
 // returns the configured utc offset as a duration
 // TODO: Same as the above options -- we should provide a one-time initialization configuration

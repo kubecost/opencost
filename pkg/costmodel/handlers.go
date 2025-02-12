@@ -62,6 +62,10 @@ func (a *Accesses) ComputeAssetsCarbonHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	carbonEstimates, err := carbon.RelateCarbonAssets(assetSet)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error relating carbon assets: %s", err), http.StatusInternalServerError)
+		return
+	}
 
 	w.Write(WrapData(carbonEstimates, nil))
 }

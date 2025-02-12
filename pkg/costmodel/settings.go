@@ -52,7 +52,6 @@ func (a *Accesses) InitializeSettingsPubSub() {
 		for {
 			msg := <-costDataCacheCh
 			log.Infof("Flushing cost data caches: %s", msg)
-			a.AggregateCache.Flush()
 			a.CostDataCache.Flush()
 		}
 	}(a)

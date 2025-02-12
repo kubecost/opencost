@@ -3469,7 +3469,7 @@ func Test_DetermineSharingName(t *testing.T) {
 	name, err = alloc.determineSharingName(nil)
 	if err != nil {
 		t.Fatalf("determineSharingName: expected no error; actual \"%s\"", err)
-	} else if err != nil || name != "unknown" {
+	} else if name != "unknown" {
 		t.Fatalf("determineSharingName: expected \"unknown\"; actual \"%s\"", name)
 	}
 
@@ -3478,7 +3478,7 @@ func Test_DetermineSharingName(t *testing.T) {
 	name, err = alloc.determineSharingName(options)
 	if err != nil {
 		t.Fatalf("determineSharingName: expected no error; actual \"%s\"", err)
-	} else if err != nil || name != "unknown" {
+	} else if name != "unknown" {
 		t.Fatalf("determineSharingName: expected \"unknown\"; actual \"%s\"", name)
 	}
 
@@ -3487,7 +3487,7 @@ func Test_DetermineSharingName(t *testing.T) {
 	name, err = alloc.determineSharingName(options)
 	if err != nil {
 		t.Fatalf("determineSharingName: expected no error; actual \"%s\"", err)
-	} else if err != nil || name != "namespace1" {
+	} else if name != "namespace1" {
 		t.Fatalf("determineSharingName: expected \"namespace1\"; actual \"%s\"", name)
 	}
 
@@ -3496,7 +3496,7 @@ func Test_DetermineSharingName(t *testing.T) {
 	name, err = alloc.determineSharingName(options)
 	if err != nil {
 		t.Fatalf("determineSharingName: expected no error; actual \"%s\"", err)
-	} else if err != nil || name != "unknown" {
+	} else if name != "unknown" {
 		t.Fatalf("determineSharingName: expected \"unknown\"; actual \"%s\"", name)
 	}
 
@@ -3508,7 +3508,7 @@ func Test_DetermineSharingName(t *testing.T) {
 	name, err = alloc.determineSharingName(options)
 	if err != nil {
 		t.Fatalf("determineSharingName: expected no error; actual \"%s\"", err)
-	} else if err != nil || name != "app1" {
+	} else if name != "app1" {
 		t.Fatalf("determineSharingName: expected \"app1\"; actual \"%s\"", name)
 	}
 
@@ -3519,7 +3519,7 @@ func Test_DetermineSharingName(t *testing.T) {
 	name, err = alloc.determineSharingName(options)
 	if err != nil {
 		t.Fatalf("determineSharingName: expected no error; actual \"%s\"", err)
-	} else if err != nil || name != "app1" {
+	} else if name != "app1" {
 		t.Fatalf("determineSharingName: expected \"app1\"; actual \"%s\"", name)
 	}
 
@@ -3530,7 +3530,7 @@ func Test_DetermineSharingName(t *testing.T) {
 	name, err = alloc.determineSharingName(options)
 	if err != nil {
 		t.Fatalf("determineSharingName: expected no error; actual \"%s\"", err)
-	} else if err != nil || name != "unknown" {
+	} else if name != "unknown" {
 		t.Fatalf("determineSharingName: expected \"unknown\"; actual \"%s\"", name)
 	}
 
@@ -3542,7 +3542,7 @@ func Test_DetermineSharingName(t *testing.T) {
 	name, err = alloc.determineSharingName(options)
 	if err != nil {
 		t.Fatalf("determineSharingName: expected no error; actual \"%s\"", err)
-	} else if err != nil || name != "app1" {
+	} else if name != "app1" {
 		t.Fatalf("determineSharingName: expected \"app1\"; actual \"%s\"", name)
 	}
 
@@ -3554,7 +3554,7 @@ func Test_DetermineSharingName(t *testing.T) {
 	name, err = alloc.determineSharingName(options)
 	if err != nil {
 		t.Fatalf("determineSharingName: expected no error; actual \"%s\"", err)
-	} else if err != nil || name != "app1" {
+	} else if name != "app1" {
 		t.Fatalf("determineSharingName: expected \"app1\"; actual \"%s\"", name)
 	}
 
@@ -3566,7 +3566,7 @@ func Test_DetermineSharingName(t *testing.T) {
 	name, err = alloc.determineSharingName(options)
 	if err != nil {
 		t.Fatalf("determineSharingName: expected no error; actual \"%s\"", err)
-	} else if err != nil || name != "unknown" {
+	} else if name != "unknown" {
 		t.Fatalf("determineSharingName: expected \"unknown\"; actual \"%s\"", name)
 	}
 
@@ -3583,7 +3583,7 @@ func Test_DetermineSharingName(t *testing.T) {
 	name, err = alloc.determineSharingName(options)
 	if err != nil {
 		t.Fatalf("determineSharingName: expected no error; actual \"%s\"", err)
-	} else if err != nil || name != "app1" {
+	} else if name != "app1" {
 		t.Fatalf("determineSharingName: expected \"app1\"; actual \"%s\"", name)
 	}
 
@@ -3600,7 +3600,7 @@ func Test_DetermineSharingName(t *testing.T) {
 	name, err = alloc.determineSharingName(options)
 	if err != nil {
 		t.Fatalf("determineSharingName: expected no error; actual \"%s\"", err)
-	} else if err != nil || name != "env1" {
+	} else if name != "env1" {
 		t.Fatalf("determineSharingName: expected \"env1\"; actual \"%s\"", name)
 	}
 
@@ -3611,7 +3611,7 @@ func Test_DetermineSharingName(t *testing.T) {
 	name, err = alloc.determineSharingName(options)
 	if err != nil {
 		t.Fatalf("determineSharingName: expected no error; actual \"%s\"", err)
-	} else if err != nil || name != "namespace1" {
+	} else if name != "namespace1" {
 		t.Fatalf("determineSharingName: expected \"namespace1\"; actual \"%s\"", name)
 	}
 
@@ -3622,7 +3622,7 @@ func Test_DetermineSharingName(t *testing.T) {
 	name, err = alloc.determineSharingName(options)
 	if err != nil {
 		t.Fatalf("determineSharingName: expected no error; actual \"%s\"", err)
-	} else if err != nil || name != "namespace2" {
+	} else if name != "namespace2" {
 		t.Fatalf("determineSharingName: expected \"namespace2\"; actual \"%s\"", name)
 	}
 
@@ -3632,7 +3632,7 @@ func Test_DetermineSharingName(t *testing.T) {
 	name, err = alloc.determineSharingName(options)
 	if err != nil {
 		t.Fatalf("determineSharingName: expected no error; actual \"%s\"", err)
-	} else if err != nil || name != "unknown" {
+	} else if name != "unknown" {
 		t.Fatalf("determineSharingName: expected \"unknown\"; actual \"%s\"", name)
 	}
 }

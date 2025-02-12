@@ -1166,7 +1166,7 @@ func TestMarshalUnmarshal(t *testing.T) {
 			}
 
 			if diff := cmp.Diff(c.w, unmarshaledW); len(diff) > 0 {
-				t.Errorf(diff)
+				t.Errorf("%s", diff)
 			}
 		})
 	}

@@ -26,8 +26,6 @@ import (
 )
 
 const (
-	statusAPIError = 422
-
 	profileThreshold = 1000 * 1000 * 1000 // 1s (in ns)
 
 	unmountedPVsContainer = "unmounted-pvs"
@@ -133,19 +131,19 @@ func (cd *CostData) GetController() (name string, kind string, hasController boo
 	return name, kind, hasController
 }
 
-func (cm *CostModel) ComputeCostData(window string, offset string, filterNamespace string) (map[string]*CostData, error) {
+func (cm *CostModel) ComputeCostData(start, end time.Time) (map[string]*CostData, error) {
 	// Cluster ID is specific to the source cluster
 	clusterID := env.GetClusterID()
 	cp := cm.Provider
+	ds := cm.DataSource
 
 	grp := source.NewQueryGroup()
 
-	resChRAMUsage := grp.With(cm.DataSource.QueryRAMUsage(window, offset))
-	resChCPUUsage := grp.With(cm.DataSource.QueryCPUUsage(window, offset))
-	resChNetZoneRequests := grp.With(cm.DataSource.QueryNetworkInZoneRequests(window, offset))
-	resChNetRegionRequests := grp.With(cm.DataSource.QueryNetworkInRegionRequests(window, offset))
-	resChNetInternetRequests := grp.With(cm.DataSource.QueryNetworkInternetRequests(window, offset))
-	resChNormalization := grp.With(cm.DataSource.QueryNormalization(window, offset))
+	resChRAMUsage := grp.With(ds.QueryRAMUsageAvg(start, end))
+	resChCPUUsage := grp.With(ds.QueryCPUUsageAvg(start, end))
+	resChNetZoneRequests := grp.With(ds.QueryNetZoneGiB(start, end))
+	resChNetRegionRequests := grp.With(ds.QueryNetRegionGiB(start, end))
+	resChNetInternetRequests := grp.With(ds.QueryNetInternetGiB(start, end))
 
 	// Pull pod information from k8s API
 	podlist := cm.Cache.GetAllPods()
@@ -176,7 +174,6 @@ func (cm *CostModel) ComputeCostData(window string, offset string, filterNamespa
 	resNetZoneRequests, _ := resChNetZoneRequests.Await()
 	resNetRegionRequests, _ := resChNetRegionRequests.Await()
 	resNetInternetRequests, _ := resChNetInternetRequests.Await()
-	resNormalization, _ := resChNormalization.Await()
 
 	// NOTE: The way we currently handle errors and warnings only early returns if there is an error. Warnings
 	// NOTE: will not propagate unless coupled with errors.
@@ -199,15 +196,9 @@ func (cm *CostModel) ComputeCostData(window string, offset string, filterNamespa
 
 	defer measureTime(time.Now(), profileThreshold, "ComputeCostData: Processing Query Data")
 
-	normalizationValue, err := getNormalization(resNormalization)
-	if err != nil {
-		// We opt to not return an error for the sake of running as a pure exporter.
-		log.Warnf("ComputeCostData: continuing despite error parsing normalization values: %s", err.Error())
-	}
-
 	nodes, err := cm.GetNodeCost(cp)
 	if err != nil {
-		log.Warnf("GetNodeCost: no node cost model available: " + err.Error())
+		log.Warnf("GetNodeCost: no node cost model available: %s", err)
 		return nil, err
 	}
 
@@ -237,14 +228,14 @@ func (cm *CostModel) ComputeCostData(window string, offset string, filterNamespa
 	containerNameCost := make(map[string]*CostData)
 	containers := make(map[string]bool)
 
-	RAMUsedMap, err := GetContainerMetricVector(resRAMUsage, true, normalizationValue, clusterID)
+	RAMUsedMap, err := GetContainerMetricVector(resRAMUsage, clusterID)
 	if err != nil {
 		return nil, err
 	}
 	for key := range RAMUsedMap {
 		containers[key] = true
 	}
-	CPUUsedMap, err := GetContainerMetricVector(resCPUUsage, false, 0, clusterID) // No need to normalize here, as this comes from a counter
+	CPUUsedMap, err := GetContainerMetricVector(resCPUUsage, clusterID) // No need to normalize here, as this comes from a counter
 	if err != nil {
 		return nil, err
 	}
@@ -465,11 +456,7 @@ func (cm *CostModel) ComputeCostData(window string, offset string, filterNamespa
 				}
 				costs.RAMAllocation = getContainerAllocation(ramReq, ramUse, "RAM")
 
-				if filterNamespace == "" {
-					containerNameCost[newKey] = costs
-				} else if costs.Namespace == filterNamespace {
-					containerNameCost[newKey] = costs
-				}
+				containerNameCost[newKey] = costs
 			}
 		} else {
 			// The container has been deleted. Not all information is sent to prometheus via ksm, so fill out what we can without k8s api
@@ -511,9 +498,9 @@ func (cm *CostModel) ComputeCostData(window string, offset string, filterNamespa
 					missingNodes[c.NodeName] = node
 				}
 			}
-			namespacelabels, _ := namespaceLabelsMapping[c.Namespace+","+c.ClusterID]
+			namespacelabels := namespaceLabelsMapping[c.Namespace+","+c.ClusterID]
 
-			namespaceAnnotations, _ := namespaceAnnotationsMapping[c.Namespace+","+c.ClusterID]
+			namespaceAnnotations := namespaceAnnotationsMapping[c.Namespace+","+c.ClusterID]
 
 			costs := &CostData{
 				Name:            c.ContainerName,
@@ -550,13 +537,8 @@ func (cm *CostModel) ComputeCostData(window string, offset string, filterNamespa
 			}
 			costs.RAMAllocation = getContainerAllocation(ramReq, ramUse, "RAM")
 
-			if filterNamespace == "" {
-				containerNameCost[key] = costs
-				missingContainers[key] = costs
-			} else if costs.Namespace == filterNamespace {
-				containerNameCost[key] = costs
-				missingContainers[key] = costs
-			}
+			containerNameCost[key] = costs
+			missingContainers[key] = costs
 		}
 	}
 	// Use unmounted pvs to create a mapping of "Unmounted-<Namespace>" containers
@@ -565,19 +547,15 @@ func (cm *CostModel) ComputeCostData(window string, offset string, filterNamespa
 	for k, costs := range unmounted {
 		log.Debugf("Unmounted PVs in Namespace/ClusterID: %s/%s", costs.Namespace, costs.ClusterID)
 
-		if filterNamespace == "" {
-			containerNameCost[k] = costs
-		} else if costs.Namespace == filterNamespace {
-			containerNameCost[k] = costs
-		}
+		containerNameCost[k] = costs
 	}
 
-	err = findDeletedNodeInfo(cm.DataSource, missingNodes, window, "")
+	err = findDeletedNodeInfo(cm.DataSource, missingNodes, start, end)
 	if err != nil {
 		log.Errorf("Error fetching historical node data: %s", err.Error())
 	}
 
-	err = findDeletedPodInfo(cm.DataSource, missingContainers, window)
+	err = findDeletedPodInfo(cm.DataSource, missingContainers, start, end)
 	if err != nil {
 		log.Errorf("Error fetching historical pod data: %s", err.Error())
 	}
@@ -599,9 +577,9 @@ func findUnmountedPVCostData(clusterMap clusters.ClusterMap, unmountedPVs map[st
 
 		ns, _, clusterID := keyParts[0], keyParts[1], keyParts[2]
 
-		namespacelabels, _ := namespaceLabelsMapping[ns+","+clusterID]
+		namespacelabels := namespaceLabelsMapping[ns+","+clusterID]
 
-		namespaceAnnotations, _ := namespaceAnnotationsMapping[ns+","+clusterID]
+		namespaceAnnotations := namespaceAnnotationsMapping[ns+","+clusterID]
 
 		metric := NewContainerMetricFromValues(ns, unmountedPVsContainer, unmountedPVsContainer, "", clusterID)
 		key := metric.Key()
@@ -627,10 +605,10 @@ func findUnmountedPVCostData(clusterMap clusters.ClusterMap, unmountedPVs map[st
 	return costs
 }
 
-func findDeletedPodInfo(dataSource source.OpenCostDataSource, missingContainers map[string]*CostData, window string) error {
+func findDeletedPodInfo(dataSource source.OpenCostDataSource, missingContainers map[string]*CostData, start, end time.Time) error {
 	if len(missingContainers) > 0 {
 
-		podLabelsResCh := dataSource.QueryHistoricalPodLabels(window, "")
+		podLabelsResCh := dataSource.QueryPodLabels(start, end)
 		podLabelsResult, err := podLabelsResCh.Await()
 		if err != nil {
 			log.Errorf("failed to parse historical pod labels: %s", err.Error())
@@ -659,15 +637,15 @@ func findDeletedPodInfo(dataSource source.OpenCostDataSource, missingContainers 
 	return nil
 }
 
-func findDeletedNodeInfo(dataSource source.OpenCostDataSource, missingNodes map[string]*costAnalyzerCloud.Node, window, offset string) error {
+func findDeletedNodeInfo(dataSource source.OpenCostDataSource, missingNodes map[string]*costAnalyzerCloud.Node, start, end time.Time) error {
 	if len(missingNodes) > 0 {
 		defer measureTime(time.Now(), profileThreshold, "Finding Deleted Node Info")
 
 		grp := source.NewQueryGroup()
 
-		cpuCostResCh := grp.With(dataSource.QueryHistoricalCPUCost(window, offset))
-		ramCostResCh := grp.With(dataSource.QueryHistoricalRAMCost(window, offset))
-		gpuCostResCh := grp.With(dataSource.QueryHistoricalGPUCost(window, offset))
+		cpuCostResCh := grp.With(dataSource.QueryNodeCostPerCPUHr(start, end))
+		ramCostResCh := grp.With(dataSource.QueryNodeCostPerRAMGiBHr(start, end))
+		gpuCostResCh := grp.With(dataSource.QueryNodeCostPerGPUHr(start, end))
 
 		cpuCostRes, _ := cpuCostResCh.Await()
 		ramCostRes, _ := ramCostResCh.Await()
@@ -1275,7 +1253,7 @@ func getPodServices(cache clustercache.ClusterCache, podList []*clustercache.Pod
 			podServicesMapping[key] = make(map[string][]string)
 		}
 		s := labels.Nothing()
-		if service.SpecSelector != nil && len(service.SpecSelector) > 0 {
+		if len(service.SpecSelector) > 0 {
 			s = labels.Set(service.SpecSelector).AsSelectorPreValidated()
 		}
 		for _, pod := range podList {
@@ -1293,37 +1271,6 @@ func getPodServices(cache clustercache.ClusterCache, podList []*clustercache.Pod
 	return podServicesMapping, nil
 }
 
-func getPodStatefulsets(cache clustercache.ClusterCache, podList []*clustercache.Pod, clusterID string) (map[string]map[string][]string, error) {
-	ssList := cache.GetAllStatefulSets()
-	podSSMapping := make(map[string]map[string][]string) // namespace: podName: [deploymentNames]
-	for _, ss := range ssList {
-		namespace := ss.Namespace
-		name := ss.Name
-
-		key := namespace + "," + clusterID
-		if _, ok := podSSMapping[key]; !ok {
-			podSSMapping[key] = make(map[string][]string)
-		}
-		s, err := metav1.LabelSelectorAsSelector(ss.SpecSelector)
-		if err != nil {
-			log.Errorf("Error doing deployment label conversion: " + err.Error())
-		}
-		for _, pod := range podList {
-			labelSet := labels.Set(pod.Labels)
-			if s.Matches(labelSet) && pod.Namespace == namespace {
-				sss, ok := podSSMapping[key][pod.Name]
-				if ok {
-					podSSMapping[key][pod.Name] = append(sss, name)
-				} else {
-					podSSMapping[key][pod.Name] = []string{name}
-				}
-			}
-		}
-	}
-	return podSSMapping, nil
-
-}
-
 func getPodDeployments(cache clustercache.ClusterCache, podList []*clustercache.Pod, clusterID string) (map[string]map[string][]string, error) {
 	deploymentsList := cache.GetAllDeployments()
 	podDeploymentsMapping := make(map[string]map[string][]string) // namespace: podName: [deploymentNames]
@@ -1337,7 +1284,7 @@ func getPodDeployments(cache clustercache.ClusterCache, podList []*clustercache.
 		}
 		s, err := metav1.LabelSelectorAsSelector(deployment.SpecSelector)
 		if err != nil {
-			log.Errorf("Error doing deployment label conversion: " + err.Error())
+			log.Errorf("Error doing deployment label conversion: %s", err)
 		}
 		for _, pod := range podList {
 			labelSet := labels.Set(pod.Labels)
@@ -1352,838 +1299,6 @@ func getPodDeployments(cache clustercache.ClusterCache, podList []*clustercache.
 		}
 	}
 	return podDeploymentsMapping, nil
-}
-
-func getPodDeploymentsWithMetrics(deploymentLabels map[string]map[string]string, podLabels map[string]map[string]string) (map[string]map[string][]string, error) {
-	podDeploymentsMapping := make(map[string]map[string][]string)
-
-	for depKey, depLabels := range deploymentLabels {
-		kt, err := NewKeyTuple(depKey)
-		if err != nil {
-			continue
-		}
-
-		namespace := kt.Namespace()
-		name := kt.Key()
-		clusterID := kt.ClusterID()
-
-		key := namespace + "," + clusterID
-		if _, ok := podDeploymentsMapping[key]; !ok {
-			podDeploymentsMapping[key] = make(map[string][]string)
-		}
-		s := labels.Set(depLabels).AsSelectorPreValidated()
-		for podKey, pLabels := range podLabels {
-			pkey, err := NewKeyTuple(podKey)
-			if err != nil {
-				continue
-			}
-			podNamespace := pkey.Namespace()
-			podName := pkey.Key()
-			podClusterID := pkey.ClusterID()
-
-			labelSet := labels.Set(pLabels)
-			if s.Matches(labelSet) && podNamespace == namespace && podClusterID == clusterID {
-				deployments, ok := podDeploymentsMapping[key][podName]
-				if ok {
-					podDeploymentsMapping[key][podName] = append(deployments, name)
-				} else {
-					podDeploymentsMapping[key][podName] = []string{name}
-				}
-			}
-		}
-	}
-
-	// Remove any duplicate data created by metric names
-	pruneDuplicateData(podDeploymentsMapping)
-
-	return podDeploymentsMapping, nil
-}
-
-func getPodServicesWithMetrics(serviceLabels map[string]map[string]string, podLabels map[string]map[string]string) (map[string]map[string][]string, error) {
-	podServicesMapping := make(map[string]map[string][]string)
-
-	for servKey, servLabels := range serviceLabels {
-		kt, err := NewKeyTuple(servKey)
-		if err != nil {
-			continue
-		}
-
-		namespace := kt.Namespace()
-		name := kt.Key()
-		clusterID := kt.ClusterID()
-
-		key := namespace + "," + clusterID
-		if _, ok := podServicesMapping[key]; !ok {
-			podServicesMapping[key] = make(map[string][]string)
-		}
-		s := labels.Nothing()
-		if servLabels != nil && len(servLabels) > 0 {
-			s = labels.Set(servLabels).AsSelectorPreValidated()
-		}
-
-		for podKey, pLabels := range podLabels {
-			pkey, err := NewKeyTuple(podKey)
-			if err != nil {
-				continue
-			}
-			podNamespace := pkey.Namespace()
-			podName := pkey.Key()
-			podClusterID := pkey.ClusterID()
-
-			labelSet := labels.Set(pLabels)
-			if s.Matches(labelSet) && podNamespace == namespace && podClusterID == clusterID {
-				services, ok := podServicesMapping[key][podName]
-				if ok {
-					podServicesMapping[key][podName] = append(services, name)
-				} else {
-					podServicesMapping[key][podName] = []string{name}
-				}
-			}
-		}
-	}
-
-	// Remove any duplicate data created by metric names
-	pruneDuplicateData(podServicesMapping)
-
-	return podServicesMapping, nil
-}
-
-// This method alleviates an issue with metrics that used a '_' to replace '-' in deployment
-// and service names. To avoid counting these as multiple deployments/services, we'll remove
-// the '_' version. Not optimal, but takes care of the issue
-func pruneDuplicateData(data map[string]map[string][]string) {
-	for _, podMap := range data {
-		for podName, values := range podMap {
-			podMap[podName] = pruneDuplicates(values)
-		}
-	}
-}
-
-// Determine if there is an underscore in the value of a slice. If so, replace _ with -, and then
-// check to see if the result exists in the slice. If both are true, then we DO NOT include that
-// original value in the new slice.
-func pruneDuplicates(s []string) []string {
-	m := sliceToSet(s)
-
-	for _, v := range s {
-		if strings.Contains(v, "_") {
-			name := strings.Replace(v, "_", "-", -1)
-			if !m[name] {
-				m[name] = true
-			}
-			delete(m, v)
-		}
-	}
-
-	return setToSlice(m)
-}
-
-// Creates a map[string]bool containing the slice values as keys
-func sliceToSet(s []string) map[string]bool {
-	m := make(map[string]bool)
-	for _, v := range s {
-		m[v] = true
-	}
-	return m
-}
-
-func setToSlice(m map[string]bool) []string {
-	var result []string
-	for k := range m {
-		result = append(result, k)
-	}
-	return result
-}
-
-func costDataPassesFilters(cm clusters.ClusterMap, costs *CostData, namespace string, cluster string) bool {
-	passesNamespace := namespace == "" || costs.Namespace == namespace
-	passesCluster := cluster == "" || costs.ClusterID == cluster || costs.ClusterName == cluster
-
-	return passesNamespace && passesCluster
-}
-
-// Finds the a closest multiple less than value
-func floorMultiple(value int64, multiple int64) int64 {
-	return (value / multiple) * multiple
-}
-
-// Attempt to create a key for the request. Reduce the times to minutes in order to more easily group requests based on
-// real time ranges. If for any reason, the key generation fails, return a uuid to ensure uniqueness.
-func requestKeyFor(window opencost.Window, resolution time.Duration, filterNamespace string, filterCluster string) string {
-	keyLayout := "2006-01-02T15:04Z"
-
-	// We "snap" start time and duration to their closest 5 min multiple less than itself, by
-	// applying a snapped duration to a snapped start time.
-	durMins := int64(window.Minutes())
-	durMins = floorMultiple(durMins, 5)
-
-	sMins := int64(window.Start().Minute())
-	sOffset := sMins - floorMultiple(sMins, 5)
-
-	sTime := window.Start().Add(-time.Duration(sOffset) * time.Minute)
-	eTime := window.Start().Add(time.Duration(durMins) * time.Minute)
-
-	startKey := sTime.Format(keyLayout)
-	endKey := eTime.Format(keyLayout)
-
-	return fmt.Sprintf("%s,%s,%s,%s,%s", startKey, endKey, resolution.String(), filterNamespace, filterCluster)
-}
-
-// ComputeCostDataRange executes a range query for cost data.
-// Note that "offset" represents the time between the function call and "endString", and is also passed for convenience
-func (cm *CostModel) ComputeCostDataRange(window opencost.Window, resolution time.Duration, filterNamespace string, filterCluster string) (map[string]*CostData, error) {
-	// Create a request key for request grouping. This key will be used to represent the cost-model result
-	// for the specific inputs to prevent multiple queries for identical data.
-	key := requestKeyFor(window, resolution, filterNamespace, filterCluster)
-
-	log.Debugf("ComputeCostDataRange with Key: %s", key)
-
-	// If there is already a request out that uses the same data, wait for it to return to share the results.
-	// Otherwise, start executing.
-	result, err, _ := cm.RequestGroup.Do(key, func() (interface{}, error) {
-		return cm.costDataRange(window, resolution, filterNamespace, filterCluster)
-	})
-
-	data, ok := result.(map[string]*CostData)
-	if !ok {
-		return nil, fmt.Errorf("Failed to cast result as map[string]*CostData")
-	}
-
-	return data, err
-}
-
-func (cm *CostModel) costDataRange(window opencost.Window, resolution time.Duration, filterNamespace string, filterCluster string) (map[string]*CostData, error) {
-	clusterID := env.GetClusterID()
-	dataSource := cm.DataSource
-	cp := cm.Provider
-
-	// durHrs := end.Sub(start).Hours() + 1
-
-	if window.IsOpen() {
-		return nil, fmt.Errorf("illegal window: %s", window)
-	}
-	start := *window.Start()
-	end := *window.End()
-
-	// Snap resolution to the nearest minute
-	resMins := int64(math.Trunc(resolution.Minutes()))
-	if resMins == 0 {
-		return nil, fmt.Errorf("resolution must be greater than 0.0")
-	}
-	resolution = time.Duration(resMins) * time.Minute
-
-	// Warn if resolution does not evenly divide window
-	if int64(window.Minutes())%int64(resolution.Minutes()) != 0 {
-		log.Warnf("CostDataRange: window should be divisible by resolution or else samples may be missed: %s %% %s = %dm", window, resolution, int64(window.Minutes())%int64(resolution.Minutes()))
-	}
-
-	/*
-		// Convert to Prometheus-style duration string in terms of m or h
-		resStr := fmt.Sprintf("%dm", resMins)
-		if resMins%60 == 0 {
-			resStr = fmt.Sprintf("%dh", resMins/60)
-		}
-
-		scrapeIntervalSeconds := cm.RefreshInterval.Seconds()
-	*/
-
-	grp := source.NewQueryGroup()
-
-	resChRAMRequests := grp.With(dataSource.QueryRAMRequestsOverTime(start, end, resolution))
-	resChRAMUsage := grp.With(dataSource.QueryRAMUsageOverTime(start, end, resolution))
-	resChRAMAlloc := grp.With(dataSource.QueryRAMAllocationOverTime(start, end, resolution))
-	resChCPURequests := grp.With(dataSource.QueryCPURequestsOverTime(start, end, resolution))
-	resChCPUUsage := grp.With(dataSource.QueryCPUUsageOverTime(start, end, resolution))
-	resChCPUAlloc := grp.With(dataSource.QueryCPUAllocationOverTime(start, end, resolution))
-	resChGPURequests := grp.With(dataSource.QueryGPURequestsOverTime(start, end, resolution))
-	resChPVRequests := grp.With(dataSource.QueryPVRequestsOverTime(start, end, resolution))
-	resChPVCAlloc := grp.With(dataSource.QueryPVCAllocationOverTime(start, end, resolution))
-	resChPVHourlyCost := grp.With(dataSource.QueryPVHourlyCostOverTime(start, end, resolution))
-	resChNetZoneRequests := grp.With(dataSource.QueryNetworkInZoneOverTime(start, end, resolution))
-	resChNetRegionRequests := grp.With(dataSource.QueryNetworkInRegionOverTime(start, end, resolution))
-	resChNetInternetRequests := grp.With(dataSource.QueryNetworkInternetOverTime(start, end, resolution))
-
-	resChNSLabels := grp.With(dataSource.QueryNamespaceLabelsOverTime(start, end, resolution))
-	resChPodLabels := grp.With(dataSource.QueryPodLabelsOverTime(start, end, resolution))
-	resChNSAnnotations := grp.With(dataSource.QueryNamespaceAnnotationsOverTime(start, end, resolution))
-	resChPodAnnotations := grp.With(dataSource.QueryPodAnnotationsOverTime(start, end, resolution))
-	resChServiceLabels := grp.With(dataSource.QueryServiceLabelsOverTime(start, end, resolution))
-	resChDeploymentLabels := grp.With(dataSource.QueryDeploymentLabelsOverTime(start, end, resolution))
-	resChStatefulsetLabels := grp.With(dataSource.QueryStatefulsetLabelsOverTime(start, end, resolution))
-	resChJobs := grp.With(dataSource.QueryPodJobsOverTime(start, end, resolution))
-	resChDaemonsets := grp.With(dataSource.QueryPodDaemonsetsOverTime(start, end, resolution))
-	resChNormalization := grp.With(dataSource.QueryNormalizationOverTime(start, end, resolution))
-	/*
-		ctx := prom.NewNamedContext(cli, prom.ComputeCostDataRangeContextName)
-
-		queryRAMAlloc := fmt.Sprintf(queryRAMAllocationByteHours, env.GetPromClusterFilter(), resStr, env.GetPromClusterLabel(), scrapeIntervalSeconds)
-		queryCPUAlloc := fmt.Sprintf(queryCPUAllocationVCPUHours, env.GetPromClusterFilter(), resStr, env.GetPromClusterLabel(), scrapeIntervalSeconds)
-		queryRAMRequests := fmt.Sprintf(queryRAMRequestsStr, env.GetPromClusterFilter(), resStr, "", env.GetPromClusterLabel())
-		queryRAMUsage := fmt.Sprintf(queryRAMUsageStr, env.GetPromClusterFilter(), resStr, "", env.GetPromClusterLabel())
-		queryCPURequests := fmt.Sprintf(queryCPURequestsStr, env.GetPromClusterFilter(), resStr, "", env.GetPromClusterLabel())
-		queryCPUUsage := fmt.Sprintf(queryCPUUsageStr, env.GetPromClusterFilter(), resStr, "", env.GetPromClusterLabel())
-		queryGPURequests := fmt.Sprintf(queryGPURequestsStr, env.GetPromClusterFilter(), resStr, "", env.GetPromClusterLabel())
-		queryPVRequests := fmt.Sprintf(queryPVRequestsStr, env.GetPromClusterFilter(), env.GetPromClusterLabel(), env.GetPromClusterLabel(), env.GetPromClusterFilter(), env.GetPromClusterLabel(), env.GetPromClusterLabel())
-		queryPVCAllocation := fmt.Sprintf(queryPVCAllocationFmt, env.GetPromClusterFilter(), resStr, env.GetPromClusterLabel(), scrapeIntervalSeconds)
-		queryPVHourlyCost := fmt.Sprintf(queryPVHourlyCostFmt, env.GetPromClusterFilter(), resStr)
-		queryNetZoneRequests := fmt.Sprintf(queryZoneNetworkUsage, env.GetPromClusterFilter(), resStr, "", env.GetPromClusterLabel())
-		queryNetRegionRequests := fmt.Sprintf(queryRegionNetworkUsage, env.GetPromClusterFilter(), resStr, "", env.GetPromClusterLabel())
-		queryNetInternetRequests := fmt.Sprintf(queryInternetNetworkUsage, env.GetPromClusterFilter(), resStr, "", env.GetPromClusterLabel())
-		queryNormalization := fmt.Sprintf(normalizationStr, env.GetPromClusterFilter(), resStr, "")
-
-		// Submit all queries for concurrent evaluation
-		resChRAMRequests := ctx.QueryRange(queryRAMRequests, start, end, resolution)
-		resChRAMUsage := ctx.QueryRange(queryRAMUsage, start, end, resolution)
-		resChRAMAlloc := ctx.QueryRange(queryRAMAlloc, start, end, resolution)
-		resChCPURequests := ctx.QueryRange(queryCPURequests, start, end, resolution)
-		resChCPUUsage := ctx.QueryRange(queryCPUUsage, start, end, resolution)
-		resChCPUAlloc := ctx.QueryRange(queryCPUAlloc, start, end, resolution)
-		resChGPURequests := ctx.QueryRange(queryGPURequests, start, end, resolution)
-		resChPVRequests := ctx.QueryRange(queryPVRequests, start, end, resolution)
-		resChPVCAlloc := ctx.QueryRange(queryPVCAllocation, start, end, resolution)
-		resChPVHourlyCost := ctx.QueryRange(queryPVHourlyCost, start, end, resolution)
-		resChNetZoneRequests := ctx.QueryRange(queryNetZoneRequests, start, end, resolution)
-		resChNetRegionRequests := ctx.QueryRange(queryNetRegionRequests, start, end, resolution)
-		resChNetInternetRequests := ctx.QueryRange(queryNetInternetRequests, start, end, resolution)
-
-		resChNSLabels := ctx.QueryRange(fmt.Sprintf(queryNSLabels, env.GetPromClusterFilter(), resStr), start, end, resolution)
-		resChPodLabels := ctx.QueryRange(fmt.Sprintf(queryPodLabels, env.GetPromClusterFilter(), resStr), start, end, resolution)
-		resChNSAnnotations := ctx.QueryRange(fmt.Sprintf(queryNSAnnotations, env.GetPromClusterFilter(), resStr), start, end, resolution)
-		resChPodAnnotations := ctx.QueryRange(fmt.Sprintf(queryPodAnnotations, env.GetPromClusterFilter(), resStr), start, end, resolution)
-		resChServiceLabels := ctx.QueryRange(fmt.Sprintf(queryServiceLabels, env.GetPromClusterFilter(), resStr), start, end, resolution)
-		resChDeploymentLabels := ctx.QueryRange(fmt.Sprintf(queryDeploymentLabels, env.GetPromClusterFilter(), resStr), start, end, resolution)
-		resChStatefulsetLabels := ctx.QueryRange(fmt.Sprintf(queryStatefulsetLabels, env.GetPromClusterFilter(), resStr), start, end, resolution)
-		resChJobs := ctx.QueryRange(fmt.Sprintf(queryPodJobs, env.GetPromClusterFilter(), env.GetPromClusterLabel()), start, end, resolution)
-		resChDaemonsets := ctx.QueryRange(fmt.Sprintf(queryPodDaemonsets, env.GetPromClusterFilter(), env.GetPromClusterLabel()), start, end, resolution)
-		resChNormalization := ctx.QueryRange(queryNormalization, start, end, resolution)
-
-	*/
-
-	// Pull k8s pod, controller, service, and namespace details
-	podlist := cm.Cache.GetAllPods()
-
-	podDeploymentsMapping, err := getPodDeployments(cm.Cache, podlist, clusterID)
-	if err != nil {
-		return nil, fmt.Errorf("error querying the kubernetes API: %s", err)
-	}
-
-	podStatefulsetsMapping, err := getPodStatefulsets(cm.Cache, podlist, clusterID)
-	if err != nil {
-		return nil, fmt.Errorf("error querying the kubernetes API: %s", err)
-	}
-
-	podServicesMapping, err := getPodServices(cm.Cache, podlist, clusterID)
-	if err != nil {
-		return nil, fmt.Errorf("error querying the kubernetes API: %s", err)
-	}
-
-	namespaceLabelsMapping, err := getNamespaceLabels(cm.Cache, clusterID)
-	if err != nil {
-		return nil, fmt.Errorf("error querying the kubernetes API: %s", err)
-	}
-
-	namespaceAnnotationsMapping, err := getNamespaceAnnotations(cm.Cache, clusterID)
-	if err != nil {
-		return nil, fmt.Errorf("error querying the kubernetes API: %s", err)
-	}
-
-	// Process query results. Handle errors afterwards using ctx.Errors.
-	resRAMRequests, _ := resChRAMRequests.Await()
-	resRAMUsage, _ := resChRAMUsage.Await()
-	resRAMAlloc, _ := resChRAMAlloc.Await()
-	resCPURequests, _ := resChCPURequests.Await()
-	resCPUUsage, _ := resChCPUUsage.Await()
-	resCPUAlloc, _ := resChCPUAlloc.Await()
-	resGPURequests, _ := resChGPURequests.Await()
-	resPVRequests, _ := resChPVRequests.Await()
-	resPVCAlloc, _ := resChPVCAlloc.Await()
-	resPVHourlyCost, _ := resChPVHourlyCost.Await()
-	resNetZoneRequests, _ := resChNetZoneRequests.Await()
-	resNetRegionRequests, _ := resChNetRegionRequests.Await()
-	resNetInternetRequests, _ := resChNetInternetRequests.Await()
-	resNSLabels, _ := resChNSLabels.Await()
-	resPodLabels, _ := resChPodLabels.Await()
-	resNSAnnotations, _ := resChNSAnnotations.Await()
-	resPodAnnotations, _ := resChPodAnnotations.Await()
-	resServiceLabels, _ := resChServiceLabels.Await()
-	resDeploymentLabels, _ := resChDeploymentLabels.Await()
-	resStatefulsetLabels, _ := resChStatefulsetLabels.Await()
-	resDaemonsets, _ := resChDaemonsets.Await()
-	resJobs, _ := resChJobs.Await()
-	resNormalization, _ := resChNormalization.Await()
-
-	// NOTE: The way we currently handle errors and warnings only early returns if there is an error. Warnings
-	// NOTE: will not propagate unless coupled with errors.
-	if grp.HasErrors() {
-		// To keep the context of where the errors are occurring, we log the errors here and pass them the error
-		// back to the caller. The caller should handle the specific case where error is an ErrorCollection
-		for _, queryErr := range grp.Errors() {
-			if queryErr.Error != nil {
-				log.Errorf("CostDataRange: Request Error: %s", queryErr.Error)
-			}
-			if queryErr.ParseError != nil {
-				log.Errorf("CostDataRange: Parsing Error: %s", queryErr.ParseError)
-			}
-		}
-
-		// ErrorCollection is an collection of errors wrapped in a single error implementation
-		return nil, grp.Error()
-	}
-
-	normalizationValue, err := getNormalizations(resNormalization)
-	if err != nil {
-		msg := fmt.Sprintf("error computing normalization for start=%s, end=%s, res=%s", start, end, resolution)
-		return nil, source.WrapError(err, msg)
-	}
-
-	pvClaimMapping, err := GetPVInfo(resPVRequests, clusterID)
-	if err != nil {
-		// Just log for compatibility with KSM less than 1.6
-		log.Infof("Unable to get PV Data: %s", err.Error())
-	}
-	if pvClaimMapping != nil {
-		err = addPVData(cm.Cache, pvClaimMapping, cp)
-		if err != nil {
-			return nil, fmt.Errorf("pvClaimMapping: %s", err)
-		}
-	}
-
-	pvCostMapping, err := GetPVCostMetrics(resPVHourlyCost, clusterID)
-	if err != nil {
-		log.Errorf("Unable to get PV Hourly Cost Data: %s", err.Error())
-	}
-
-	unmountedPVs := make(map[string][]*PersistentVolumeClaimData)
-	pvAllocationMapping, err := GetPVAllocationMetrics(resPVCAlloc, clusterID)
-	if err != nil {
-		log.Errorf("Unable to get PV Allocation Cost Data: %s", err.Error())
-	}
-	if pvAllocationMapping != nil {
-		addMetricPVData(pvAllocationMapping, pvCostMapping, cp)
-		for k, v := range pvAllocationMapping {
-			unmountedPVs[k] = v
-		}
-	}
-
-	nsLabels, err := GetNamespaceLabelsMetrics(resNSLabels, clusterID)
-	if err != nil {
-		log.Errorf("Unable to get Namespace Labels for Metrics: %s", err.Error())
-	}
-	if nsLabels != nil {
-		mergeStringMap(namespaceLabelsMapping, nsLabels)
-	}
-
-	podLabels, err := GetPodLabelsMetrics(resPodLabels, clusterID)
-	if err != nil {
-		log.Errorf("Unable to get Pod Labels for Metrics: %s", err.Error())
-	}
-
-	nsAnnotations, err := GetNamespaceAnnotationsMetrics(resNSAnnotations, clusterID)
-	if err != nil {
-		log.Errorf("Unable to get Namespace Annotations for Metrics: %s", err.Error())
-	}
-	if nsAnnotations != nil {
-		mergeStringMap(namespaceAnnotationsMapping, nsAnnotations)
-	}
-
-	podAnnotations, err := GetPodAnnotationsMetrics(resPodAnnotations, clusterID)
-	if err != nil {
-		log.Errorf("Unable to get Pod Annotations for Metrics: %s", err.Error())
-	}
-
-	serviceLabels, err := GetServiceSelectorLabelsMetrics(resServiceLabels, clusterID)
-	if err != nil {
-		log.Errorf("Unable to get Service Selector Labels for Metrics: %s", err.Error())
-	}
-
-	deploymentLabels, err := GetDeploymentMatchLabelsMetrics(resDeploymentLabels, clusterID)
-	if err != nil {
-		log.Errorf("Unable to get Deployment Match Labels for Metrics: %s", err.Error())
-	}
-
-	statefulsetLabels, err := GetStatefulsetMatchLabelsMetrics(resStatefulsetLabels, clusterID)
-	if err != nil {
-		log.Errorf("Unable to get Deployment Match Labels for Metrics: %s", err.Error())
-	}
-
-	podStatefulsetMetricsMapping, err := getPodDeploymentsWithMetrics(statefulsetLabels, podLabels)
-	if err != nil {
-		log.Errorf("Unable to get match Statefulset Labels Metrics to Pods: %s", err.Error())
-	}
-	appendLabelsList(podStatefulsetsMapping, podStatefulsetMetricsMapping)
-
-	podDeploymentsMetricsMapping, err := getPodDeploymentsWithMetrics(deploymentLabels, podLabels)
-	if err != nil {
-		log.Errorf("Unable to get match Deployment Labels Metrics to Pods: %s", err.Error())
-	}
-	appendLabelsList(podDeploymentsMapping, podDeploymentsMetricsMapping)
-
-	podDaemonsets, err := GetPodDaemonsetsWithMetrics(resDaemonsets, clusterID)
-	if err != nil {
-		log.Errorf("Unable to get Pod Daemonsets for Metrics: %s", err.Error())
-	}
-
-	podJobs, err := GetPodJobsWithMetrics(resJobs, clusterID)
-	if err != nil {
-		log.Errorf("Unable to get Pod Jobs for Metrics: %s", err.Error())
-	}
-
-	podServicesMetricsMapping, err := getPodServicesWithMetrics(serviceLabels, podLabels)
-	if err != nil {
-		log.Errorf("Unable to get match Service Labels Metrics to Pods: %s", err.Error())
-	}
-	appendLabelsList(podServicesMapping, podServicesMetricsMapping)
-
-	networkUsageMap, err := GetNetworkUsageData(resNetZoneRequests, resNetRegionRequests, resNetInternetRequests, clusterID)
-	if err != nil {
-		log.Errorf("Unable to get Network Cost Data: %s", err.Error())
-		networkUsageMap = make(map[string]*NetworkUsageData)
-	}
-
-	containerNameCost := make(map[string]*CostData)
-	containers := make(map[string]bool)
-	otherClusterPVRecorded := make(map[string]bool)
-
-	RAMReqMap, err := GetNormalizedContainerMetricVectors(resRAMRequests, normalizationValue, clusterID)
-	if err != nil {
-		return nil, source.WrapError(err, "GetNormalizedContainerMetricVectors(RAMRequests)")
-	}
-	for key := range RAMReqMap {
-		containers[key] = true
-	}
-
-	RAMUsedMap, err := GetNormalizedContainerMetricVectors(resRAMUsage, normalizationValue, clusterID)
-	if err != nil {
-		return nil, source.WrapError(err, "GetNormalizedContainerMetricVectors(RAMUsage)")
-	}
-	for key := range RAMUsedMap {
-		containers[key] = true
-	}
-
-	CPUReqMap, err := GetNormalizedContainerMetricVectors(resCPURequests, normalizationValue, clusterID)
-	if err != nil {
-		return nil, source.WrapError(err, "GetNormalizedContainerMetricVectors(CPURequests)")
-	}
-	for key := range CPUReqMap {
-		containers[key] = true
-	}
-
-	// No need to normalize here, as this comes from a counter, namely:
-	// rate(container_cpu_usage_seconds_total) which properly accounts for normalized rates
-	CPUUsedMap, err := GetContainerMetricVectors(resCPUUsage, clusterID)
-	if err != nil {
-		return nil, source.WrapError(err, "GetContainerMetricVectors(CPUUsage)")
-	}
-	for key := range CPUUsedMap {
-		containers[key] = true
-	}
-
-	RAMAllocMap, err := GetContainerMetricVectors(resRAMAlloc, clusterID)
-	if err != nil {
-		return nil, source.WrapError(err, "GetContainerMetricVectors(RAMAllocations)")
-	}
-	for key := range RAMAllocMap {
-		containers[key] = true
-	}
-
-	CPUAllocMap, err := GetContainerMetricVectors(resCPUAlloc, clusterID)
-	if err != nil {
-		return nil, source.WrapError(err, "GetContainerMetricVectors(CPUAllocations)")
-	}
-	for key := range CPUAllocMap {
-		containers[key] = true
-	}
-
-	GPUReqMap, err := GetNormalizedContainerMetricVectors(resGPURequests, normalizationValue, clusterID)
-	if err != nil {
-		return nil, source.WrapError(err, "GetContainerMetricVectors(GPURequests)")
-	}
-	for key := range GPUReqMap {
-		containers[key] = true
-	}
-
-	// Request metrics can show up after pod eviction and completion.
-	// This method synchronizes requests to allocations such that when
-	// allocation is 0, so are requests
-	applyAllocationToRequests(RAMAllocMap, RAMReqMap)
-	applyAllocationToRequests(CPUAllocMap, CPUReqMap)
-
-	missingNodes := make(map[string]*costAnalyzerCloud.Node)
-	missingContainers := make(map[string]*CostData)
-	for key := range containers {
-		if _, ok := containerNameCost[key]; ok {
-			continue // because ordering is important for the allocation model (all PV's applied to the first), just dedupe if it's already been added.
-		}
-		c, _ := NewContainerMetricFromKey(key)
-		RAMReqV, ok := RAMReqMap[key]
-		if !ok {
-			log.Debug("no RAM requests for " + key)
-			RAMReqV = []*util.Vector{}
-		}
-		RAMUsedV, ok := RAMUsedMap[key]
-		if !ok {
-			log.Debug("no RAM usage for " + key)
-			RAMUsedV = []*util.Vector{}
-		}
-		CPUReqV, ok := CPUReqMap[key]
-		if !ok {
-			log.Debug("no CPU requests for " + key)
-			CPUReqV = []*util.Vector{}
-		}
-		CPUUsedV, ok := CPUUsedMap[key]
-		if !ok {
-			log.Debug("no CPU usage for " + key)
-			CPUUsedV = []*util.Vector{}
-		}
-		RAMAllocsV, ok := RAMAllocMap[key]
-		if !ok {
-			log.Debug("no RAM allocation for " + key)
-			RAMAllocsV = []*util.Vector{}
-		}
-		CPUAllocsV, ok := CPUAllocMap[key]
-		if !ok {
-			log.Debug("no CPU allocation for " + key)
-			CPUAllocsV = []*util.Vector{}
-		}
-		GPUReqV, ok := GPUReqMap[key]
-		if !ok {
-			log.Debug("no GPU requests for " + key)
-			GPUReqV = []*util.Vector{}
-		}
-
-		var node *costAnalyzerCloud.Node
-		if n, ok := missingNodes[c.NodeName]; ok {
-			node = n
-		} else {
-			node = &costAnalyzerCloud.Node{}
-			missingNodes[c.NodeName] = node
-		}
-
-		nsKey := c.Namespace + "," + c.ClusterID
-		podKey := c.Namespace + "," + c.PodName + "," + c.ClusterID
-
-		namespaceLabels, _ := namespaceLabelsMapping[nsKey]
-
-		pLabels := podLabels[podKey]
-		if pLabels == nil {
-			pLabels = make(map[string]string)
-		}
-
-		for k, v := range namespaceLabels {
-			if _, ok := pLabels[k]; !ok {
-				pLabels[k] = v
-			}
-		}
-
-		namespaceAnnotations, _ := namespaceAnnotationsMapping[nsKey]
-
-		pAnnotations := podAnnotations[podKey]
-		if pAnnotations == nil {
-			pAnnotations = make(map[string]string)
-		}
-
-		for k, v := range namespaceAnnotations {
-			if _, ok := pAnnotations[k]; !ok {
-				pAnnotations[k] = v
-			}
-		}
-
-		var podDeployments []string
-		if _, ok := podDeploymentsMapping[nsKey]; ok {
-			if ds, ok := podDeploymentsMapping[nsKey][c.PodName]; ok {
-				podDeployments = ds
-			} else {
-				podDeployments = []string{}
-			}
-		}
-
-		var podStatefulSets []string
-		if _, ok := podStatefulsetsMapping[nsKey]; ok {
-			if ss, ok := podStatefulsetsMapping[nsKey][c.PodName]; ok {
-				podStatefulSets = ss
-			} else {
-				podStatefulSets = []string{}
-			}
-
-		}
-
-		var podServices []string
-		if _, ok := podServicesMapping[nsKey]; ok {
-			if svcs, ok := podServicesMapping[nsKey][c.PodName]; ok {
-				podServices = svcs
-			} else {
-				podServices = []string{}
-			}
-		}
-
-		var podPVs []*PersistentVolumeClaimData
-		var podNetCosts []*util.Vector
-
-		// For PVC data, we'll need to find the claim mapping and cost data. Will need to append
-		// cost data since that was populated by cluster data previously. We do this with
-		// the pod_pvc_allocation metric
-		podPVData, ok := pvAllocationMapping[podKey]
-		if !ok {
-			log.Debugf("Failed to locate pv allocation mapping for missing pod.")
-		}
-
-		// Delete the current pod key from potentially unmounted pvs
-		delete(unmountedPVs, podKey)
-
-		// For network costs, we'll use existing map since it should still contain the
-		// correct data.
-		var podNetworkCosts []*util.Vector
-		if usage, ok := networkUsageMap[podKey]; ok {
-			netCosts, err := GetNetworkCost(usage, cp)
-			if err != nil {
-				log.Errorf("Error pulling network costs: %s", err.Error())
-			} else {
-				podNetworkCosts = netCosts
-			}
-		}
-
-		// Check to see if any other data has been recorded for this namespace, pod, clusterId
-		// Follow the pattern of only allowing claims data per pod
-		if !otherClusterPVRecorded[podKey] {
-			otherClusterPVRecorded[podKey] = true
-
-			podPVs = podPVData
-			podNetCosts = podNetworkCosts
-		}
-
-		pds := []string{}
-		if ds, ok := podDaemonsets[podKey]; ok {
-			pds = []string{ds}
-		}
-
-		jobs := []string{}
-		if job, ok := podJobs[podKey]; ok {
-			jobs = []string{job}
-		}
-
-		costs := &CostData{
-			Name:            c.ContainerName,
-			PodName:         c.PodName,
-			NodeName:        c.NodeName,
-			NodeData:        node,
-			Namespace:       c.Namespace,
-			Services:        podServices,
-			Deployments:     podDeployments,
-			Daemonsets:      pds,
-			Statefulsets:    podStatefulSets,
-			Jobs:            jobs,
-			RAMReq:          RAMReqV,
-			RAMUsed:         RAMUsedV,
-			CPUReq:          CPUReqV,
-			CPUUsed:         CPUUsedV,
-			RAMAllocation:   RAMAllocsV,
-			CPUAllocation:   CPUAllocsV,
-			GPUReq:          GPUReqV,
-			Annotations:     pAnnotations,
-			Labels:          pLabels,
-			NamespaceLabels: namespaceLabels,
-			PVCData:         podPVs,
-			NetworkData:     podNetCosts,
-			ClusterID:       c.ClusterID,
-			ClusterName:     cm.ClusterMap.NameFor(c.ClusterID),
-		}
-
-		if costDataPassesFilters(cm.ClusterMap, costs, filterNamespace, filterCluster) {
-			containerNameCost[key] = costs
-			missingContainers[key] = costs
-		}
-	}
-
-	unmounted := findUnmountedPVCostData(cm.ClusterMap, unmountedPVs, namespaceLabelsMapping, namespaceAnnotationsMapping)
-	for k, costs := range unmounted {
-		log.Debugf("Unmounted PVs in Namespace/ClusterID: %s/%s", costs.Namespace, costs.ClusterID)
-
-		if costDataPassesFilters(cm.ClusterMap, costs, filterNamespace, filterCluster) {
-			containerNameCost[k] = costs
-		}
-	}
-
-	if window.Minutes() > 0 {
-		dur, off := window.DurationOffsetStrings()
-		err = findDeletedNodeInfo(dataSource, missingNodes, dur, off)
-		if err != nil {
-			log.Errorf("Error fetching historical node data: %s", err.Error())
-		}
-	}
-
-	return containerNameCost, nil
-}
-
-func applyAllocationToRequests(allocationMap map[string][]*util.Vector, requestMap map[string][]*util.Vector) {
-	// The result of the normalize operation will be a new []*util.Vector to replace the requests
-	normalizeOp := func(r *util.Vector, x *float64, y *float64) bool {
-		// Omit data (return false) if both x and y inputs don't exist
-		if x == nil || y == nil {
-			return false
-		}
-
-		// If the allocation value is 0, 0 out request value
-		if *x == 0 {
-			r.Value = 0
-		} else {
-			r.Value = *y
-		}
-
-		return true
-	}
-
-	// Run normalization on all request vectors in the mapping
-	for k, requests := range requestMap {
-
-		// Only run normalization where there are valid allocations
-		allocations, ok := allocationMap[k]
-		if !ok {
-			delete(requestMap, k)
-			continue
-		}
-
-		// Replace request map with normalized
-		requestMap[k] = util.ApplyVectorOp(allocations, requests, normalizeOp)
-	}
-}
-
-func addMetricPVData(pvAllocationMap map[string][]*PersistentVolumeClaimData, pvCostMap map[string]*costAnalyzerCloud.PV, cp costAnalyzerCloud.Provider) {
-	cfg, err := cp.GetConfig()
-	if err != nil {
-		log.Errorf("Failed to get provider config while adding pv metrics data.")
-		return
-	}
-
-	for _, pvcDataArray := range pvAllocationMap {
-		for _, pvcData := range pvcDataArray {
-			costKey := fmt.Sprintf("%s,%s", pvcData.VolumeName, pvcData.ClusterID)
-
-			pvCost, ok := pvCostMap[costKey]
-			if !ok {
-				pvcData.Volume = &costAnalyzerCloud.PV{
-					Cost: cfg.Storage,
-				}
-				continue
-			}
-
-			pvcData.Volume = pvCost
-		}
-	}
-}
-
-// Add values that don't already exist in origMap from mergeMap into origMap
-func mergeStringMap(origMap map[string]map[string]string, mergeMap map[string]map[string]string) {
-	for k, v := range mergeMap {
-		if _, ok := origMap[k]; !ok {
-			origMap[k] = v
-		}
-	}
-}
-
-func appendLabelsList(mainLabels map[string]map[string][]string, labels map[string]map[string][]string) {
-	for k, v := range labels {
-		mainLabels[k] = v
-	}
 }
 
 func getNamespaceLabels(cache clustercache.ClusterCache, clusterID string) (map[string]map[string]string, error) {
@@ -2341,13 +1456,6 @@ func measureTime(start time.Time, threshold time.Duration, name string) {
 	elapsed := time.Since(start)
 	if elapsed > threshold {
 		log.Infof("[Profiler] %s: %s", elapsed, name)
-	}
-}
-
-func measureTimeAsync(start time.Time, threshold time.Duration, name string, ch chan string) {
-	elapsed := time.Since(start)
-	if elapsed > threshold {
-		ch <- fmt.Sprintf("%s took %s", name, time.Since(start))
 	}
 }
 

@@ -425,7 +425,7 @@ func GetServiceSelectorLabelsMetrics(qrs []*source.QueryResult, defaultClusterID
 	return toReturn, nil
 }
 
-func GetContainerMetricVector(qrs []*source.QueryResult, normalize bool, normalizationValue float64, defaultClusterID string) (map[string][]*util.Vector, error) {
+func GetContainerMetricVector(qrs []*source.QueryResult, defaultClusterID string) (map[string][]*util.Vector, error) {
 	containerData := make(map[string][]*util.Vector)
 	for _, val := range qrs {
 		containerMetric, err := NewContainerMetricFromResult(val, defaultClusterID)
@@ -433,11 +433,6 @@ func GetContainerMetricVector(qrs []*source.QueryResult, normalize bool, normali
 			return nil, err
 		}
 
-		if normalize && normalizationValue != 0 {
-			for _, v := range val.Values {
-				v.Value = v.Value / normalizationValue
-			}
-		}
 		containerData[containerMetric.Key()] = val.Values
 	}
 	return containerData, nil
@@ -482,33 +477,11 @@ func getCost(qrs []*source.QueryResult) (map[string][]*util.Vector, error) {
 	return toReturn, nil
 }
 
-// TODO niko/prom retain message:
-// normalization data is empty: time window may be invalid or kube-state-metrics or node-exporter may not be running
-func getNormalization(qrs []*source.QueryResult) (float64, error) {
-	if len(qrs) == 0 {
-		return 0.0, source.NewNoDataError("getNormalization")
-	}
-	if len(qrs[0].Values) == 0 {
-		return 0.0, source.NewNoDataError("getNormalization")
-	}
-	return qrs[0].Values[0].Value, nil
-}
-
-// TODO niko/prom retain message:
-// normalization data is empty: time window may be invalid or kube-state-metrics or node-exporter may not be running
-func getNormalizations(qrs []*source.QueryResult) ([]*util.Vector, error) {
-	if len(qrs) == 0 {
-		return nil, source.NewNoDataError("getNormalizations")
-	}
-
-	return qrs[0].Values, nil
-}
-
 func parsePodLabels(qrs []*source.QueryResult) (map[string]map[string]string, error) {
 	podLabels := map[string]map[string]string{}
 
 	for _, result := range qrs {
-		pod, err := result.GetString("pod")
+		pod, err := result.GetPod()
 		if err != nil {
 			return podLabels, errors.New("missing pod field")
 		}
