@@ -533,6 +533,18 @@ type nodeIdentifierNoProviderID struct {
 	Name    string
 }
 
+type ClusterManagementIdentifier struct {
+	Cluster     string
+	Provisioner string
+}
+
+type ClusterManagementCost struct {
+	Cluster     string
+	Provisioner string
+
+	Cost float64
+}
+
 func costTimesMinuteAndCount(activeDataMap map[NodeIdentifier]activeData, costMap map[NodeIdentifier]float64, resourceCountMap map[nodeIdentifierNoProviderID]float64) {
 	for k, v := range activeDataMap {
 		keyNon := nodeIdentifierNoProviderID{
@@ -550,7 +562,7 @@ func costTimesMinuteAndCount(activeDataMap map[NodeIdentifier]activeData, costMa
 	}
 }
 
-func costTimesMinute(activeDataMap map[NodeIdentifier]activeData, costMap map[NodeIdentifier]float64) {
+func costTimesMinute[T comparable](activeDataMap map[T]activeData, costMap map[T]float64) {
 	for k, v := range activeDataMap {
 		if cost, ok := costMap[k]; ok {
 			minutes := v.minutes
@@ -611,7 +623,7 @@ func ClusterNodes(dataSource source.OpenCostDataSource, cp models.Provider, star
 		return nil, requiredGrp.Error()
 	}
 
-	activeDataMap := buildActiveDataMap(resActiveMins, resolution, opencost.NewClosedWindow(start, end))
+	activeDataMap := buildActiveDataMap(resActiveMins, nodeKeyGen, resolution, opencost.NewClosedWindow(start, end))
 
 	gpuCountMap := buildGPUCountMap(resNodeGPUCount)
 	preemptibleMap := buildPreemptibleMap(resIsSpot)
@@ -684,6 +696,7 @@ type LoadBalancerIdentifier struct {
 	Cluster   string
 	Namespace string
 	Name      string
+	IngressIP string
 }
 
 type LoadBalancer struct {
@@ -704,7 +717,7 @@ func ClusterLoadBalancers(dataSource source.OpenCostDataSource, start, end time.
 
 	grp := source.NewQueryGroup()
 
-	resChLBCost := grp.With(dataSource.QueryLBCost(start, end))
+	resChLBCost := grp.With(dataSource.QueryLBPricePerHr(start, end))
 	resChActiveMins := grp.With(dataSource.QueryLBActiveMinutes(start, end))
 
 	resLBCost, _ := resChLBCost.Await()
@@ -715,118 +728,86 @@ func ClusterLoadBalancers(dataSource source.OpenCostDataSource, start, end time.
 	}
 
 	loadBalancerMap := make(map[LoadBalancerIdentifier]*LoadBalancer, len(resActiveMins))
-
-	for _, result := range resActiveMins {
-		cluster, err := result.GetCluster()
-		if err != nil {
-			cluster = env.GetClusterID()
-		}
-		namespace, err := result.GetNamespace()
-		if err != nil {
-			log.Warnf("ClusterLoadBalancers: LB cost data missing namespace")
-			continue
-		}
-		name, err := result.GetString("service_name")
-		if err != nil {
-			log.Warnf("ClusterLoadBalancers: LB cost data missing service_name")
-			continue
-		}
-		providerID, err := result.GetString("ingress_ip")
-		if err != nil {
-			log.DedupedWarningf(5, "ClusterLoadBalancers: LB cost data missing ingress_ip")
-			providerID = ""
-		}
-
-		key := LoadBalancerIdentifier{
-			Cluster:   cluster,
-			Namespace: namespace,
-			Name:      name,
-		}
-
-		// Skip if there are no data
-		if len(result.Values) == 0 {
-			continue
-		}
-
-		// Add load balancer to the set of load balancers
-		if _, ok := loadBalancerMap[key]; !ok {
-			loadBalancerMap[key] = &LoadBalancer{
-				Cluster:    cluster,
-				Namespace:  namespace,
-				Name:       fmt.Sprintf("%s/%s", namespace, name), // TODO:ETL this is kept for backwards-compatibility, but not good
-				ProviderID: provider.ParseLBID(providerID),
-			}
-		}
-
-		// Append start, end, and minutes. This should come before all other data.
-		s := time.Unix(int64(result.Values[0].Timestamp), 0)
-		e := time.Unix(int64(result.Values[len(result.Values)-1].Timestamp), 0)
-		loadBalancerMap[key].Start = s
-		loadBalancerMap[key].End = e
-		loadBalancerMap[key].Minutes = e.Sub(s).Minutes()
-
-		// Fill in Provider ID if it is available and missing in the loadBalancerMap
-		// Prevents there from being a duplicate LoadBalancers on the same day
-		if providerID != "" && loadBalancerMap[key].ProviderID == "" {
-			loadBalancerMap[key].ProviderID = providerID
-		}
-	}
+	activeMap := buildActiveDataMap(resActiveMins, loadBalancerKeyGen, resolution, opencost.NewClosedWindow(start, end))
 
 	for _, result := range resLBCost {
-		cluster, err := result.GetCluster()
-		if err != nil {
-			cluster = env.GetClusterID()
-		}
-		namespace, err := result.GetNamespace()
-		if err != nil {
-			log.Warnf("ClusterLoadBalancers: LB cost data missing namespace")
-			continue
-		}
-		name, err := result.GetString("service_name")
-		if err != nil {
-			log.Warnf("ClusterLoadBalancers: LB cost data missing service_name")
+		key, ok := loadBalancerKeyGen(result)
+		if !ok {
 			continue
 		}
 
-		providerID, err := result.GetString("ingress_ip")
-		if err != nil {
-			log.DedupedWarningf(5, "ClusterLoadBalancers: LB cost data missing ingress_ip")
-			// only update asset cost when an actual IP was returned
-			continue
+		lbPricePerHr := result.Values[0].Value
+
+		lb := &LoadBalancer{
+			Cluster:   key.Cluster,
+			Namespace: key.Namespace,
+			Name:      key.Name,
+			Cost:      lbPricePerHr, // default to hourly cost, overwrite if active entry exists
+			Ip:        key.IngressIP,
+			Private:   privateIPCheck(key.IngressIP),
 		}
-		key := LoadBalancerIdentifier{
-			Cluster:   cluster,
-			Namespace: namespace,
-			Name:      name,
-		}
 
-		// Apply cost as price-per-hour * hours
-		if lb, ok := loadBalancerMap[key]; ok {
-			lbPricePerHr := result.Values[0].Value
+		if active, ok := activeMap[key]; ok {
+			lb.Start = active.start
+			lb.End = active.end
+			lb.Minutes = active.minutes
 
-			// interpolate any missing data
-			resultMins := lb.Minutes
-			if resultMins > 0 {
-				scaleFactor := (resultMins + resolution.Minutes()) / resultMins
-
-				hrs := (lb.Minutes * scaleFactor) / 60.0
-				lb.Cost += lbPricePerHr * hrs
+			if active.minutes > 0 {
+				lb.Cost = lbPricePerHr * (active.minutes / 60.0)
 			} else {
 				log.DedupedWarningf(20, "ClusterLoadBalancers: found zero minutes for key: %v", key)
 			}
-
-			if lb.Ip != "" && lb.Ip != providerID {
-				log.DedupedWarningf(5, "ClusterLoadBalancers: multiple IPs per load balancer not supported, using most recent IP")
-			}
-			lb.Ip = providerID
-
-			lb.Private = privateIPCheck(providerID)
-		} else {
-			log.DedupedWarningf(20, "ClusterLoadBalancers: found minutes for key that does not exist: %v", key)
 		}
+
+		loadBalancerMap[key] = lb
 	}
 
 	return loadBalancerMap, nil
+}
+
+func ClusterManagement(dataSource source.OpenCostDataSource, start, end time.Time) (map[ClusterManagementIdentifier]*ClusterManagementCost, error) {
+	resolution := env.GetETLResolution()
+
+	grp := source.NewQueryGroup()
+
+	resChCMPrice := grp.With(dataSource.QueryClusterManagementPricePerHr(start, end))
+	resChCMDur := grp.With(dataSource.QueryClusterManagementDuration(start, end))
+
+	resCMPrice, _ := resChCMPrice.Await()
+	resCMDur, _ := resChCMDur.Await()
+
+	if grp.HasErrors() {
+		return nil, grp.Error()
+	}
+
+	clusterManagementPriceMap := make(map[ClusterManagementIdentifier]*ClusterManagementCost, len(resCMDur))
+	activeMap := buildActiveDataMap(resCMDur, clusterManagementKeyGen, resolution, opencost.NewClosedWindow(start, end))
+
+	for _, result := range resCMPrice {
+		key, ok := clusterManagementKeyGen(result)
+		if !ok {
+			continue
+		}
+
+		cmPricePerHr := result.Values[0].Value
+		cm := &ClusterManagementCost{
+			Cluster:     key.Cluster,
+			Provisioner: key.Provisioner,
+			Cost:        cmPricePerHr, // default to hourly cost, overwrite if active entry exists
+		}
+
+		if active, ok := activeMap[key]; ok {
+			if active.minutes > 0 {
+				cm.Cost = cmPricePerHr * (active.minutes / 60.0)
+			} else {
+				log.DedupedWarningf(20, "ClusterManagement: found zero minutes for key: %v", key)
+			}
+		}
+
+		clusterManagementPriceMap[key] = cm
+	}
+
+	return clusterManagementPriceMap, nil
 }
 
 // Check if an ip is private.

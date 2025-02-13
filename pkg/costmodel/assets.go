@@ -14,7 +14,6 @@ func (cm *CostModel) ComputeAssets(start, end time.Time) (*opencost.AssetSet, er
 	nodeMap, err := cm.ClusterNodes(start, end)
 	if err != nil {
 		return nil, fmt.Errorf("error computing node assets for %s: %w", opencost.NewClosedWindow(start, end), err)
-
 	}
 
 	lbMap, err := cm.ClusterLoadBalancers(start, end)
@@ -25,6 +24,11 @@ func (cm *CostModel) ComputeAssets(start, end time.Time) (*opencost.AssetSet, er
 	diskMap, err := cm.ClusterDisks(start, end)
 	if err != nil {
 		return nil, fmt.Errorf("error computing disk assets for %s: %w", opencost.NewClosedWindow(start, end), err)
+	}
+
+	clusterManagement, err := cm.ClusterManagement(start, end)
+	if err != nil {
+		return nil, fmt.Errorf("error computing cluster management assets for %s: %w", opencost.NewClosedWindow(start, end), err)
 	}
 
 	for _, d := range diskMap {
@@ -88,6 +92,14 @@ func (cm *CostModel) ComputeAssets(start, end time.Time) (*opencost.AssetSet, er
 		cm.PropertiesFromCluster(loadBalancer.Properties)
 		loadBalancer.Cost = lb.Cost
 		assetSet.Insert(loadBalancer, nil)
+	}
+
+	for _, cman := range clusterManagement {
+		cmAsset := opencost.NewClusterManagement(cman.Provisioner, cman.Cluster, opencost.NewClosedWindow(start, end)) //src.CostModel.PropertiesFromCluster(cm.Properties)
+		cm.PropertiesFromCluster(cmAsset.Properties)
+		cmAsset.Cost = cman.Cost
+
+		assetSet.Insert(cmAsset, nil)
 	}
 
 	for _, n := range nodeMap {
@@ -165,6 +177,10 @@ func (cm *CostModel) ClusterLoadBalancers(start, end time.Time) (map[LoadBalance
 
 func (cm *CostModel) ClusterNodes(start, end time.Time) (map[NodeIdentifier]*Node, error) {
 	return ClusterNodes(cm.DataSource, cm.Provider, start, end)
+}
+
+func (cm *CostModel) ClusterManagement(start, end time.Time) (map[ClusterManagementIdentifier]*ClusterManagementCost, error) {
+	return ClusterManagement(cm.DataSource, start, end)
 }
 
 // propertiesFromCluster populates static cluster properties to individual asset properties

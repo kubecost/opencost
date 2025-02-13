@@ -519,6 +519,30 @@ func (pds *PrometheusDataSource) prometheusMetrics(w http.ResponseWriter, _ *htt
 	proto.WriteResponse(w, proto.ToResponse(result, nil))
 }
 
+func (pds *PrometheusDataSource) PrometheusClient() prometheus.Client {
+	return pds.promClient
+}
+
+func (pds *PrometheusDataSource) PrometheusConfig() *OpenCostPrometheusConfig {
+	return pds.promConfig
+}
+
+func (pds *PrometheusDataSource) PrometheusContexts() *ContextFactory {
+	return pds.promContexts
+}
+
+func (pds *PrometheusDataSource) ThanosClient() prometheus.Client {
+	return pds.thanosClient
+}
+
+func (pds *PrometheusDataSource) ThanosConfig() *OpenCostThanosConfig {
+	return pds.thanosConfig
+}
+
+func (pds *PrometheusDataSource) ThanosContexts() *ContextFactory {
+	return pds.thanosContexts
+}
+
 func (pds *PrometheusDataSource) NewClusterMap(clusterInfoProvider clusters.ClusterInfoProvider) clusters.ClusterMap {
 	if pds.thanosClient != nil {
 		return newPrometheusClusterMap(pds.thanosContexts, clusterInfoProvider, 10*time.Minute)
@@ -1120,27 +1144,25 @@ func (pds *PrometheusDataSource) QueryNodeRAMUserPercent(start, end time.Time) s
 	return ctx.QueryAtTime(queryRAMUserPct, end)
 }
 
-func (pds *PrometheusDataSource) QueryLBCost(start, end time.Time) source.QueryResultsChan {
-	// env.GetPromClusterFilter(), durStr, env.GetPromClusterLabel()
-
-	const lbCostQuery = `avg(avg_over_time(kubecost_load_balancer_cost{%s}[%s])) by (namespace, service_name, %s, ingress_ip)`
+func (pds *PrometheusDataSource) QueryLBPricePerHr(start, end time.Time) source.QueryResultsChan {
+	const queryFmtLBCostPerHr = `avg(avg_over_time(kubecost_load_balancer_cost{%s}[%s])) by (namespace, service_name, ingress_ip, %s)`
+	// env.GetPromClusterFilter(), durStr, env.GetPromClusterLabel())
 
 	cfg := pds.promConfig
 
 	durStr := timeutil.DurationString(end.Sub(start))
 	if durStr == "" {
-		panic("failed to parse duration string passed to QueryLBCost")
+		panic("failed to parse duration string passed to QueryLBPricePerHr")
 	}
 
-	queryLBCost := fmt.Sprintf(lbCostQuery, cfg.ClusterFilter, durStr, cfg.ClusterLabel)
-	ctx := pds.promContexts.NewNamedContext(ClusterContextName)
-	return ctx.QueryAtTime(queryLBCost, end)
+	queryLBCostPerHr := fmt.Sprintf(queryFmtLBCostPerHr, cfg.ClusterFilter, durStr, cfg.ClusterLabel)
+	ctx := pds.promContexts.NewNamedContext(AllocationContextName)
+	return ctx.QueryAtTime(queryLBCostPerHr, end)
 }
 
 func (pds *PrometheusDataSource) QueryLBActiveMinutes(start, end time.Time) source.QueryResultsChan {
-	// env.GetPromClusterFilter(), env.GetPromClusterLabel(), durStr, minsPerResolution)
-
 	const lbActiveMinutesQuery = `avg(kubecost_load_balancer_cost{%s}) by (namespace, service_name, %s, ingress_ip)[%s:%dm]`
+	// env.GetPromClusterFilter(), env.GetPromClusterLabel(), durStr, minsPerResolution)
 
 	cfg := pds.promConfig
 	minsPerResolution := cfg.DataResolutionMinutes
@@ -1153,6 +1175,38 @@ func (pds *PrometheusDataSource) QueryLBActiveMinutes(start, end time.Time) sour
 	queryLBActiveMins := fmt.Sprintf(lbActiveMinutesQuery, cfg.ClusterFilter, cfg.ClusterLabel, durStr, minsPerResolution)
 	ctx := pds.promContexts.NewNamedContext(ClusterContextName)
 	return ctx.QueryAtTime(queryLBActiveMins, end)
+}
+
+func (pds *PrometheusDataSource) QueryClusterManagementDuration(start, end time.Time) source.QueryResultsChan {
+	const clusterManagementDurationQuery = `avg(kubecost_cluster_management_cost{%s}) by (%s, provisioner_name)[%s:%dm]`
+
+	cfg := pds.promConfig
+	minsPerResolution := cfg.DataResolutionMinutes
+
+	durStr := timeutil.DurationString(end.Sub(start))
+	if durStr == "" {
+		panic("failed to parse duration string passed to QueryClusterManagementDuration")
+	}
+
+	queryClusterManagementDuration := fmt.Sprintf(clusterManagementDurationQuery, cfg.ClusterFilter, cfg.ClusterLabel, durStr, minsPerResolution)
+	ctx := pds.promContexts.NewNamedContext(ClusterContextName)
+	return ctx.QueryAtTime(queryClusterManagementDuration, end)
+}
+
+func (pds *PrometheusDataSource) QueryClusterManagementPricePerHr(start, end time.Time) source.QueryResultsChan {
+	const clusterManagementCostQuery = `avg(avg_over_time(kubecost_cluster_management_cost{%s}[%s])) by (%s, provisioner_name)`
+	// env.GetPromClusterFilter(), durationStr, env.GetPromClusterLabel()
+
+	cfg := pds.promConfig
+
+	durStr := timeutil.DurationString(end.Sub(start))
+	if durStr == "" {
+		panic("failed to parse duration string passed to QueryClusterManagementCost")
+	}
+
+	queryClusterManagementCost := fmt.Sprintf(clusterManagementCostQuery, cfg.ClusterFilter, durStr, cfg.ClusterLabel)
+	ctx := pds.promContexts.NewNamedContext(ClusterContextName)
+	return ctx.QueryAtTime(queryClusterManagementCost, end)
 }
 
 func (pds *PrometheusDataSource) QueryDataCount(start, end time.Time) source.QueryResultsChan {
@@ -2208,40 +2262,6 @@ func (pds *PrometheusDataSource) QueryReplicaSetsWithRollout(start, end time.Tim
 	queryReplicaSetsWithRolloutOwner := fmt.Sprintf(queryFmtReplicaSetsWithRolloutOwner, cfg.ClusterFilter, durStr, cfg.ClusterLabel)
 	ctx := pds.promContexts.NewNamedContext(AllocationContextName)
 	return ctx.QueryAtTime(queryReplicaSetsWithRolloutOwner, end)
-}
-
-func (pds *PrometheusDataSource) QueryLBCostPerHr(start, end time.Time) source.QueryResultsChan {
-	const queryFmtLBCostPerHr = `avg(avg_over_time(kubecost_load_balancer_cost{%s}[%s])) by (namespace, service_name, ingress_ip, %s)`
-	// env.GetPromClusterFilter(), durStr, env.GetPromClusterLabel())
-
-	cfg := pds.promConfig
-
-	durStr := timeutil.DurationString(end.Sub(start))
-	if durStr == "" {
-		panic("failed to parse duration string passed to QueryLBCostPerHr")
-	}
-
-	queryLBCostPerHr := fmt.Sprintf(queryFmtLBCostPerHr, cfg.ClusterFilter, durStr, cfg.ClusterLabel)
-	ctx := pds.promContexts.NewNamedContext(AllocationContextName)
-	return ctx.QueryAtTime(queryLBCostPerHr, end)
-}
-
-func (pds *PrometheusDataSource) QueryLBActiveMins(start, end time.Time) source.QueryResultsChan {
-	const queryFmtLBActiveMins = `count(kubecost_load_balancer_cost{%s}) by (namespace, service_name, %s)[%s:%s]`
-	// env.GetPromClusterFilter(), env.GetPromClusterLabel(), durStr, resStr)
-
-	cfg := pds.promConfig
-	resolution := cfg.DataResolution
-	resStr := timeutil.DurationString(resolution)
-
-	durStr := timeutil.DurationString(end.Sub(start))
-	if durStr == "" {
-		panic("failed to parse duration string passed to QueryLBActiveMins")
-	}
-
-	queryLBActiveMins := fmt.Sprintf(queryFmtLBActiveMins, cfg.ClusterFilter, cfg.ClusterLabel, durStr, resStr)
-	ctx := pds.promContexts.NewNamedContext(AllocationContextName)
-	return ctx.QueryAtTime(queryLBActiveMins, end)
 }
 
 func (pds *PrometheusDataSource) QueryDataCoverage(limitDays int) (time.Time, time.Time, error) {

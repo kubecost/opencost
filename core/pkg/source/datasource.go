@@ -46,8 +46,12 @@ type ClusterMetricsQuerier interface {
 	QueryNodeRAMUserPercent(start, end time.Time) QueryResultsChan
 
 	// Load Balancers
-	QueryLBCost(start, end time.Time) QueryResultsChan
+	QueryLBPricePerHr(start, end time.Time) QueryResultsChan
 	QueryLBActiveMinutes(start, end time.Time) QueryResultsChan
+
+	// Cluster Management
+	QueryClusterManagementDuration(start, end time.Time) QueryResultsChan
+	QueryClusterManagementPricePerHr(start, end time.Time) QueryResultsChan
 
 	// Cluster Costs
 	QueryDataCount(start, end time.Time) QueryResultsChan
@@ -114,8 +118,6 @@ type AllocationMetricsQuerier interface {
 	QueryPodsWithReplicaSetOwner(start, end time.Time) QueryResultsChan
 	QueryReplicaSetsWithoutOwners(start, end time.Time) QueryResultsChan
 	QueryReplicaSetsWithRollout(start, end time.Time) QueryResultsChan
-	QueryLBCostPerHr(start, end time.Time) QueryResultsChan
-	QueryLBActiveMins(start, end time.Time) QueryResultsChan
 	QueryDataCoverage(limitDays int) (time.Time, time.Time, error)
 	QueryIsGPUShared(start, end time.Time) QueryResultsChan
 	QueryGetGPUInfo(start, end time.Time) QueryResultsChan

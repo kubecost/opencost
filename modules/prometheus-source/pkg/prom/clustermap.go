@@ -166,9 +166,9 @@ func (pcm *PrometheusClusterMap) loadClusters() (map[string]*clusters.ClusterInf
 func (pcm *PrometheusClusterMap) getLocalClusterInfo() (*clusters.ClusterInfo, error) {
 	info := pcm.clusterInfo.GetClusterInfo()
 
-	clusterInfo, err := MapToClusterInfo(info)
+	clusterInfo, err := clusters.MapToClusterInfo(info)
 	if err != nil {
-		return nil, fmt.Errorf("Parsing Local Cluster Info Failed: %s", err)
+		return nil, fmt.Errorf("parsing local cluster info failed: %w", err)
 	}
 
 	return clusterInfo, nil
@@ -275,64 +275,4 @@ func (pcm *PrometheusClusterMap) StopRefresh() {
 		close(pcm.stop)
 		pcm.stop = nil
 	}
-}
-
-// MapToClusterInfo returns a ClusterInfo using parsed data from a string map. If
-// parsing the map fails for id and/or name, an error is returned.
-func MapToClusterInfo(info map[string]string) (*clusters.ClusterInfo, error) {
-	var id string
-	var name string
-
-	if i, ok := info[clusters.ClusterInfoIdKey]; ok {
-		id = i
-	} else {
-		return nil, fmt.Errorf("Cluster Info Missing ID")
-	}
-	if n, ok := info[clusters.ClusterInfoNameKey]; ok {
-		name = n
-	} else {
-		name = id
-	}
-
-	var clusterProfile string
-	var provider string
-	var account string
-	var project string
-	var region string
-	var provisioner string
-
-	if cp, ok := info[clusters.ClusterInfoProfileKey]; ok {
-		clusterProfile = cp
-	}
-
-	if pvdr, ok := info[clusters.ClusterInfoProviderKey]; ok {
-		provider = pvdr
-	}
-
-	if acct, ok := info[clusters.ClusterInfoAccountKey]; ok {
-		account = acct
-	}
-
-	if proj, ok := info[clusters.ClusterInfoProjectKey]; ok {
-		project = proj
-	}
-
-	if reg, ok := info[clusters.ClusterInfoRegionKey]; ok {
-		region = reg
-	}
-
-	if pvsr, ok := info[clusters.ClusterInfoProvisionerKey]; ok {
-		provisioner = pvsr
-	}
-
-	return &clusters.ClusterInfo{
-		ID:          id,
-		Name:        name,
-		Profile:     clusterProfile,
-		Provider:    provider,
-		Account:     account,
-		Project:     project,
-		Region:      region,
-		Provisioner: provisioner,
-	}, nil
 }

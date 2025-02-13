@@ -358,8 +358,8 @@ func (cm *CostModel) computeAllocation(start, end time.Time, resolution time.Dur
 
 	resChJobLabels := grp.With(ds.QueryJobLabels(start, end))
 
-	resChLBCostPerHr := grp.With(ds.QueryLBCostPerHr(start, end))
-	resChLBActiveMins := grp.With(ds.QueryLBActiveMins(start, end))
+	resChLBCostPerHr := grp.With(ds.QueryLBPricePerHr(start, end))
+	resChLBActiveMins := grp.With(ds.QueryLBActiveMinutes(start, end))
 
 	resCPUCoresAllocated, _ := resChCPUCoresAllocated.Await()
 	resCPURequests, _ := resChCPURequests.Await()
