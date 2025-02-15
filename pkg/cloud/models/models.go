@@ -196,6 +196,8 @@ type CustomPricing struct {
 	GoogleAnalyticsTag           string `json:"googleAnalyticsTag"`
 	ExcludeProviderID            string `json:"excludeProviderID"`
 	DefaultLBPrice               string `json:"defaultLBPrice"`
+	ControlPlaneCosts            string `json:"controlPlaneCosts"`
+	HAControlPlaneCosts          string `json:"haControlPlaneCosts"`
 }
 
 // GetSharedOverheadCostPerMonth parses and returns a float64 representation

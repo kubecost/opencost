@@ -1856,11 +1856,11 @@ func (cm *CostModel) getNodePricing(nodeMap map[nodeKey]*nodePricing, nodeKey no
 	// them as strings like this?
 
 	if node.CostPerCPUHr == 0 || math.IsNaN(node.CostPerCPUHr) {
-		log.Warnf("CostModel: node pricing has illegal CostPerCPUHr; replacing with custom pricing: %s", nodeKey)
 		cpuCostStr := customPricingConfig.CPU
 		if node.Preemptible {
 			cpuCostStr = customPricingConfig.SpotCPU
 		}
+		log.Warnf("CostModel: node pricing has illegal CostPerCPUHr; replacing with custom pricing: %s - %s", nodeKey, cpuCostStr)
 		costPerCPUHr, err := strconv.ParseFloat(cpuCostStr, 64)
 		if err != nil {
 			log.Warnf("CostModel: custom pricing has illegal CPU cost: %s", cpuCostStr)
@@ -1870,11 +1870,11 @@ func (cm *CostModel) getNodePricing(nodeMap map[nodeKey]*nodePricing, nodeKey no
 	}
 
 	if math.IsNaN(node.CostPerGPUHr) {
-		log.Warnf("CostModel: node pricing has illegal CostPerGPUHr; replacing with custom pricing: %s", nodeKey)
 		gpuCostStr := customPricingConfig.GPU
 		if node.Preemptible {
 			gpuCostStr = customPricingConfig.SpotGPU
 		}
+		log.Warnf("CostModel: node pricing has illegal CostPerGPUHr; replacing with custom pricing: %s - %s", nodeKey, gpuCostStr)
 		costPerGPUHr, err := strconv.ParseFloat(gpuCostStr, 64)
 		if err != nil {
 			log.Warnf("CostModel: custom pricing has illegal GPU cost: %s", gpuCostStr)
@@ -1884,11 +1884,11 @@ func (cm *CostModel) getNodePricing(nodeMap map[nodeKey]*nodePricing, nodeKey no
 	}
 
 	if node.CostPerRAMGiBHr == 0 || math.IsNaN(node.CostPerRAMGiBHr) {
-		log.Warnf("CostModel: node pricing has illegal CostPerRAMHr; replacing with custom pricing: %s", nodeKey)
 		ramCostStr := customPricingConfig.RAM
 		if node.Preemptible {
 			ramCostStr = customPricingConfig.SpotRAM
 		}
+		log.Warnf("CostModel: node pricing has illegal CostPerRAMHr; replacing with custom pricing: %s - %s", nodeKey, ramCostStr)
 		costPerRAMHr, err := strconv.ParseFloat(ramCostStr, 64)
 		if err != nil {
 			log.Warnf("CostModel: custom pricing has illegal RAM cost: %s", ramCostStr)
