@@ -926,6 +926,7 @@ func Initialize(router *httprouter.Router, additionalConfigWatchers ...*watcher.
 	router.GET("/costDataModel", a.CostDataModel)
 	router.GET("/allocation/compute", a.ComputeAllocationHandler)
 	router.GET("/allocation/compute/summary", a.ComputeAllocationHandlerSummary)
+
 	router.GET("/allNodePricing", a.GetAllNodePricing)
 	router.POST("/refreshPricing", a.RefreshPricingData)
 	router.GET("/clusterCostsOverTime", a.ClusterCostsOverTime)

@@ -95,7 +95,7 @@ func (cm *CostModel) ComputeAssets(start, end time.Time) (*opencost.AssetSet, er
 	}
 
 	for _, cman := range clusterManagement {
-		cmAsset := opencost.NewClusterManagement(cman.Provisioner, cman.Cluster, opencost.NewClosedWindow(start, end)) //src.CostModel.PropertiesFromCluster(cm.Properties)
+		cmAsset := opencost.NewClusterManagement(cman.Provisioner, cman.Cluster, opencost.NewClosedWindow(start, end))
 		cm.PropertiesFromCluster(cmAsset.Properties)
 		cmAsset.Cost = cman.Cost
 
